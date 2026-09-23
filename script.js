@@ -322,6 +322,87 @@ const initialSeedData = {
 };
 
 // ==============================================================================
+// 1.0 Camada de Conexão com a API REST Backend & Banco Relacional SQLite
+// ==============================================================================
+class DevSquadAPI {
+  constructor() {
+    this.baseUrl = (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+      ? ''
+      : 'http://localhost:3001';
+    this.isOnline = false;
+  }
+
+  async checkHealth() {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/health`, { method: 'GET' });
+      if (res.ok) {
+        this.isOnline = true;
+        this.updatePillUI(true);
+        return true;
+      }
+    } catch (e) {
+      this.isOnline = false;
+    }
+    this.updatePillUI(false);
+    return false;
+  }
+
+  updatePillUI(online) {
+    const pill = document.getElementById('db-status-pill');
+    const text = document.getElementById('db-status-text');
+    if (pill && text) {
+      if (online) {
+        pill.className = 'db-status-pill online';
+        text.textContent = '🟢 SQLite (devsquad.db)';
+        pill.title = 'Conectado ao Banco Relacional SQLite Local (:3001)';
+      } else {
+        pill.className = 'db-status-pill offline';
+        text.textContent = '🟡 Cache Local';
+        pill.title = 'Servidor local offline - operando com cache do navegador (LocalStorage)';
+      }
+    }
+  }
+
+  async fetchBootstrap() {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/bootstrap`);
+      if (res.ok) {
+        this.isOnline = true;
+        this.updatePillUI(true);
+        return await res.json();
+      }
+    } catch (e) {
+      this.isOnline = false;
+      this.updatePillUI(false);
+    }
+    return null;
+  }
+
+  async apiRequest(endpoint, method = 'GET', body = null) {
+    try {
+      const options = {
+        method,
+        headers: { 'Content-Type': 'application/json' }
+      };
+      if (body) options.body = JSON.stringify(body);
+      const res = await fetch(`${this.baseUrl}${endpoint}`, options);
+      if (res.ok) {
+        this.isOnline = true;
+        this.updatePillUI(true);
+        return await res.json();
+      }
+    } catch (e) {
+      this.isOnline = false;
+      this.updatePillUI(false);
+    }
+    return null;
+  }
+}
+
+const api = new DevSquadAPI();
+window.api = api;
+
+// ==============================================================================
 // 1. Gerenciador de Estado Reativo (Store)
 // ==============================================================================
 class ALMStore {
@@ -360,6 +441,23 @@ class ALMStore {
     }
   }
 
+  async syncWithBackend() {
+    const data = await api.fetchBootstrap();
+    if (data) {
+      if (Array.isArray(data.projects)) this.state.projects = data.projects;
+      if (Array.isArray(data.requirements)) this.state.requirements = data.requirements;
+      if (Array.isArray(data.teamMembers)) this.state.teamMembers = data.teamMembers;
+      if (Array.isArray(data.tasks)) this.state.tasks = data.tasks;
+      if (Array.isArray(data.testCases)) this.state.testCases = data.testCases;
+      this.saveState();
+
+      if (Array.isArray(data.users) && typeof authStore !== 'undefined') {
+        authStore.saveUsers(data.users);
+      }
+      refreshAllUI();
+    }
+  }
+
   // --- CRUD: PROJETOS ---
   getProjects() {
     let list = this.state.projects;
@@ -389,6 +487,7 @@ class ALMStore {
     };
     this.state.projects.push(newProject);
     this.saveState();
+    api.apiRequest('/api/projects', 'POST', newProject);
     return newProject;
   }
 
@@ -402,6 +501,7 @@ class ALMStore {
       project.status = data.status;
       project.deadline = data.deadline;
       this.saveState();
+      api.apiRequest(`/api/projects/${id}`, 'PUT', data);
       return true;
     }
     return false;
@@ -415,6 +515,7 @@ class ALMStore {
         this.selectedProject = 'all';
       }
       this.saveState();
+      api.apiRequest(`/api/projects/${id}`, 'DELETE');
       return true;
     }
     return false;
@@ -455,6 +556,7 @@ class ALMStore {
     };
     this.state.teamMembers.push(newMember);
     this.saveState();
+    api.apiRequest('/api/team', 'POST', newMember);
     return newMember;
   }
 
@@ -476,6 +578,7 @@ class ALMStore {
       }
       if (memberData.capacity !== undefined) member.capacity = parseInt(memberData.capacity, 10) || 40;
       this.saveState();
+      api.apiRequest(`/api/team/${id}`, 'PUT', memberData);
       return true;
     }
     return false;
@@ -490,6 +593,7 @@ class ALMStore {
       });
       this.state.teamMembers.splice(index, 1);
       this.saveState();
+      api.apiRequest(`/api/team/${id}`, 'DELETE');
       return true;
     }
     return false;
@@ -531,6 +635,7 @@ class ALMStore {
     };
     this.state.requirements.push(newReq);
     this.saveState();
+    api.apiRequest('/api/requirements', 'POST', newReq);
     return newReq;
   }
 
@@ -545,6 +650,7 @@ class ALMStore {
       if (data.userStory !== undefined) req.userStory = data.userStory;
       if (data.bdd !== undefined) req.bdd = data.bdd;
       this.saveState();
+      api.apiRequest(`/api/requirements/${id}`, 'PUT', data);
       return true;
     }
     return false;
@@ -562,6 +668,7 @@ class ALMStore {
       });
       this.state.requirements.splice(index, 1);
       this.saveState();
+      api.apiRequest(`/api/requirements/${id}`, 'DELETE');
       return true;
     }
     return false;
@@ -614,6 +721,7 @@ class ALMStore {
     };
     this.state.tasks.push(newTask);
     this.saveState();
+    api.apiRequest('/api/tasks', 'POST', newTask);
     return newTask;
   }
 
@@ -629,6 +737,7 @@ class ALMStore {
       if (data.hours !== undefined) task.hours = parseInt(data.hours, 10) || 8;
       if (data.desc !== undefined) task.desc = data.desc || '';
       this.saveState();
+      api.apiRequest(`/api/tasks/${id}`, 'PUT', data);
       return true;
     }
     return false;
@@ -643,6 +752,7 @@ class ALMStore {
       });
       this.state.tasks.splice(index, 1);
       this.saveState();
+      api.apiRequest(`/api/tasks/${id}`, 'DELETE');
       return true;
     }
     return false;
@@ -653,6 +763,7 @@ class ALMStore {
     if (task) {
       task.status = targetStatus;
       this.saveState();
+      api.apiRequest(`/api/tasks/${taskId}/move`, 'PUT', { status: targetStatus });
       return true;
     }
     return false;
@@ -664,7 +775,7 @@ class ALMStore {
       const h = parseFloat(hours) || 0;
       task.hoursSpent = (task.hoursSpent || 0) + h;
       task.timesheet = task.timesheet || [];
-      task.timesheet.push({
+      const entry = {
         id: "ts_" + Date.now(),
         hours: h,
         date: date || new Date().toISOString().split('T')[0],
@@ -672,13 +783,21 @@ class ALMStore {
         impediment: impediment || null,
         author: authorName || "Desenvolvedor",
         timestamp: new Date().toISOString()
-      });
+      };
+      task.timesheet.push(entry);
       if (impediment && impediment.trim()) {
         task.impediment = impediment.trim();
       } else if (impediment === "") {
         task.impediment = null;
       }
       this.saveState();
+      api.apiRequest(`/api/tasks/${taskId}/timesheet`, 'POST', {
+        hours: h,
+        date: entry.date,
+        notes: entry.notes,
+        impediment: entry.impediment,
+        author: entry.author
+      });
       return true;
     }
     return false;
@@ -703,6 +822,11 @@ class ALMStore {
         task.qaDate = new Date().toISOString();
       }
       this.saveState();
+      api.apiRequest(`/api/tasks/${taskId}/qa-validate`, 'POST', {
+        decision,
+        notes,
+        reviewer: reviewerName
+      });
       return true;
     }
     return false;
@@ -742,6 +866,7 @@ class ALMStore {
     };
     this.state.testCases.push(newTest);
     this.saveState();
+    api.apiRequest('/api/tests', 'POST', newTest);
     return newTest;
   }
 
@@ -755,6 +880,7 @@ class ALMStore {
       if (data.expected !== undefined) tc.expected = data.expected;
       if (data.status !== undefined) tc.status = data.status;
       this.saveState();
+      api.apiRequest(`/api/tests/${id}`, 'PUT', data);
       return true;
     }
     return false;
@@ -765,6 +891,7 @@ class ALMStore {
     if (index !== -1) {
       this.state.testCases.splice(index, 1);
       this.saveState();
+      api.apiRequest(`/api/tests/${id}`, 'DELETE');
       return true;
     }
     return false;
@@ -775,6 +902,7 @@ class ALMStore {
     if (tc) {
       tc.status = status;
       this.saveState();
+      api.apiRequest(`/api/tests/${testId}/status`, 'PUT', { status });
       return true;
     }
     return false;
@@ -1078,6 +1206,9 @@ class UserAuthStore {
     }
 
     const sessionUser = this.setSession(user);
+    if (typeof api !== 'undefined') {
+      api.apiRequest('/api/auth/login', 'POST', { email: cleanEmail, password });
+    }
     return { success: true, user: sessionUser };
   }
 
@@ -1127,6 +1258,10 @@ class UserAuthStore {
 
     users.push(newUser);
     this.saveUsers(users);
+
+    if (typeof api !== 'undefined') {
+      api.apiRequest('/api/auth/register', 'POST', newUser);
+    }
 
     // Sincronização automática com a equipe de desenvolvimento
     if (newUser.role === 'dev' && typeof store !== 'undefined' && store.state && Array.isArray(store.state.teamMembers)) {
@@ -2633,6 +2768,20 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('alm-container')?.classList.add('hidden');
     document.getElementById('auth-screen')?.classList.remove('hidden');
     switchAuthTab('login');
+  }
+
+  // Checagem de Conexão com Backend SQLite e Sincronização Automática
+  if (typeof api !== 'undefined') {
+    api.checkHealth().then(online => {
+      if (online && typeof store !== 'undefined') {
+        store.syncWithBackend();
+      }
+    });
+
+    // Monitoramento periódico (heartbeat) a cada 15s
+    setInterval(() => {
+      api.checkHealth();
+    }, 15000);
   }
 
   // Navegação da Sidebar

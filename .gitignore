@@ -1,1 +1,4 @@
 .savepoints/
+devsquad.db-wal
+devsquad.db-shm
+.tools/

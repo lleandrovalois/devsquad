@@ -314,6 +314,12 @@
         </div>
 
         <div class="topbar-right">
+          <!-- Indicador de Status da Persistência de Dados (SQLite / Offline) -->
+          <div class="db-status-pill online" id="db-status-pill" title="Status da Conexão com o Banco de Dados">
+            <span class="db-dot"></span>
+            <span class="db-text" id="db-status-text">SQLite Conectado</span>
+          </div>
+
           <!-- Botão Dropdown "+ Novo" -->
           <div class="dropdown-wrapper" id="dropdown-new-item">
             <button class="btn btn-primary btn-glow" id="btn-open-new-menu">
