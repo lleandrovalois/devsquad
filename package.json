@@ -1,0 +1,21 @@
+{
+  "name": "devsquad-manager",
+  "version": "1.0.0",
+  "description": "DevSquad ALM - Plataforma Integrada de Gestão de Requisitos, Equipe Dev (Front & Back), Demandas Multi-Projetos e Camada de Testes/QA",
+  "main": "index.html",
+  "scripts": {
+    "start": "python -m http.server 3000"
+  },
+  "keywords": [
+    "antigravity",
+    "alm",
+    "software-engineering",
+    "team-management",
+    "kanban",
+    "frontend-backend",
+    "requirements-specification",
+    "qa-testing"
+  ],
+  "author": "cvalois",
+  "license": "MIT"
+}

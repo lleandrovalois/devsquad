@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="DevSquad - Plataforma Integrada de Gestão de Requisitos, Equipe de Desenvolvimento (Front-end e Back-end), Demandas Multi-Projetos e Qualidade/Testes.">
+  <title>DevSquad • Gestão de Requisitos, Equipe e Testes</title>
+  
+  <!-- Fontes Google Modernas: Plus Jakarta Sans, Outfit e Fira Code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Layout Principal do Sistema -->
+  <div class="alm-container">
+    
+    <!-- Sidebar de Navegação Lateral -->
+    <aside class="alm-sidebar" id="alm-sidebar">
+      <div class="sidebar-header">
+        <div class="brand-logo">
+          <div class="logo-icon-box">🚀</div>
+          <div class="logo-meta">
+            <span class="logo-title">DevSquad <span class="logo-badge">PRO</span></span>
+            <span class="logo-sub">Gestão de Desenvolvimento</span>
+          </div>
+        </div>
+        <button id="sidebar-toggle-btn" class="sidebar-toggle" aria-label="Recolher Menu">◀</button>
+      </div>
+
+      <!-- Navegação Principal -->
+      <nav class="sidebar-nav">
+        <span class="nav-section-title">Ciclo de Desenvolvimento</span>
+        <button class="nav-item active" data-view="dashboard" id="nav-dashboard">
+          <span class="nav-icon">📊</span>
+          <span class="nav-text">Painel Geral</span>
+        </button>
+        <button class="nav-item" data-view="projects" id="nav-projects">
+          <span class="nav-icon">📁</span>
+          <span class="nav-text">Projetos</span>
+          <span class="nav-counter" id="counter-nav-projects">0</span>
+        </button>
+        <button class="nav-item" data-view="requirements" id="nav-requirements">
+          <span class="nav-icon">📋</span>
+          <span class="nav-text">Requisitos & Specs</span>
+          <span class="nav-counter" id="counter-nav-req">0</span>
+        </button>
+        <button class="nav-item" data-view="kanban" id="nav-kanban">
+          <span class="nav-icon">🚀</span>
+          <span class="nav-text">Quadro de Demandas</span>
+          <span class="nav-counter" id="counter-nav-tasks">0</span>
+        </button>
+        <button class="nav-item" data-view="team" id="nav-team">
+          <span class="nav-icon">👥</span>
+          <span class="nav-text">Equipe de Devs</span>
+          <span class="nav-counter" id="counter-nav-team">0</span>
+        </button>
+        <button class="nav-item" data-view="testing" id="nav-testing">
+          <span class="nav-icon">🧪</span>
+          <span class="nav-text">Qualidade & Testes</span>
+          <span class="nav-counter" id="counter-nav-tests">0</span>
+        </button>
+      </nav>
+
+      <!-- Widget de Saúde dos Projetos no Rodapé da Sidebar -->
+      <div class="sidebar-widget glass-subpanel">
+        <div class="widget-header">
+          <span class="widget-label">Andamento Global</span>
+          <span class="widget-status-dot"></span>
+        </div>
+        <div class="widget-progress-bar">
+          <div class="progress-fill" id="sidebar-overall-progress" style="width: 72%;"></div>
+        </div>
+        <div class="widget-stats">
+          <span id="sidebar-active-projects-text">3 Projetos Ativos</span>
+          <span id="sidebar-completed-percent">72%</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Área Principal de Conteúdo -->
+    <div class="alm-main-wrapper">
+      
+      <!-- Topbar / Cabeçalho Superior -->
+      <header class="alm-topbar glass-panel">
+        <div class="topbar-left">
+          <button id="mobile-menu-btn" class="mobile-menu-toggle" aria-label="Abrir Menu">☰</button>
+          
+          <!-- Seletor de Projeto Ativo -->
+          <div class="project-selector-wrapper">
+            <span class="selector-icon">📁</span>
+            <select id="project-filter-select" class="custom-select" title="Filtrar por Projeto">
+              <option value="all">Todos os Projetos</option>
+              <!-- Preenchido via script -->
+            </select>
+          </div>
+
+          <!-- Campo de Busca Global Instantânea -->
+          <div class="global-search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="global-search-input" placeholder="Buscar demandas, requisitos, devs, projetos..." aria-label="Buscar">
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <!-- Botão Dropdown "+ Novo" -->
+          <div class="dropdown-wrapper" id="dropdown-new-item">
+            <button class="btn btn-primary btn-glow" id="btn-open-new-menu">
+              <span>+ Novo Item</span>
+              <span class="arrow-down">▼</span>
+            </button>
+            <div class="dropdown-menu glass-panel" id="new-item-menu">
+              <button class="dropdown-item" id="action-new-project">
+                <span class="item-icon">📁</span>
+                <div class="item-text">
+                  <strong>Novo Projeto</strong>
+                  <small>Cadastrar nova iniciativa</small>
+                </div>
+              </button>
+              <button class="dropdown-item" id="action-new-task">
+                <span class="item-icon">🚀</span>
+                <div class="item-text">
+                  <strong>Nova Demanda</strong>
+                  <small>Para Front-end ou Back-end</small>
+                </div>
+              </button>
+              <button class="dropdown-item" id="action-new-requirement">
+                <span class="item-icon">📋</span>
+                <div class="item-text">
+                  <strong>Novo Requisito / Specs</strong>
+                  <small>História de Usuário com BDD</small>
+                </div>
+              </button>
+              <button class="dropdown-item" id="action-new-test">
+                <span class="item-icon">🧪</span>
+                <div class="item-text">
+                  <strong>Novo Caso de Teste</strong>
+                  <small>Validação de Qualidade e QA</small>
+                </div>
+              </button>
+              <button class="dropdown-item" id="action-new-member">
+                <span class="item-icon">👤</span>
+                <div class="item-text">
+                  <strong>Novo Desenvolvedor</strong>
+                  <small>Front-end ou Back-end</small>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Alternador de Tema -->
+          <button id="theme-toggle-btn" class="icon-circle-btn" title="Alternar Tema Claro/Escuro" aria-label="Alternar Tema">
+            <span class="sun-icon">☀️</span>
+            <span class="moon-icon">🌙</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Conteúdo Dinâmico das Abas -->
+      <main class="alm-content-area" id="alm-content-area">
+        
+        <!-- ===================================================================
+             1. ABA: PAINEL GERAL (DASHBOARD)
+             =================================================================== -->
+        <section class="view-panel active" id="view-dashboard">
+          <div class="view-header">
+            <div>
+              <h1 class="view-title">Painel Geral & Visão Executiva</h1>
+              <p class="view-subtitle">Controle unificado de Requisitos, Execução da Equipe Dev e Qualidade de Testes.</p>
+            </div>
+            <div class="quick-status-chip">
+              <span class="pulse-dot"></span>
+              <span>Ambiente de Engenharia Ativo</span>
+            </div>
+          </div>
+
+          <!-- Cartões de Métricas Principais (KPIs) -->
+          <div class="kpi-grid">
+            <div class="kpi-card glass-panel border-accent-blue">
+              <div class="kpi-icon-box bg-blue">📋</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Requisitos Levantados</span>
+                <div class="kpi-number-row">
+                  <span class="kpi-number" id="kpi-requirements-count">0</span>
+                  <span class="kpi-sub-badge" id="kpi-spec-rate">100% especificados</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="kpi-card glass-panel border-accent-cyan">
+              <div class="kpi-icon-box bg-cyan">🎨</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Demandas Front-end</span>
+                <div class="kpi-number-row">
+                  <span class="kpi-number" id="kpi-front-tasks-count">0</span>
+                  <span class="kpi-sub-badge front-tag" id="kpi-front-devs-count">0 Devs</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="kpi-card glass-panel border-accent-emerald">
+              <div class="kpi-icon-box bg-emerald">⚙️</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Demandas Back-end</span>
+                <div class="kpi-number-row">
+                  <span class="kpi-number" id="kpi-back-tasks-count">0</span>
+                  <span class="kpi-sub-badge back-tag" id="kpi-back-devs-count">0 Devs</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="kpi-card glass-panel border-accent-amber">
+              <div class="kpi-icon-box bg-amber">🧪</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Sucesso dos Testes</span>
+                <div class="kpi-number-row">
+                  <span class="kpi-number" id="kpi-tests-pass-rate">0%</span>
+                  <span class="kpi-sub-badge" id="kpi-tests-count">0 Casos</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Linha de Gráficos e Status dos Projetos -->
+          <div class="dashboard-split-grid">
+            <!-- Card de Projetos e Progresso -->
+            <div class="glass-panel content-card">
+              <div class="card-title-row">
+                <h3>📁 Andamento dos Projetos</h3>
+                <button class="btn btn-secondary btn-sm" onclick="switchView('projects')">Ver Todos os Projetos ➔</button>
+              </div>
+              <div class="projects-progress-list" id="dashboard-projects-list">
+                <!-- Preenchido via script -->
+              </div>
+            </div>
+
+            <!-- Card de Carga de Trabalho da Equipe (Workload) -->
+            <div class="glass-panel content-card">
+              <div class="card-title-row">
+                <h3>👥 Carga de Trabalho da Equipe Dev</h3>
+                <span class="badge-subtle">Front-ends & Back-ends</span>
+              </div>
+              <div class="team-workload-list" id="dashboard-team-workload">
+                <!-- Preenchido via script -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Rastreabilidade de Ponta a Ponta (Requisito -> Dev -> Teste) -->
+          <div class="glass-panel content-card mt-4">
+            <div class="card-title-row">
+              <h3>🔗 Rastreabilidade de Ponta a Ponta</h3>
+              <p class="section-desc">Fluxo integrado: Requisito de Negócio ➔ Demanda Front/Back ➔ Validação de Teste</p>
+            </div>
+            <div class="table-responsive">
+              <table class="alm-table" id="dashboard-trace-table">
+                <thead>
+                  <tr>
+                    <th>Requisito (Specs)</th>
+                    <th>Projeto</th>
+                    <th>Demanda / Responsável</th>
+                    <th>Especialidade</th>
+                    <th>Status da Demanda</th>
+                    <th>Cobertura de Teste</th>
+                  </tr>
+                </thead>
+                <tbody id="trace-table-body">
+                  <!-- Preenchido dinamicamente -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================================================================
+             2. ABA: GESTÃO DE PROJETOS (CRUD)
+             =================================================================== -->
+        <section class="view-panel" id="view-projects">
+          <div class="view-header">
+            <div>
+              <h1 class="view-title">Gestão de Projetos</h1>
+              <p class="view-subtitle">Controle completo de projetos, prazos de entrega, iniciativas e alocação de demandas.</p>
+            </div>
+            <button class="btn btn-primary" id="btn-open-project-modal">
+              <span>+ Novo Projeto</span>
+            </button>
+          </div>
+
+          <!-- Barra de Filtros de Projetos -->
+          <div class="filters-bar glass-subpanel">
+            <div class="filter-group">
+              <span class="filter-label">Status do Projeto:</span>
+              <div class="segmented-control" id="project-status-filter">
+                <button class="segment-btn active" data-status="all">Todos</button>
+                <button class="segment-btn" data-status="Ativo">Ativos</button>
+                <button class="segment-btn" data-status="Em Planejamento">Em Planejamento</button>
+                <button class="segment-btn" data-status="Concluído">Concluídos</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Grade de Cartões de Projetos -->
+          <div class="projects-cards-grid" id="projects-cards-container">
+            <!-- Injetado dinamicamente via script -->
+          </div>
+        </section>
+
+        <!-- ===================================================================
+             3. ABA: REQUISITOS & ESPECIFICAÇÃO (SPECS)
+             =================================================================== -->
+        <section class="view-panel" id="view-requirements">
+          <div class="view-header">
+            <div>
+              <h1 class="view-title">Levantamento & Especificação de Requisitos</h1>
+              <p class="view-subtitle">Documentação funcional, Histórias de Usuário, Requisitos RF/RNF e Critérios de Aceite.</p>
+            </div>
+            <button class="btn btn-primary" id="btn-open-req-modal">
+              <span>+ Novo Requisito</span>
+            </button>
+          </div>
+
+          <!-- Filtros de Requisitos -->
+          <div class="filters-bar glass-subpanel">
+            <div class="filter-group">
+              <span class="filter-label">Tipo:</span>
+              <div class="segmented-control" id="req-type-filter">
+                <button class="segment-btn active" data-type="all">Todos</button>
+                <button class="segment-btn" data-type="functional">Funcionais (RF)</button>
+                <button class="segment-btn" data-type="non-functional">Não-Funcionais (RNF)</button>
+              </div>
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Prioridade MoSCoW:</span>
+              <select id="req-moscow-filter" class="custom-select-sm">
+                <option value="all">Todas as Prioridades</option>
+                <option value="Must">Obrigatório (Must Have)</option>
+                <option value="Should">Importante (Should Have)</option>
+                <option value="Could">Desejável (Could Have)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Lista de Requisitos Expandíveis com BDD -->
+          <div class="requirements-cards-grid" id="requirements-container">
+            <!-- Cards de requisitos injetados via script -->
+          </div>
+        </section>
+
+        <!-- ===================================================================
+             4. ABA: DEMANDAS & QUADRO KANBAN
+             =================================================================== -->
+        <section class="view-panel" id="view-kanban">
+          <div class="view-header">
+            <div>
+              <h1 class="view-title">Quadro de Demandas</h1>
+              <p class="view-subtitle">Gestão visual ágil de demandas distribuídas entre desenvolvedores Front-end e Back-end.</p>
+            </div>
+            <button class="btn btn-primary" id="btn-open-task-modal">
+              <span>+ Nova Demanda</span>
+            </button>
+          </div>
+
+          <!-- Barra de Filtros de Especialidade e Status -->
+          <div class="filters-bar glass-subpanel">
+            <div class="filter-group">
+              <span class="filter-label">Especialidade:</span>
+              <div class="segmented-control" id="kanban-role-filter">
+                <button class="segment-btn active" data-role="all">Todos</button>
+                <button class="segment-btn" data-role="frontend">🎨 Front-end</button>
+                <button class="segment-btn" data-role="backend">⚙️ Back-end</button>
+              </div>
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Prioridade:</span>
+              <select id="kanban-priority-filter" class="custom-select-sm">
+                <option value="all">Todas as Prioridades</option>
+                <option value="Alta">Alta</option>
+                <option value="Média">Média</option>
+                <option value="Baixa">Baixa</option>
+              </select>
+            </div>
+            <div class="filter-group ml-auto">
+              <span class="legend-dot bg-cyan"></span> <span class="legend-text">Front-end</span>
+              <span class="legend-dot bg-emerald ml-2"></span> <span class="legend-text">Back-end</span>
+            </div>
+          </div>
+
+          <!-- Colunas do Quadro Kanban -->
+          <div class="kanban-board" id="kanban-board">
+            
+            <!-- Coluna: A Fazer (Backlog) -->
+            <div class="kanban-column" data-status="backlog">
+              <div class="column-header">
+                <div class="col-title-wrap">
+                  <span class="col-dot dot-gray"></span>
+                  <span class="col-name">A Fazer (Backlog)</span>
+                </div>
+                <span class="column-count" id="count-col-backlog">0</span>
+              </div>
+              <div class="kanban-cards-dropzone" id="zone-backlog">
+                <!-- Cards de tarefas -->
+              </div>
+            </div>
+
+            <!-- Coluna: Em Especificação -->
+            <div class="kanban-column" data-status="spec">
+              <div class="column-header">
+                <div class="col-title-wrap">
+                  <span class="col-dot dot-purple"></span>
+                  <span class="col-name">Em Especificação</span>
+                </div>
+                <span class="column-count" id="count-col-spec">0</span>
+              </div>
+              <div class="kanban-cards-dropzone" id="zone-spec">
+                <!-- Cards de tarefas -->
+              </div>
+            </div>
+
+            <!-- Coluna: Em Desenvolvimento -->
+            <div class="kanban-column" data-status="dev">
+              <div class="column-header">
+                <div class="col-title-wrap">
+                  <span class="col-dot dot-blue"></span>
+                  <span class="col-name">Em Desenvolvimento</span>
+                </div>
+                <span class="column-count" id="count-col-dev">0</span>
+              </div>
+              <div class="kanban-cards-dropzone" id="zone-dev">
+                <!-- Cards de tarefas -->
+              </div>
+            </div>
+
+            <!-- Coluna: Em Testes / Validação -->
+            <div class="kanban-column" data-status="qa">
+              <div class="column-header">
+                <div class="col-title-wrap">
+                  <span class="col-dot dot-amber"></span>
+                  <span class="col-name">Em Testes / Validação</span>
+                </div>
+                <span class="column-count" id="count-col-qa">0</span>
+              </div>
+              <div class="kanban-cards-dropzone" id="zone-qa">
+                <!-- Cards de tarefas -->
+              </div>
+            </div>
+
+            <!-- Coluna: Concluído -->
+            <div class="kanban-column" data-status="done">
+              <div class="column-header">
+                <div class="col-title-wrap">
+                  <span class="col-dot dot-emerald"></span>
+                  <span class="col-name">Concluído</span>
+                </div>
+                <span class="column-count" id="count-col-done">0</span>
+              </div>
+              <div class="kanban-cards-dropzone" id="zone-done">
+                <!-- Cards de tarefas -->
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ===================================================================
+             5. ABA: EQUIPE DE DESENVOLVEDORES (FRONT & BACK)
+             =================================================================== -->
+        <section class="view-panel" id="view-team">
+          <div class="view-header">
+            <div>
+              <h1 class="view-title">Equipe de Desenvolvimento</h1>
+              <p class="view-subtitle">Alocação de competências, disponibilidade e controle de carga horária para Front-ends e Back-ends.</p>
+            </div>
+            <button class="btn btn-primary" id="btn-open-member-modal">
+              <span>+ Novo Desenvolvedor</span>
+            </button>
+          </div>
+
+          <!-- Filtro de Especialidade dos Devs -->
+          <div class="filters-bar glass-subpanel">
+            <div class="filter-group">
+              <span class="filter-label">Visualizar Especialidade:</span>
+              <div class="segmented-control" id="team-role-filter">
+                <button class="segment-btn active" data-team-role="all">Toda a Equipe</button>
+                <button class="segment-btn" data-team-role="frontend">Apenas Front-ends</button>
+                <button class="segment-btn" data-team-role="backend">Apenas Back-ends</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Grade de Cartões de Desenvolvedores -->
+          <div class="team-cards-grid" id="team-cards-container">
+            <!-- Cards de membros da equipe injetados dinamicamente -->
+          </div>
+        </section>
+
+        <!-- ===================================================================
+             6. ABA: QUALIDADE & TESTES (TEST RUNNER)
+             =================================================================== -->
+        <section class="view-panel" id="view-testing">
+          <div class="view-header">
+            <div>
+              <h1 class="view-title">Qualidade & Testes de Software</h1>
+              <p class="view-subtitle">Casos de testes unitários, testes de API de Back-end, interface de Front-end e execução automatizada.</p>
+            </div>
+            <div class="action-buttons-group">
+              <button class="btn btn-secondary" id="btn-open-test-modal">
+                <span>+ Novo Caso de Teste</span>
+              </button>
+              <button class="btn btn-primary btn-glow" id="btn-run-all-tests">
+                <span>▶️ Executar Bateria de Testes</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Métricas de QA -->
+          <div class="kpi-grid">
+            <div class="kpi-card glass-panel">
+              <div class="kpi-icon-box bg-emerald">✅</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Testes Aprovados</span>
+                <span class="kpi-number text-emerald" id="tests-passed-count">0</span>
+              </div>
+            </div>
+            <div class="kpi-card glass-panel">
+              <div class="kpi-icon-box bg-amber">⏳</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Testes Pendentes</span>
+                <span class="kpi-number text-amber" id="tests-pending-count">0</span>
+              </div>
+            </div>
+            <div class="kpi-card glass-panel">
+              <div class="kpi-icon-box bg-rose">❌</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Testes Reprovados</span>
+                <span class="kpi-number text-rose" id="tests-failed-count">0</span>
+              </div>
+            </div>
+            <div class="kpi-card glass-panel">
+              <div class="kpi-icon-box bg-blue">📈</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Cobertura de Requisitos</span>
+                <span class="kpi-number text-blue" id="tests-coverage-percent">0%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Console do Test Runner Interativo -->
+          <div class="glass-panel test-runner-card" id="test-runner-panel">
+            <div class="test-runner-header">
+              <div class="runner-title-group">
+                <span class="terminal-icon">⚡</span>
+                <strong>Executor Automatizado de Testes do Sistema</strong>
+                <span class="runner-status-badge" id="runner-status-badge">Pronto para Execução</span>
+              </div>
+              <div class="runner-actions">
+                <button class="btn-sm btn-ghost" id="btn-clear-runner-logs">Limpar Logs</button>
+              </div>
+            </div>
+            <div class="runner-progress-wrapper">
+              <div class="runner-progress-bar" id="runner-progress-bar" style="width: 0%;"></div>
+            </div>
+            <div class="runner-console" id="runner-console">
+              <p class="console-line text-muted">Aguardando início dos testes automatizados... Clique em "Executar Bateria de Testes".</p>
+            </div>
+          </div>
+
+          <!-- Tabela de Casos de Testes Cadastrados -->
+          <div class="glass-panel content-card mt-4">
+            <div class="card-title-row">
+              <h3>🧪 Casos de Teste Registrados</h3>
+              <div class="filter-group">
+                <select id="test-type-filter" class="custom-select-sm">
+                  <option value="all">Todos os Tipos de Teste</option>
+                  <option value="API de Back-end">API de Back-end</option>
+                  <option value="Interface de Front-end">Interface de Front-end</option>
+                  <option value="Integração">Integração</option>
+                  <option value="Homologação / Aceite">Homologação / Aceite</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="alm-table" id="test-cases-table">
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Caso de Teste</th>
+                    <th>Tipo</th>
+                    <th>Requisito Vinculado</th>
+                    <th>Demanda</th>
+                    <th>Status</th>
+                    <th>Ações Rápidas</th>
+                  </tr>
+                </thead>
+                <tbody id="test-cases-table-body">
+                  <!-- Preenchido via script -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- =====================================================================
+       MODAIS DO SISTEMA
+       ===================================================================== -->
+
+  <!-- Modal: Projeto (Criação e Edição - CRUD) -->
+  <div class="modal-backdrop" id="modal-project">
+    <div class="modal-dialog glass-panel">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-project-title">📁 Cadastrar Novo Projeto</h2>
+        <button class="modal-close" data-close="modal-project">&times;</button>
+      </div>
+      <form id="form-project" class="modal-body">
+        <input type="hidden" id="project-id-edit" value="">
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label for="project-name-input">Nome do Projeto *</label>
+            <input type="text" id="project-name-input" required placeholder="Ex: SuperApp E-Commerce">
+          </div>
+          <div class="form-group flex-1">
+            <label for="project-code-input">Código / Sigla *</label>
+            <input type="text" id="project-code-input" required placeholder="Ex: ECOMM ou APIGW">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="project-desc-input">Descrição do Projeto & Objetivos *</label>
+          <textarea id="project-desc-input" rows="3" required placeholder="Finalidade do projeto, público-alvo e escopo principal..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="project-status-input">Status Atual *</label>
+            <select id="project-status-input" class="custom-select">
+              <option value="Ativo" selected>🟢 Ativo (Em Andamento)</option>
+              <option value="Em Planejamento">🟡 Em Planejamento</option>
+              <option value="Pausado">⏸️ Pausado</option>
+              <option value="Concluído">✅ Concluído</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="project-deadline-input">Prazo Previsto de Entrega</label>
+            <input type="date" id="project-deadline-input">
+          </div>
+          <div class="form-group">
+            <label for="project-color-input">Cor de Destaque</label>
+            <input type="color" id="project-color-input" value="#3b82f6" style="height: 42px; padding: 2px; cursor: pointer;">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close="modal-project">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-project">Salvar Projeto</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Nova Demanda (Criação e Edição - CRUD) -->
+  <div class="modal-backdrop" id="modal-task">
+    <div class="modal-dialog glass-panel">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-task-title">🚀 Cadastrar Nova Demanda</h2>
+        <button class="modal-close" data-close="modal-task">&times;</button>
+      </div>
+      <form id="form-new-task" class="modal-body">
+        <input type="hidden" id="task-id-edit" value="">
+        <div class="form-group">
+          <label for="task-title">Título da Demanda *</label>
+          <input type="text" id="task-title" required placeholder="Ex: Criar endpoint REST de autenticação com validação de OTP">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="task-project">Projeto Associado *</label>
+            <select id="task-project" required class="custom-select">
+              <!-- Preenchido via script -->
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="task-requirement">Requisito Vinculado</label>
+            <select id="task-requirement" class="custom-select">
+              <!-- Preenchido via script -->
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="task-role">Especialidade Técnica *</label>
+            <select id="task-role" required class="custom-select">
+              <option value="backend">⚙️ Back-end</option>
+              <option value="frontend">🎨 Front-end</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="task-assignee">Desenvolvedor Responsável</label>
+            <select id="task-assignee" class="custom-select">
+              <!-- Preenchido dinamicamente -->
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="task-priority">Prioridade *</label>
+            <select id="task-priority" class="custom-select">
+              <option value="Alta">🔴 Alta</option>
+              <option value="Média" selected>🟡 Média</option>
+              <option value="Baixa">🟢 Baixa</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="task-hours">Horas Estimadas (h)</label>
+            <input type="number" id="task-hours" min="1" max="120" value="8">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="task-desc">Descrição Técnica & Detalhes</label>
+          <textarea id="task-desc" rows="3" placeholder="Critérios técnicos, bibliotecas, contratos de API ou requisitos de tela..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close="modal-task">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-task">Salvar Demanda</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Requisito (Criação e Edição - CRUD) -->
+  <div class="modal-backdrop" id="modal-requirement">
+    <div class="modal-dialog glass-panel">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-req-title">📋 Especificar Novo Requisito</h2>
+        <button class="modal-close" data-close="modal-requirement">&times;</button>
+      </div>
+      <form id="form-new-req" class="modal-body">
+        <input type="hidden" id="req-id-edit" value="">
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label for="req-title">Título do Requisito *</label>
+            <input type="text" id="req-title" required placeholder="Ex: Autenticação Segura de Usuários com 2FA">
+          </div>
+          <div class="form-group flex-1">
+            <label for="req-code">Código Identificador *</label>
+            <input type="text" id="req-code" required placeholder="Ex: RF-04 ou RNF-02">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="req-project">Projeto *</label>
+            <select id="req-project" required class="custom-select">
+              <!-- Preenchido via script -->
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="req-type">Tipo de Requisito *</label>
+            <select id="req-type" class="custom-select">
+              <option value="functional">Funcional (RF)</option>
+              <option value="non-functional">Não-Funcional (RNF)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="req-moscow">Prioridade MoSCoW</label>
+            <select id="req-moscow" class="custom-select">
+              <option value="Must">Obrigatório (Must Have)</option>
+              <option value="Should">Importante (Should Have)</option>
+              <option value="Could">Desejável (Could Have)</option>
+              <option value="Won't">Não Prioritário (Won't Have)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="req-user-story">História de Usuário (User Story)</label>
+          <textarea id="req-user-story" rows="2" placeholder="Como [perfil], quero [ação ou capacidade], para que [benefício de negócio]."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="req-bdd">Critérios de Aceite (Cenário: Dado / Quando / Então)</label>
+          <textarea id="req-bdd" rows="4" class="font-mono" placeholder="Dado que o usuário insere credenciais válidas&#10;Quando submete o formulário&#10;Então recebe um token JWT válido e acesso ao dashboard"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close="modal-requirement">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-req">Salvar Requisito</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Caso de Teste (Criação e Edição - CRUD) -->
+  <div class="modal-backdrop" id="modal-testcase">
+    <div class="modal-dialog glass-panel">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-test-title">🧪 Cadastrar Caso de Teste</h2>
+        <button class="modal-close" data-close="modal-testcase">&times;</button>
+      </div>
+      <form id="form-new-test" class="modal-body">
+        <input type="hidden" id="test-id-edit" value="">
+        <div class="form-group">
+          <label for="test-title">Título do Teste *</label>
+          <input type="text" id="test-title" required placeholder="Ex: Validar resposta 200 e payload ao autenticar com sucesso">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="test-type-select">Tipo de Teste *</label>
+            <select id="test-type-select" class="custom-select">
+              <option value="API de Back-end">API de Back-end</option>
+              <option value="Interface de Front-end">Interface de Front-end</option>
+              <option value="Integração">Integração</option>
+              <option value="Homologação / Aceite">Homologação / Aceite</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="test-req-select">Requisito Vinculado *</label>
+            <select id="test-req-select" required class="custom-select">
+              <!-- Preenchido via script -->
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="test-steps">Passos de Execução & Cenário</label>
+          <textarea id="test-steps" rows="3" placeholder="1. Fazer POST em /api/auth com payload válido.&#10;2. Verificar status code HTTP retornado.&#10;3. Inspecionar expiração do token retornado."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="test-expected">Resultado Esperado</label>
+          <input type="text" id="test-expected" placeholder="Status 200 OK com token assinado e exp em 3600s">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close="modal-testcase">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-test">Salvar Caso de Teste</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Desenvolvedor (Criação e Edição - CRUD) -->
+  <div class="modal-backdrop" id="modal-member">
+    <div class="modal-dialog glass-panel">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-member-title">👤 Adicionar Desenvolvedor à Equipe</h2>
+        <button class="modal-close" data-close="modal-member">&times;</button>
+      </div>
+      <form id="form-new-member" class="modal-body">
+        <input type="hidden" id="member-id-edit" value="">
+        <div class="form-group">
+          <label for="member-name">Nome Completo *</label>
+          <input type="text" id="member-name" required placeholder="Ex: Felipe Antunes">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="member-role">Especialidade Principal *</label>
+            <select id="member-role" required class="custom-select">
+              <option value="backend">⚙️ Back-end</option>
+              <option value="frontend">🎨 Front-end</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="member-seniority">Senioridade</label>
+            <select id="member-seniority" class="custom-select">
+              <option value="Líder Técnico">Líder Técnico</option>
+              <option value="Sênior">Sênior</option>
+              <option value="Pleno" selected>Pleno</option>
+              <option value="Júnior">Júnior</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="member-skills">Tecnologias / Stack (separadas por vírgula)</label>
+          <input type="text" id="member-skills" placeholder="Ex: Node.js, PostgreSQL, Docker, Redis">
+        </div>
+        <div class="form-group">
+          <label for="member-capacity">Capacidade Semanal (Horas)</label>
+          <input type="number" id="member-capacity" min="10" max="60" value="40">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close="modal-member">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-member">Salvar Desenvolvedor</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Script Principal da Aplicação -->
+  <script src="script.js"></script>
+</body>
+</html>
