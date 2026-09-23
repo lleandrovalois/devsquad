@@ -337,6 +337,7 @@ class ALMStore {
     this.kanbanPriorityFilter = 'all';
     this.teamRoleFilter = 'all';
     this.testTypeFilter = 'all';
+    this.kanbanScopeFilter = 'all';
   }
 
   loadState() {
@@ -579,6 +580,14 @@ class ALMStore {
     if (this.kanbanPriorityFilter !== 'all') {
       list = list.filter(t => t.priority === this.kanbanPriorityFilter);
     }
+    if (this.kanbanScopeFilter === 'mine' && typeof authStore !== 'undefined') {
+      const current = authStore.getCurrentUser();
+      if (current) {
+        const member = this.state.teamMembers.find(m => m.name.toLowerCase() === current.name.toLowerCase());
+        const memberId = member ? member.id : null;
+        list = list.filter(t => (memberId && t.assigneeId === memberId) || t.assigneeId === current.id);
+      }
+    }
     if (this.searchQuery) {
       const q = this.searchQuery.toLowerCase();
       list = list.filter(t => t.title.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q));
@@ -643,6 +652,56 @@ class ALMStore {
     const task = this.getTaskById(taskId);
     if (task) {
       task.status = targetStatus;
+      this.saveState();
+      return true;
+    }
+    return false;
+  }
+
+  logTaskTime(taskId, hours, date, notes, impediment, authorName) {
+    const task = this.getTaskById(taskId);
+    if (task) {
+      const h = parseFloat(hours) || 0;
+      task.hoursSpent = (task.hoursSpent || 0) + h;
+      task.timesheet = task.timesheet || [];
+      task.timesheet.push({
+        id: "ts_" + Date.now(),
+        hours: h,
+        date: date || new Date().toISOString().split('T')[0],
+        notes: notes || "",
+        impediment: impediment || null,
+        author: authorName || "Desenvolvedor",
+        timestamp: new Date().toISOString()
+      });
+      if (impediment && impediment.trim()) {
+        task.impediment = impediment.trim();
+      } else if (impediment === "") {
+        task.impediment = null;
+      }
+      this.saveState();
+      return true;
+    }
+    return false;
+  }
+
+  validateTaskQA(taskId, decision, notes, reviewerName) {
+    const task = this.getTaskById(taskId);
+    if (task) {
+      if (decision === 'approve') {
+        task.status = 'done';
+        task.qaApproved = true;
+        task.qaNotes = notes;
+        task.qaReviewer = reviewerName || "QA Lead";
+        task.qaDate = new Date().toISOString();
+        task.impediment = null;
+      } else {
+        task.status = 'dev';
+        task.qaApproved = false;
+        task.qaNotes = notes;
+        task.impediment = `Bloqueio QA: ${notes}`;
+        task.qaReviewer = reviewerName || "QA Lead";
+        task.qaDate = new Date().toISOString();
+      }
       this.saveState();
       return true;
     }
@@ -784,9 +843,21 @@ const defaultAuthUsers = [
     password: "admin123",
     role: "admin",
     devRole: null,
-    seniority: "Tech Lead / Gestão",
-    skills: ["Arquitetura", "DevOps", "Liderança Técnica", "Go", "Cloud"],
+    seniority: "Workspace Owner / Diretor",
+    skills: ["Arquitetura", "Governança", "DevOps", "Segurança", "Go"],
     avatarBg: "#f59e0b",
+    createdAt: "2026-01-01T00:00:00.000Z"
+  },
+  {
+    id: "u_gestor",
+    name: "Fernanda Lima",
+    email: "gestor@devsquad.com",
+    password: "pm123",
+    role: "pm",
+    devRole: null,
+    seniority: "Gerente de Projetos (PM / Scrum Master)",
+    skills: ["Scrum", "Kanban", "Gestão de Escopo", "Métricas Ágeis", "Planejamento"],
+    avatarBg: "#8b5cf6",
     createdAt: "2026-01-01T00:00:00.000Z"
   },
   {
@@ -796,7 +867,7 @@ const defaultAuthUsers = [
     password: "dev123",
     role: "dev",
     devRole: "backend",
-    seniority: "Líder Técnico",
+    seniority: "Líder Técnico Back-end",
     skills: ["Go", "Node.js", "Redis", "Kafka", "PostgreSQL"],
     avatarBg: "#059669",
     createdAt: "2026-01-01T00:00:00.000Z"
@@ -808,12 +879,106 @@ const defaultAuthUsers = [
     password: "dev123",
     role: "dev",
     devRole: "frontend",
-    seniority: "Sênior",
+    seniority: "Desenvolvedor Front-end Sênior",
     skills: ["React", "TypeScript", "Next.js", "TailwindCSS", "Jest"],
     avatarBg: "#0284c7",
     createdAt: "2026-01-01T00:00:00.000Z"
+  },
+  {
+    id: "u_qa",
+    name: "Juliana Paiva",
+    email: "qa@devsquad.com",
+    password: "qa123",
+    role: "qa",
+    devRole: null,
+    seniority: "QA Lead / Homologadora",
+    skills: ["Testes Automatizados", "Cypress", "Postman", "BDD", "Jest"],
+    avatarBg: "#ec4899",
+    createdAt: "2026-01-01T00:00:00.000Z"
   }
 ];
+
+// ==============================================================================
+// 1.2 Matriz de Regras de Acesso e Permissões por Papel (RBAC)
+// ==============================================================================
+const RolePermissions = {
+  admin: {
+    label: "👑 Administrador do Sistema",
+    category: "Governança & Administração",
+    badgeClass: "tag-admin",
+    canCreateProject: true,
+    canDeleteProject: true,
+    canCreateReq: true,
+    canDeleteReq: true,
+    canCreateTask: true,
+    canDeleteTask: true,
+    canAssignTask: true,
+    canLogTime: true,
+    canValidateQA: true,
+    canRunTests: true,
+    canCreateTest: true,
+    canManageTeam: true,
+    canManageGovernance: true,
+    allowedNewItems: ['project', 'task', 'req', 'test', 'member']
+  },
+  pm: {
+    label: "📊 Gerente de Projetos (PM / Scrum Master)",
+    category: "Governança & Administração",
+    badgeClass: "tag-pm",
+    canCreateProject: true,
+    canDeleteProject: false,
+    canCreateReq: true,
+    canDeleteReq: false,
+    canCreateTask: true,
+    canDeleteTask: false,
+    canAssignTask: true,
+    canLogTime: true,
+    canValidateQA: false,
+    canRunTests: false,
+    canCreateTest: false,
+    canManageTeam: true,
+    canManageGovernance: false,
+    allowedNewItems: ['project', 'task', 'req', 'member']
+  },
+  dev: {
+    label: "💻 Membro Executor (Desenvolvedor)",
+    category: "Execução & Operação",
+    badgeClass: "tag-back",
+    canCreateProject: false,
+    canDeleteProject: false,
+    canCreateReq: false,
+    canDeleteReq: false,
+    canCreateTask: true,
+    canDeleteTask: false,
+    canAssignTask: false,
+    canLogTime: true,
+    canValidateQA: false,
+    canRunTests: false,
+    canCreateTest: false,
+    canManageTeam: false,
+    canManageGovernance: false,
+    allowedNewItems: ['task']
+  },
+  qa: {
+    label: "🧪 Revisor / Validador (QA / Tech Lead)",
+    category: "Execução & Operação",
+    badgeClass: "tag-qa",
+    canCreateProject: false,
+    canDeleteProject: false,
+    canCreateReq: false,
+    canDeleteReq: false,
+    canCreateTask: true,
+    canDeleteTask: false,
+    canAssignTask: false,
+    canLogTime: false,
+    canValidateQA: true,
+    canRunTests: true,
+    canCreateTest: true,
+    canManageTeam: false,
+    canManageGovernance: false,
+    allowedNewItems: ['test', 'task']
+  }
+};
 
 class UserAuthStore {
   constructor() {
@@ -831,6 +996,17 @@ class UserAuthStore {
         const parsed = JSON.parse(stored);
         if (!Array.isArray(parsed) || parsed.length === 0) {
           localStorage.setItem(this.usersKey, JSON.stringify(defaultAuthUsers));
+        } else {
+          let updated = false;
+          defaultAuthUsers.forEach(defUser => {
+            if (!parsed.some(u => u.email.toLowerCase() === defUser.email.toLowerCase())) {
+              parsed.push(defUser);
+              updated = true;
+            }
+          });
+          if (updated) {
+            localStorage.setItem(this.usersKey, JSON.stringify(parsed));
+          }
         }
       }
     } catch (e) {
@@ -942,7 +1118,7 @@ class UserAuthStore {
       email: cleanEmail,
       password: password,
       role: role || 'dev',
-      devRole: role === 'admin' ? null : (devRole || 'frontend'),
+      devRole: (role === 'admin' || role === 'pm' || role === 'qa') ? null : (devRole || 'frontend'),
       seniority: seniority || 'Pleno',
       skills: parsedSkills,
       avatarBg: randomBg,
@@ -1329,6 +1505,10 @@ function renderKanban() {
   const columns = ['backlog', 'spec', 'dev', 'qa', 'done'];
   const tasks = store.getTasks();
 
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRoleKey = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRoleKey] || RolePermissions.dev;
+
   columns.forEach(col => {
     const zone = document.getElementById(`zone-${col}`);
     if (zone) zone.innerHTML = '';
@@ -1367,20 +1547,42 @@ function renderKanban() {
     const prevCol = getAdjacentColumn(colStatus, -1);
     const nextCol = getAdjacentColumn(colStatus, 1);
 
+    // Badges operacionais de RBAC (Impedimento / QA Aprovado)
+    let badgesHtml = '';
+    if (task.impediment) {
+      badgesHtml += `<div class="task-impediment-badge" title="${task.impediment}">⚠️ ${task.impediment}</div>`;
+    }
+    if (task.qaApproved) {
+      badgesHtml += `<div class="task-qa-approved-badge" title="Aprovado por ${task.qaReviewer || 'QA'}">✓ QA Aprovado</div>`;
+    }
+
+    // Botões operacionais contextuais
+    let opBtnsHtml = '';
+    if (perms.canLogTime) {
+      opBtnsHtml += `<button class="task-timesheet-btn" onclick="openTimesheetModal('${task.id}')" title="Apontar Horas Gastas e Impedimentos">⏱️ Apontar</button>`;
+    }
+    if (colStatus === 'qa' && perms.canValidateQA) {
+      opBtnsHtml += `<button class="task-qa-btn" onclick="openQAModal('${task.id}')" title="Validação Formal de QA">🧪 Validar QA</button>`;
+    }
+
+    const hoursText = task.hoursSpent ? `${task.hoursSpent}/${task.hours || 8}h` : `${task.hours || 8}h`;
+
     card.innerHTML = `
       <div class="task-tags-row">
         <span class="task-role-tag ${task.role === 'frontend' ? 'role-front' : 'role-back'}">${roleLabel}</span>
         <span class="task-priority-tag ${priorityClass}">${task.priority}</span>
-        <span style="font-size: 0.7rem; color: var(--text-muted); margin-left: auto;">⏱️ ${task.hours || 8}h</span>
+        <span style="font-size: 0.7rem; color: var(--text-muted); margin-left: auto;">⏱️ ${hoursText}</span>
         
         <div class="card-header-actions" style="margin-left: 0.35rem;">
           <button class="card-btn-action" onclick="openTaskModalForEdit('${task.id}')" title="Editar Demanda">✏️</button>
-          <button class="card-btn-action btn-del" onclick="confirmDeleteTask('${task.id}', '${task.title}')" title="Excluir Demanda">🗑️</button>
+          ${perms.canDeleteTask ? `<button class="card-btn-action btn-del" onclick="confirmDeleteTask('${task.id}', '${task.title}')" title="Excluir Demanda">🗑️</button>` : ''}
         </div>
       </div>
 
       <div class="task-title">${task.title}</div>
       <div class="task-project-name">📁 ${project ? project.name : 'Geral'}</div>
+
+      ${badgesHtml}
 
       <div class="task-footer-row">
         <div class="task-assignee-wrap" title="${assignee ? assignee.name : 'Sem responsável'}">
@@ -1390,9 +1592,12 @@ function renderKanban() {
           <span style="color: var(--text-secondary);">${assignee ? assignee.name.split(' ')[0] : 'Livre'}</span>
         </div>
 
-        <div class="task-actions-btn-group">
-          ${prevCol ? `<button class="task-move-btn" onclick="moveTaskAction('${task.id}', '${prevCol}')" title="Mover para coluna anterior">◀</button>` : ''}
-          ${nextCol ? `<button class="task-move-btn" onclick="moveTaskAction('${task.id}', '${nextCol}')" title="Mover para próxima coluna">▶</button>` : ''}
+        <div style="display: flex; align-items: center; gap: 0.35rem; margin-left: auto;">
+          ${opBtnsHtml}
+          <div class="task-actions-btn-group">
+            ${prevCol ? `<button class="task-move-btn" onclick="moveTaskAction('${task.id}', '${prevCol}')" title="Mover para coluna anterior">◀</button>` : ''}
+            ${nextCol ? `<button class="task-move-btn" onclick="moveTaskAction('${task.id}', '${nextCol}')" title="Mover para próxima coluna">▶</button>` : ''}
+          </div>
         </div>
       </div>
     `;
@@ -1465,6 +1670,44 @@ window.confirmDeleteTask = function(taskId, taskTitle) {
     refreshAllUI();
     showToast(`Demanda excluída com sucesso.`);
   }
+};
+
+window.openTimesheetModal = function(taskId) {
+  const task = store.getTaskById(taskId);
+  if (!task) return;
+
+  const idInput = document.getElementById('timesheet-task-id');
+  const titleEl = document.getElementById('timesheet-task-title');
+  const hoursInput = document.getElementById('timesheet-hours');
+  const dateInput = document.getElementById('timesheet-date');
+  const notesInput = document.getElementById('timesheet-notes');
+  const impInput = document.getElementById('timesheet-impediment');
+
+  if (idInput) idInput.value = task.id;
+  if (titleEl) titleEl.textContent = `#${task.id} - ${task.title}`;
+  if (hoursInput) hoursInput.value = "2";
+  if (dateInput) dateInput.value = new Date().toISOString().split('T')[0];
+  if (notesInput) notesInput.value = "";
+  if (impInput) impInput.value = task.impediment || "";
+
+  openModal('modal-timesheet');
+};
+
+window.openQAModal = function(taskId) {
+  const task = store.getTaskById(taskId);
+  if (!task) return;
+
+  const idInput = document.getElementById('qa-validation-task-id');
+  const titleEl = document.getElementById('qa-task-title');
+  const notesInput = document.getElementById('qa-validation-notes');
+  const decisionSelect = document.getElementById('qa-decision');
+
+  if (idInput) idInput.value = task.id;
+  if (titleEl) titleEl.textContent = `#${task.id} - ${task.title}`;
+  if (notesInput) notesInput.value = task.qaNotes || "";
+  if (decisionSelect) decisionSelect.value = "approve";
+
+  openModal('modal-qa-validation');
 };
 
 // --- RENDERIZAR ABA: EQUIPE (CRUD DE DESENVOLVEDORES) ---
@@ -1662,6 +1905,53 @@ window.confirmDeleteTestCase = function(testId, testTitle) {
     showToast(`Caso de teste excluído com sucesso.`);
   }
 };
+
+// --- RENDERIZAR ABA: GOVERNANÇA, SEGURANÇA E MATRIZ RBAC ---
+function renderGovernance() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRoleKey = currentUser ? currentUser.role : 'admin';
+  const perms = RolePermissions[currentRoleKey] || RolePermissions.admin;
+
+  const badgeEl = document.getElementById('gov-current-role-badge');
+  if (badgeEl) {
+    badgeEl.textContent = `Seu Perfil Atual: ${perms.label}`;
+    badgeEl.className = `badge-role-current ${perms.badgeClass}`;
+  }
+
+  const allUsers = typeof authStore !== 'undefined' ? authStore.getUsers() : [];
+  const usersCountEl = document.getElementById('gov-users-count');
+  const usersSummaryEl = document.getElementById('gov-users-summary');
+  if (usersCountEl) usersCountEl.textContent = allUsers.length;
+  if (usersSummaryEl) usersSummaryEl.textContent = `${allUsers.length} usuários cadastrados`;
+
+  const tbody = document.getElementById('gov-users-tbody');
+  if (tbody) {
+    tbody.innerHTML = '';
+    allUsers.forEach(u => {
+      const p = RolePermissions[u.role] || RolePermissions.dev;
+      const tr = document.createElement('tr');
+      const isYou = currentUser && currentUser.email.toLowerCase() === u.email.toLowerCase();
+      tr.innerHTML = `
+        <td>
+          <div style="display: flex; align-items: center; gap: 0.65rem;">
+            <div style="width: 32px; height: 32px; border-radius: 50%; background: ${u.avatarBg || '#6366f1'}; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem;">
+              ${getInitials(u.name)}
+            </div>
+            <div>
+              <strong>${u.name}</strong>
+              ${isYou ? ' <span style="font-size: 0.72rem; color: var(--accent-primary); font-weight: 700; background: rgba(99, 102, 241, 0.15); padding: 1px 6px; border-radius: 4px;">Você</span>' : ''}
+            </div>
+          </div>
+        </td>
+        <td style="color: var(--text-secondary); font-size: 0.85rem;">${u.email}</td>
+        <td><span class="user-badge-tag ${p.badgeClass}">${p.label}</span></td>
+        <td style="color: var(--text-secondary); font-size: 0.85rem;">${u.seniority || '-'}</td>
+        <td><span class="status-pill status-pass">Ativo</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+}
 
 // ==============================================================================
 // 3. Executor Automatizado de Testes (Test Runner)
@@ -1873,12 +2163,16 @@ function updateSidebarCounters() {
   const taskCounter = document.getElementById('counter-nav-tasks');
   const teamCounter = document.getElementById('counter-nav-team');
   const testCounter = document.getElementById('counter-nav-tests');
+  const govCounter = document.getElementById('counter-nav-governance');
 
   if (projCounter) projCounter.textContent = store.state.projects.length;
   if (reqCounter) reqCounter.textContent = store.state.requirements.length;
   if (taskCounter) taskCounter.textContent = store.state.tasks.length;
   if (teamCounter) teamCounter.textContent = store.state.teamMembers.length;
   if (testCounter) testCounter.textContent = store.state.testCases.length;
+  if (govCounter && typeof authStore !== 'undefined') {
+    govCounter.textContent = authStore.getUsers().length;
+  }
 }
 
 function switchView(viewName) {
@@ -1903,12 +2197,50 @@ function switchView(viewName) {
   if (viewName === 'kanban') renderKanban();
   if (viewName === 'team') renderTeam();
   if (viewName === 'testing') renderTesting();
+  if (viewName === 'governance') renderGovernance();
 }
 window.switchView = switchView;
+
+function applyRolePermissions(user) {
+  if (!user) return;
+  const roleKey = user.role || 'dev';
+  const perms = RolePermissions[roleKey] || RolePermissions.dev;
+
+  // 1. Dropdown "+ Novo Item"
+  const itemProject = document.getElementById('action-new-project');
+  const itemTask = document.getElementById('action-new-task');
+  const itemReq = document.getElementById('action-new-requirement');
+  const itemTest = document.getElementById('action-new-test');
+  const itemMember = document.getElementById('action-new-member');
+
+  if (itemProject) itemProject.style.display = perms.canCreateProject ? 'flex' : 'none';
+  if (itemTask) itemTask.style.display = perms.canCreateTask ? 'flex' : 'none';
+  if (itemReq) itemReq.style.display = perms.canCreateReq ? 'flex' : 'none';
+  if (itemTest) itemTest.style.display = perms.canCreateTest ? 'flex' : 'none';
+  if (itemMember) itemMember.style.display = perms.canManageTeam ? 'flex' : 'none';
+
+  // 2. Botões de Ação Direta nas Telas
+  const btnProj = document.getElementById('btn-open-project-modal');
+  const btnTask = document.getElementById('btn-open-task-modal');
+  const btnReq = document.getElementById('btn-open-req-modal');
+  const btnMember = document.getElementById('btn-open-member-modal');
+  const btnTest = document.getElementById('btn-open-test-modal');
+  const btnRunTests = document.getElementById('btn-run-all-tests');
+
+  if (btnProj) btnProj.style.display = perms.canCreateProject ? 'inline-flex' : 'none';
+  if (btnTask) btnTask.style.display = perms.canCreateTask ? 'inline-flex' : 'none';
+  if (btnReq) btnReq.style.display = perms.canCreateReq ? 'inline-flex' : 'none';
+  if (btnMember) btnMember.style.display = perms.canManageTeam ? 'inline-flex' : 'none';
+  if (btnTest) btnTest.style.display = perms.canCreateTest ? 'inline-flex' : 'none';
+  if (btnRunTests) btnRunTests.style.display = perms.canRunTests ? 'inline-flex' : 'none';
+}
 
 function refreshAllUI() {
   populateModalSelects();
   updateSidebarCounters();
+  if (typeof authStore !== 'undefined') {
+    applyRolePermissions(authStore.getCurrentUser());
+  }
   switchView(store.activeView);
 }
 
@@ -1979,12 +2311,18 @@ function updateTopbarUserUI(user) {
   const dropEmail = document.getElementById('dropdown-user-email');
   const dropBadge = document.getElementById('dropdown-user-badge');
 
-  let roleLabel = 'Desenvolvedor';
-  let badgeClass = 'tag-admin';
+  let roleLabel = '💻 Desenvolvedor';
+  let badgeClass = 'tag-back';
 
   if (user.role === 'admin') {
     roleLabel = '👑 Administrador';
     badgeClass = 'tag-admin';
+  } else if (user.role === 'pm') {
+    roleLabel = '📊 Gestor (PM)';
+    badgeClass = 'tag-pm';
+  } else if (user.role === 'qa') {
+    roleLabel = '🧪 QA Lead';
+    badgeClass = 'tag-qa';
   } else if (user.devRole === 'backend') {
     roleLabel = '⚙️ Dev Back-end';
     badgeClass = 'tag-back';
@@ -2008,9 +2346,11 @@ function updateTopbarUserUI(user) {
   if (dropEmail) dropEmail.textContent = user.email;
   if (dropBadge) {
     const seniorityText = user.seniority ? ` (${user.seniority})` : '';
-    dropBadge.textContent = `${roleLabel}${user.role !== 'admin' ? seniorityText : ''}`;
+    dropBadge.textContent = `${roleLabel}${seniorityText}`;
     dropBadge.className = `user-badge-tag ${badgeClass}`;
   }
+
+  applyRolePermissions(user);
 }
 
 function setupAuthEventListeners() {
@@ -2109,9 +2449,21 @@ function setupAuthEventListeners() {
     regRoleSelect.addEventListener('change', () => {
       if (regRoleSelect.value === 'admin') {
         regSenioritySelect.innerHTML = `
-          <option value="Tech Lead / Gestão" selected>Tech Lead / Gestão</option>
+          <option value="Workspace Owner / Diretor" selected>Workspace Owner / Diretor</option>
+          <option value="Tech Lead / Gestão">Tech Lead / Gestão</option>
           <option value="Gerente de Engenharia">Gerente de Engenharia</option>
-          <option value="CTO / Diretor">CTO / Diretor</option>
+        `;
+      } else if (regRoleSelect.value === 'pm') {
+        regSenioritySelect.innerHTML = `
+          <option value="Scrum Master" selected>Scrum Master</option>
+          <option value="Project Manager (PM)">Project Manager (PM)</option>
+          <option value="Agile Coach">Agile Coach</option>
+        `;
+      } else if (regRoleSelect.value === 'qa') {
+        regSenioritySelect.innerHTML = `
+          <option value="QA Lead / Homologadora" selected>QA Lead / Homologadora</option>
+          <option value="Analista de Qualidade Pleno">Analista de Qualidade Pleno</option>
+          <option value="Engenheiro de Automação de Testes">Engenheiro de Automação de Testes</option>
         `;
       } else {
         regSenioritySelect.innerHTML = `
@@ -2188,6 +2540,12 @@ function setupAuthEventListeners() {
       let devRole = 'frontend';
       if (roleSelect === 'admin') {
         role = 'admin';
+        devRole = null;
+      } else if (roleSelect === 'pm') {
+        role = 'pm';
+        devRole = null;
+      } else if (roleSelect === 'qa') {
+        role = 'qa';
         devRole = null;
       } else if (roleSelect === 'backend') {
         role = 'dev';
@@ -2405,6 +2763,16 @@ window.addEventListener('DOMContentLoaded', () => {
     renderKanban();
   });
 
+  // Filtro de Escopo do Kanban (Todas vs Minhas Demandas)
+  document.querySelectorAll('#kanban-scope-filter .segment-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#kanban-scope-filter .segment-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      store.kanbanScopeFilter = btn.dataset.scope;
+      renderKanban();
+    });
+  });
+
   // Filtros da Equipe
   document.querySelectorAll('#team-role-filter .segment-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2581,5 +2949,43 @@ window.addEventListener('DOMContentLoaded', () => {
     closeModal('modal-member');
     e.target.reset();
     refreshAllUI();
+  });
+
+  // 6. FORMULÁRIO DE APONTAMENTO DE HORAS / TIMESHEET (MEMBRO EXECUTOR / DEV)
+  document.getElementById('form-timesheet')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const taskId = document.getElementById('timesheet-task-id').value;
+    const hours = document.getElementById('timesheet-hours').value;
+    const date = document.getElementById('timesheet-date').value;
+    const notes = document.getElementById('timesheet-notes').value;
+    const impediment = document.getElementById('timesheet-impediment').value;
+    const currentUser = authStore.getCurrentUser();
+    const author = currentUser ? currentUser.name : "Desenvolvedor";
+
+    store.logTaskTime(taskId, hours, date, notes, impediment, author);
+    closeModal('modal-timesheet');
+    e.target.reset();
+    refreshAllUI();
+    showToast(`Apontamento de ${hours}h registrado com sucesso!`);
+  });
+
+  // 7. FORMULÁRIO DE VALIDAÇÃO FORMAL DE QUALIDADE (QA / REVISOR)
+  document.getElementById('form-qa-validation')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const taskId = document.getElementById('qa-validation-task-id').value;
+    const decision = document.getElementById('qa-decision').value;
+    const notes = document.getElementById('qa-validation-notes').value;
+    const currentUser = authStore.getCurrentUser();
+    const reviewer = currentUser ? currentUser.name : "QA Lead";
+
+    store.validateTaskQA(taskId, decision, notes, reviewer);
+    closeModal('modal-qa-validation');
+    e.target.reset();
+    refreshAllUI();
+    if (decision === 'approve') {
+      showToast(`Demanda aprovada pela Qualidade e movida para Concluído!`);
+    } else {
+      showToast(`Demanda reprovada com bloqueio e retornada para Desenvolvimento.`);
+    }
   });
 });

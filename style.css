@@ -2057,7 +2057,7 @@ html, body {
 
 .demo-chips-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 0.5rem;
 }
 
@@ -2098,8 +2098,10 @@ html, body {
 }
 
 .demo-chip.chip-admin:hover { border-color: #f59e0b; }
+.demo-chip.chip-pm:hover { border-color: #8b5cf6; }
 .demo-chip.chip-back:hover { border-color: #10b981; }
 .demo-chip.chip-front:hover { border-color: #06b6d4; }
+.demo-chip.chip-qa:hover { border-color: #ec4899; }
 
 /* Formulário de Autenticação */
 .auth-form {
@@ -2388,4 +2390,161 @@ html, body {
     display: none;
   }
 }
+
+/* ==============================================================================
+   ESTILOS DE RBAC, GOVERNANÇA E OPERAÇÃO POR PERFIL
+   ============================================================================== */
+
+/* Badges de Perfis */
+.user-badge-tag.tag-pm {
+  background: rgba(139, 92, 246, 0.18);
+  color: #c084fc;
+  border: 1px solid rgba(139, 92, 246, 0.4);
+}
+
+.user-badge-tag.tag-qa {
+  background: rgba(236, 72, 153, 0.18);
+  color: #f472b6;
+  border: 1px solid rgba(236, 72, 153, 0.4);
+}
+
+.badge-role-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-subpanel);
+  border: 1px solid var(--border-subtle);
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-full);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+/* Matriz de Permissões RBAC */
+.rbac-matrix-table th {
+  background: rgba(15, 23, 42, 0.6);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.rbac-matrix-table td {
+  vertical-align: middle;
+  padding: 0.85rem 1rem;
+}
+
+.perm-tag {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.perm-tag.perm-full {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.perm-tag.perm-edit {
+  background: rgba(6, 182, 212, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(6, 182, 212, 0.35);
+}
+
+.perm-tag.perm-view {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.perm-tag.perm-none {
+  background: rgba(244, 63, 94, 0.1);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.25);
+}
+
+/* Ações Operacionais no Kanban */
+.task-timesheet-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: #60a5fa;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.task-timesheet-btn:hover {
+  background: rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+  transform: translateY(-1px);
+}
+
+.task-qa-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.25), rgba(168, 85, 247, 0.25));
+  border: 1px solid rgba(236, 72, 153, 0.5);
+  color: #f472b6;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.task-qa-btn:hover {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.4), rgba(168, 85, 247, 0.4));
+  color: #fbcfe8;
+  transform: translateY(-1px);
+  box-shadow: 0 0 10px rgba(236, 72, 153, 0.3);
+}
+
+.task-impediment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  padding: 0.2rem 0.45rem;
+  border-radius: var(--radius-sm);
+  margin-top: 0.35rem;
+  width: 100%;
+}
+
+.task-qa-approved-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: rgba(16, 185, 129, 0.15);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-sm);
+}
+
+/* Indicador de Restrição / Ação Bloqueada */
+.action-restricted {
+  opacity: 0.4;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
+
 

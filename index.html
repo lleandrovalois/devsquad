@@ -56,25 +56,39 @@
         <div class="demo-accounts-box">
           <span class="demo-box-label">⚡ ACESSO RÁPIDO COM CONTAS DEMO:</span>
           <div class="demo-chips-grid">
-            <button type="button" class="demo-chip chip-admin" data-demo-email="admin@devsquad.com" data-demo-pass="admin123" title="Preencher com Administrador">
+            <button type="button" class="demo-chip chip-admin" data-demo-email="admin@devsquad.com" data-demo-pass="admin123" title="👑 Administrador do Sistema">
               <span class="chip-icon">👑</span>
               <div class="chip-text">
                 <strong>Admin</strong>
-                <small>Tech Lead</small>
+                <small>Workspace Owner</small>
               </div>
             </button>
-            <button type="button" class="demo-chip chip-back" data-demo-email="carlos@devsquad.com" data-demo-pass="dev123" title="Preencher com Dev Back-end">
+            <button type="button" class="demo-chip chip-pm" data-demo-email="gestor@devsquad.com" data-demo-pass="pm123" title="📊 Gerente / Gestor de Projeto">
+              <span class="chip-icon">📊</span>
+              <div class="chip-text">
+                <strong>Fernanda</strong>
+                <small>Gerente de Projetos</small>
+              </div>
+            </button>
+            <button type="button" class="demo-chip chip-back" data-demo-email="carlos@devsquad.com" data-demo-pass="dev123" title="⚙️ Membro Executor Back-end">
               <span class="chip-icon">⚙️</span>
               <div class="chip-text">
                 <strong>Carlos</strong>
-                <small>Back-end Líder</small>
+                <small>Dev Back-end</small>
               </div>
             </button>
-            <button type="button" class="demo-chip chip-front" data-demo-email="lucas@devsquad.com" data-demo-pass="dev123" title="Preencher com Dev Front-end">
+            <button type="button" class="demo-chip chip-front" data-demo-email="lucas@devsquad.com" data-demo-pass="dev123" title="🎨 Membro Executor Front-end">
               <span class="chip-icon">🎨</span>
               <div class="chip-text">
                 <strong>Lucas</strong>
-                <small>Front-end Sênior</small>
+                <small>Dev Front-end</small>
+              </div>
+            </button>
+            <button type="button" class="demo-chip chip-qa" data-demo-email="qa@devsquad.com" data-demo-pass="qa123" title="🧪 Revisor / Validador QA">
+              <span class="chip-icon">🧪</span>
+              <div class="chip-text">
+                <strong>Juliana</strong>
+                <small>QA / Revisor Lead</small>
               </div>
             </button>
           </div>
@@ -92,7 +106,7 @@
           <div class="form-group">
             <div class="form-label-row">
               <label for="login-password" class="form-label">Senha de Acesso</label>
-              <span class="form-hint-text">Padrão demo: admin123 ou dev123</span>
+              <span class="form-hint-text">Padrão demo: admin123, pm123, dev123, qa123</span>
             </div>
             <div class="input-with-icon">
               <span class="input-icon">🔒</span>
@@ -140,9 +154,11 @@
             <div class="form-group">
               <label for="reg-role" class="form-label">Perfil de Atuação *</label>
               <select id="reg-role" class="custom-select" required>
-                <option value="admin">👑 Administrador (Tech Lead / Gestão)</option>
-                <option value="frontend" selected>🎨 Desenvolvedor Front-end</option>
-                <option value="backend">⚙️ Desenvolvedor Back-end</option>
+                <option value="admin">👑 Administrador do Sistema (Workspace Owner)</option>
+                <option value="pm">📊 Gerente / Gestor de Projeto (Scrum Master)</option>
+                <option value="frontend" selected>🎨 Membro Executor (Dev Front-end)</option>
+                <option value="backend">⚙️ Membro Executor (Dev Back-end)</option>
+                <option value="qa">🧪 Revisor / Validador (QA / Tech Lead / Homologador)</option>
               </select>
             </div>
 
@@ -249,6 +265,11 @@
           <span class="nav-icon">🧪</span>
           <span class="nav-text">Qualidade & Testes</span>
           <span class="nav-counter" id="counter-nav-tests">0</span>
+        </button>
+        <button class="nav-item" data-view="governance" id="nav-governance">
+          <span class="nav-icon">🛡️</span>
+          <span class="nav-text">Governança & RBAC</span>
+          <span class="nav-counter" id="counter-nav-governance">5</span>
         </button>
       </nav>
 
@@ -585,6 +606,13 @@
 
           <!-- Barra de Filtros de Especialidade e Status -->
           <div class="filters-bar glass-subpanel">
+            <div class="filter-group" id="filter-group-scope">
+              <span class="filter-label">Escopo:</span>
+              <div class="segmented-control" id="kanban-scope-filter">
+                <button class="segment-btn active" data-scope="all">Todas as Demandas</button>
+                <button class="segment-btn" data-scope="mine" id="btn-filter-my-tasks">👤 Minhas Demandas</button>
+              </div>
+            </div>
             <div class="filter-group">
               <span class="filter-label">Especialidade:</span>
               <div class="segmented-control" id="kanban-role-filter">
@@ -815,6 +843,144 @@
                   </tr>
                 </thead>
                 <tbody id="test-cases-table-body">
+                  <!-- Preenchido via script -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================================================================
+             6. ABA: GOVERNANÇA, SEGURANÇA E MATRIZ RBAC
+             =================================================================== -->
+        <section class="view-panel" id="view-governance">
+          <div class="view-header">
+            <div>
+              <h1 class="view-title">Governança & Controle de Acesso (RBAC)</h1>
+              <p class="view-subtitle">Matriz de permissões, papéis de segurança e gestão de usuários do workspace.</p>
+            </div>
+            <div class="view-actions-group">
+              <span class="badge-role-current" id="gov-current-role-badge">Seu Perfil: Administrador</span>
+            </div>
+          </div>
+
+          <!-- Cards de Indicadores de Governança -->
+          <div class="kpi-grid">
+            <div class="kpi-card glass-panel">
+              <div class="kpi-icon-box bg-purple">👑</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Papéis Ativos</span>
+                <span class="kpi-number text-purple" id="gov-roles-count">4</span>
+              </div>
+            </div>
+            <div class="kpi-card glass-panel">
+              <div class="kpi-icon-box bg-blue">👥</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Usuários no Workspace</span>
+                <span class="kpi-number text-blue" id="gov-users-count">5</span>
+              </div>
+            </div>
+            <div class="kpi-card glass-panel">
+              <div class="kpi-icon-box bg-emerald">🛡️</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Políticas de Segurança</span>
+                <span class="kpi-number text-emerald">Ativas</span>
+              </div>
+            </div>
+            <div class="kpi-card glass-panel">
+              <div class="kpi-icon-box bg-cyan">📜</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Nível de Auditoria</span>
+                <span class="kpi-number text-cyan">Completo</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Matriz de Permissões RBAC -->
+          <div class="glass-panel content-card mt-4">
+            <div class="card-title-row">
+              <div>
+                <h3>📊 Matriz de Permissões Granulares por Papel</h3>
+                <p class="text-muted" style="margin: 0; font-size: 0.85rem;">Definição de acessos entre Governança/Administração e Execução/Operação.</p>
+              </div>
+            </div>
+            <div class="table-responsive mt-3">
+              <table class="alm-table rbac-matrix-table">
+                <thead>
+                  <tr>
+                    <th>Módulo / Funcionalidade</th>
+                    <th>👑 Administrador</th>
+                    <th>📊 Gerente de Projetos</th>
+                    <th>💻 Desenvolvedor</th>
+                    <th>🧪 Revisor / QA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Projetos (Iniciativas & Escopo)</strong></td>
+                    <td><span class="perm-tag perm-full">Criar / Editar / Excluir</span></td>
+                    <td><span class="perm-tag perm-full">Criar / Editar / Prazos</span></td>
+                    <td><span class="perm-tag perm-view">Visualização</span></td>
+                    <td><span class="perm-tag perm-view">Visualização</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Requisitos & Specs (BDD / MoSCoW)</strong></td>
+                    <td><span class="perm-tag perm-full">Acesso Pleno</span></td>
+                    <td><span class="perm-tag perm-full">Criar / Priorizar / MoSCoW</span></td>
+                    <td><span class="perm-tag perm-view">Visualização Specs</span></td>
+                    <td><span class="perm-tag perm-edit">Validar Critérios Aceite</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Quadro de Demandas (Kanban)</strong></td>
+                    <td><span class="perm-tag perm-full">Controle Geral</span></td>
+                    <td><span class="perm-tag perm-full">Estimativas / Atribuição</span></td>
+                    <td><span class="perm-tag perm-edit">Executar / Apontar Horas</span></td>
+                    <td><span class="perm-tag perm-edit">Aprovar / Reprovar QA</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Equipe & Gestão de Capacidade</strong></td>
+                    <td><span class="perm-tag perm-full">Gerenciar Membros</span></td>
+                    <td><span class="perm-tag perm-full">Alocação de Carga Horária</span></td>
+                    <td><span class="perm-tag perm-view">Visualizar Time</span></td>
+                    <td><span class="perm-tag perm-view">Visualizar Time</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Qualidade & Bateria de Testes</strong></td>
+                    <td><span class="perm-tag perm-full">Execução / Edição</span></td>
+                    <td><span class="perm-tag perm-view">Relatórios Cobertura</span></td>
+                    <td><span class="perm-tag perm-view">Consultar Casos de Teste</span></td>
+                    <td><span class="perm-tag perm-full">Criar / Executar / Auditoria</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Governança, Logs & Usuários</strong></td>
+                    <td><span class="perm-tag perm-full">Controle Total</span></td>
+                    <td><span class="perm-tag perm-none">Restrito</span></td>
+                    <td><span class="perm-tag perm-none">Restrito</span></td>
+                    <td><span class="perm-tag perm-none">Restrito</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Tabela de Usuários Registrados no Workspace -->
+          <div class="glass-panel content-card mt-4">
+            <div class="card-title-row">
+              <h3>👥 Usuários e Permissões Ativas no Workspace</h3>
+              <span class="text-muted" style="font-size: 0.85rem;" id="gov-users-summary">5 usuários cadastrados</span>
+            </div>
+            <div class="table-responsive mt-3">
+              <table class="alm-table" id="gov-users-table">
+                <thead>
+                  <tr>
+                    <th>Usuário</th>
+                    <th>E-mail</th>
+                    <th>Papel no Sistema</th>
+                    <th>Especialidade / Nível</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="gov-users-tbody">
                   <!-- Preenchido via script -->
                 </tbody>
               </table>
@@ -1095,6 +1261,84 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-ghost" data-close="modal-member">Cancelar</button>
           <button type="submit" class="btn btn-primary" id="btn-save-member">Salvar Desenvolvedor</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Apontamento de Horas / Timesheet (Membro Executor / Dev) -->
+  <div class="modal-backdrop" id="modal-timesheet">
+    <div class="modal-dialog glass-panel">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-timesheet-title">⏱️ Apontamento de Horas (Timesheet)</h2>
+        <button class="modal-close" data-close="modal-timesheet">&times;</button>
+      </div>
+      <form id="form-timesheet" class="modal-body">
+        <input type="hidden" id="timesheet-task-id" value="">
+        <div class="card-highlight-info" style="margin-bottom: 1rem; padding: 0.75rem 1rem; border-radius: 8px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.25);">
+          <small class="text-muted" style="display: block;">Demanda em Execução:</small>
+          <strong id="timesheet-task-title" style="color: var(--text-primary); font-size: 0.95rem;">-</strong>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="timesheet-hours">Horas Dedicadas Hoje *</label>
+            <input type="number" id="timesheet-hours" required min="0.5" max="24" step="0.5" value="2">
+          </div>
+          <div class="form-group">
+            <label for="timesheet-date">Data do Apontamento</label>
+            <input type="date" id="timesheet-date" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="timesheet-notes">Resumo Técnico da Atividade *</label>
+          <textarea id="timesheet-notes" rows="3" required placeholder="Ex: Implementada validação de token JWT e rota de refresh no backend."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="timesheet-impediment">Possui Algum Impedimento Técnico / Bloqueio?</label>
+          <input type="text" id="timesheet-impediment" placeholder="Ex: Aguardando liberação de credencial da AWS (opcional)">
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close="modal-timesheet">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-timesheet">Registrar Horas</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Validação & Homologação de Qualidade (QA / Revisor) -->
+  <div class="modal-backdrop" id="modal-qa-validation">
+    <div class="modal-dialog glass-panel">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-qa-title">🧪 Validação Formal de Qualidade (QA)</h2>
+        <button class="modal-close" data-close="modal-qa-validation">&times;</button>
+      </div>
+      <form id="form-qa-validation" class="modal-body">
+        <input type="hidden" id="qa-validation-task-id" value="">
+        <div class="card-highlight-info" style="margin-bottom: 1rem; padding: 0.75rem 1rem; border-radius: 8px; background: rgba(236, 72, 153, 0.1); border: 1px solid rgba(236, 72, 153, 0.25);">
+          <small class="text-muted" style="display: block;">Item em Homologação:</small>
+          <strong id="qa-task-title" style="color: var(--text-primary); font-size: 0.95rem;">-</strong>
+        </div>
+
+        <div class="form-group">
+          <label for="qa-decision">Parecer de Homologação *</label>
+          <select id="qa-decision" class="custom-select" required>
+            <option value="approve" selected>✅ Aprovado para Conclusão (Definition of Done cumprido)</option>
+            <option value="reject">❌ Reprovado com Bloqueio (Retornar para Em Desenvolvimento)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="qa-validation-notes">Notas de Validação / Evidências / Motivo do Bloqueio *</label>
+          <textarea id="qa-validation-notes" rows="3" required placeholder="Ex: Todos os critérios de aceite validados com sucesso."></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close="modal-qa-validation">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-confirm-qa">Confirmar Parecer</button>
         </div>
       </form>
     </div>
