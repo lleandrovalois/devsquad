@@ -341,6 +341,7 @@ function getFullUsers() {
       id: u.id,
       name: u.name,
       email: u.email,
+      password: u.password,
       role: u.role,
       devRole: u.dev_role,
       seniority: u.seniority,
@@ -739,8 +740,8 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// Inicialização do Servidor na Porta Definida (0.0.0.0 para acesso local e em rede)
-server.listen(PORT, '0.0.0.0', () => {
+// Inicialização do Servidor na Porta Definida (Dual Stack IPv4 + IPv6)
+server.listen(PORT, () => {
   const os = require('node:os');
   const nets = os.networkInterfaces();
   const lanIps = [];
@@ -755,6 +756,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`==================================================`);
   console.log(`🌐 Servidor DevSquad PRO rodando com sucesso!`);
   console.log(`🔗 Acesso Local:        http://localhost:${PORT}`);
+  console.log(`🔗 Acesso Loopback:     http://127.0.0.1:${PORT}`);
   if (lanIps.length > 0) {
     lanIps.forEach(item => {
       console.log(`📡 Acesso na Rede (${item.iface}): http://${item.ip}:${PORT}`);

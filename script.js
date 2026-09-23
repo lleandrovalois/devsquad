@@ -1192,8 +1192,34 @@ class UserAuthStore {
     }
   }
 
-  login(email, password) {
+  async login(email, password) {
     const cleanEmail = (email || '').trim().toLowerCase();
+
+    // 1. Autenticação direta no Backend SQLite quando online
+    if (typeof api !== 'undefined' && api.isOnline) {
+      try {
+        const res = await api.apiRequest('/api/auth/login', 'POST', { email: cleanEmail, password });
+        if (res && res.success && res.user) {
+          const sessionUser = this.setSession(res.user);
+          const users = this.getUsers();
+          const idx = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+          const fullUser = { ...res.user, password };
+          if (idx !== -1) {
+            users[idx] = fullUser;
+          } else {
+            users.push(fullUser);
+          }
+          this.saveUsers(users);
+          return { success: true, user: sessionUser };
+        } else if (res && res.message) {
+          return { success: false, message: res.message };
+        }
+      } catch (e) {
+        console.warn("Falha na chamada de login via API, tentando fallback local:", e);
+      }
+    }
+
+    // 2. Fallback de Autenticação Offline (LocalStorage)
     const users = this.getUsers();
     const user = users.find(u => u.email.toLowerCase() === cleanEmail);
 
@@ -1206,9 +1232,6 @@ class UserAuthStore {
     }
 
     const sessionUser = this.setSession(user);
-    if (typeof api !== 'undefined') {
-      api.apiRequest('/api/auth/login', 'POST', { email: cleanEmail, password });
-    }
     return { success: true, user: sessionUser };
   }
 
@@ -2614,7 +2637,7 @@ function setupAuthEventListeners() {
   // 6. Submissão do Formulário de Login
   const loginForm = document.getElementById('form-auth-login');
   if (loginForm) {
-    loginForm.addEventListener('submit', (e) => {
+    loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       clearAuthAlert();
 
@@ -2626,7 +2649,7 @@ function setupAuthEventListeners() {
         return;
       }
 
-      const result = authStore.login(email, password);
+      const result = await authStore.login(email, password);
       if (!result.success) {
         showAuthAlert(result.message, 'error');
         return;
