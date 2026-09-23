@@ -770,6 +770,217 @@ class ALMStore {
 
 // Instância Global do Store
 const store = new ALMStore();
+window.store = store;
+
+// ==============================================================================
+// 1.1 Gerenciador de Usuários e Autenticação (UserAuthStore)
+// ==============================================================================
+
+const defaultAuthUsers = [
+  {
+    id: "u_admin",
+    name: "Carlos Valois",
+    email: "admin@devsquad.com",
+    password: "admin123",
+    role: "admin",
+    devRole: null,
+    seniority: "Tech Lead / Gestão",
+    skills: ["Arquitetura", "DevOps", "Liderança Técnica", "Go", "Cloud"],
+    avatarBg: "#f59e0b",
+    createdAt: "2026-01-01T00:00:00.000Z"
+  },
+  {
+    id: "u_carlos",
+    name: "Carlos Valois",
+    email: "carlos@devsquad.com",
+    password: "dev123",
+    role: "dev",
+    devRole: "backend",
+    seniority: "Líder Técnico",
+    skills: ["Go", "Node.js", "Redis", "Kafka", "PostgreSQL"],
+    avatarBg: "#059669",
+    createdAt: "2026-01-01T00:00:00.000Z"
+  },
+  {
+    id: "u_lucas",
+    name: "Lucas Mendes",
+    email: "lucas@devsquad.com",
+    password: "dev123",
+    role: "dev",
+    devRole: "frontend",
+    seniority: "Sênior",
+    skills: ["React", "TypeScript", "Next.js", "TailwindCSS", "Jest"],
+    avatarBg: "#0284c7",
+    createdAt: "2026-01-01T00:00:00.000Z"
+  }
+];
+
+class UserAuthStore {
+  constructor() {
+    this.usersKey = 'devsquad_users_v1';
+    this.sessionKey = 'devsquad_session_user';
+    this.initUsers();
+  }
+
+  initUsers() {
+    try {
+      const stored = localStorage.getItem(this.usersKey);
+      if (!stored) {
+        localStorage.setItem(this.usersKey, JSON.stringify(defaultAuthUsers));
+      } else {
+        const parsed = JSON.parse(stored);
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          localStorage.setItem(this.usersKey, JSON.stringify(defaultAuthUsers));
+        }
+      }
+    } catch (e) {
+      console.error("Erro ao inicializar usuários no localStorage:", e);
+    }
+  }
+
+  getUsers() {
+    try {
+      const stored = localStorage.getItem(this.usersKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      return defaultAuthUsers;
+    } catch (e) {
+      return defaultAuthUsers;
+    }
+  }
+
+  saveUsers(users) {
+    try {
+      localStorage.setItem(this.usersKey, JSON.stringify(users));
+    } catch (e) {
+      console.error("Erro ao salvar lista de usuários:", e);
+    }
+  }
+
+  getCurrentUser() {
+    try {
+      const session = localStorage.getItem(this.sessionKey);
+      return session ? JSON.parse(session) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  setSession(user) {
+    try {
+      const safeUser = { ...user };
+      delete safeUser.password;
+      localStorage.setItem(this.sessionKey, JSON.stringify(safeUser));
+      return safeUser;
+    } catch (e) {
+      console.error("Erro ao salvar sessão:", e);
+      return null;
+    }
+  }
+
+  clearSession() {
+    try {
+      localStorage.removeItem(this.sessionKey);
+    } catch (e) {
+      console.error("Erro ao limpar sessão:", e);
+    }
+  }
+
+  login(email, password) {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const users = this.getUsers();
+    const user = users.find(u => u.email.toLowerCase() === cleanEmail);
+
+    if (!user) {
+      return { success: false, message: 'Usuário não encontrado com este e-mail. Verifique a digitação ou cadastre-se.' };
+    }
+
+    if (user.password !== password) {
+      return { success: false, message: 'Senha incorreta. Verifique suas credenciais de acesso.' };
+    }
+
+    const sessionUser = this.setSession(user);
+    return { success: true, user: sessionUser };
+  }
+
+  register({ name, email, role, devRole, seniority, skills, password }) {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanName = (name || '').trim();
+
+    if (!cleanName || !cleanEmail || !password) {
+      return { success: false, message: 'Por favor, preencha todos os campos obrigatórios (*).' };
+    }
+
+    if (password.length < 6) {
+      return { success: false, message: 'A senha deve conter no mínimo 6 caracteres.' };
+    }
+
+    const users = this.getUsers();
+    if (users.some(u => u.email.toLowerCase() === cleanEmail)) {
+      return { success: false, message: 'Este e-mail já está cadastrado. Tente entrar com sua conta.' };
+    }
+
+    const palette = ['#3b82f6', '#10b981', '#8b5cf6', '#0284c7', '#059669', '#d97706', '#ec4899', '#06b6d4'];
+    const randomBg = palette[Math.floor(Math.random() * palette.length)];
+
+    let parsedSkills = [];
+    if (typeof skills === 'string' && skills.trim()) {
+      parsedSkills = skills.split(',').map(s => s.trim()).filter(Boolean);
+    } else if (Array.isArray(skills)) {
+      parsedSkills = skills;
+    }
+
+    if (parsedSkills.length === 0) {
+      parsedSkills = role === 'admin' ? ['Gestão', 'Arquitetura', 'DevOps'] : ['JavaScript', 'Git', 'Clean Code'];
+    }
+
+    const newUser = {
+      id: 'u_' + Date.now(),
+      name: cleanName,
+      email: cleanEmail,
+      password: password,
+      role: role || 'dev',
+      devRole: role === 'admin' ? null : (devRole || 'frontend'),
+      seniority: seniority || 'Pleno',
+      skills: parsedSkills,
+      avatarBg: randomBg,
+      createdAt: new Date().toISOString()
+    };
+
+    users.push(newUser);
+    this.saveUsers(users);
+
+    // Sincronização automática com a equipe de desenvolvimento
+    if (newUser.role === 'dev' && typeof store !== 'undefined' && store.state && Array.isArray(store.state.teamMembers)) {
+      const existsInTeam = store.state.teamMembers.some(
+        m => m.name.toLowerCase() === newUser.name.toLowerCase()
+      );
+      if (!existsInTeam) {
+        store.addMember({
+          name: newUser.name,
+          role: newUser.devRole || 'frontend',
+          seniority: newUser.seniority,
+          skills: newUser.skills,
+          capacity: 40,
+          avatarBg: newUser.avatarBg
+        });
+      }
+    }
+
+    const sessionUser = this.setSession(newUser);
+    return { success: true, user: sessionUser };
+  }
+
+  logout() {
+    this.clearSession();
+  }
+}
+
+// Instância Global de Autenticação
+const authStore = new UserAuthStore();
+window.authStore = authStore;
 
 // ==============================================================================
 // 2. Renderização das Telas
@@ -1702,13 +1913,369 @@ function refreshAllUI() {
 }
 
 // ==============================================================================
+// 4.1 Utilitários de Interface para Autenticação & Usuários
+// ==============================================================================
+
+function getInitials(name) {
+  if (!name) return 'U';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function showAuthAlert(message, type = 'error') {
+  const alertEl = document.getElementById('auth-alert');
+  if (!alertEl) return;
+  alertEl.className = `auth-alert ${type}`;
+  const icon = type === 'error' ? '⚠️' : (type === 'success' ? '✅' : 'ℹ️');
+  alertEl.innerHTML = `
+    <span class="alert-icon">${icon}</span>
+    <span class="alert-message">${message}</span>
+  `;
+  alertEl.style.display = 'flex';
+}
+
+function clearAuthAlert() {
+  const alertEl = document.getElementById('auth-alert');
+  if (alertEl) {
+    alertEl.style.display = 'none';
+    alertEl.className = 'auth-alert';
+    alertEl.innerHTML = '';
+  }
+}
+
+function switchAuthTab(tab) {
+  clearAuthAlert();
+  const tabLoginBtn = document.getElementById('tab-login-btn');
+  const tabRegBtn = document.getElementById('tab-register-btn');
+  const tabLoginContent = document.getElementById('auth-tab-login');
+  const tabRegContent = document.getElementById('auth-tab-register');
+
+  if (tab === 'login') {
+    tabLoginBtn?.classList.add('active');
+    tabRegBtn?.classList.remove('active');
+    if (tabLoginContent) tabLoginContent.style.display = 'block';
+    if (tabRegContent) tabRegContent.style.display = 'none';
+    document.getElementById('login-email')?.focus();
+  } else {
+    tabRegBtn?.classList.add('active');
+    tabLoginBtn?.classList.remove('active');
+    if (tabRegContent) tabRegContent.style.display = 'block';
+    if (tabLoginContent) tabLoginContent.style.display = 'none';
+    document.getElementById('reg-name')?.focus();
+  }
+}
+
+function updateTopbarUserUI(user) {
+  if (!user) return;
+  const initials = getInitials(user.name);
+
+  const topbarAvatar = document.getElementById('topbar-user-avatar');
+  const topbarName = document.getElementById('topbar-user-name');
+  const topbarRole = document.getElementById('topbar-user-role');
+
+  const dropAvatar = document.getElementById('dropdown-user-avatar-lg');
+  const dropName = document.getElementById('dropdown-user-name');
+  const dropEmail = document.getElementById('dropdown-user-email');
+  const dropBadge = document.getElementById('dropdown-user-badge');
+
+  let roleLabel = 'Desenvolvedor';
+  let badgeClass = 'tag-admin';
+
+  if (user.role === 'admin') {
+    roleLabel = '👑 Administrador';
+    badgeClass = 'tag-admin';
+  } else if (user.devRole === 'backend') {
+    roleLabel = '⚙️ Dev Back-end';
+    badgeClass = 'tag-back';
+  } else if (user.devRole === 'frontend') {
+    roleLabel = '🎨 Dev Front-end';
+    badgeClass = 'tag-front';
+  }
+
+  if (topbarAvatar) {
+    topbarAvatar.textContent = initials;
+    if (user.avatarBg) topbarAvatar.style.backgroundColor = user.avatarBg;
+  }
+  if (topbarName) topbarName.textContent = user.name;
+  if (topbarRole) topbarRole.textContent = roleLabel;
+
+  if (dropAvatar) {
+    dropAvatar.textContent = initials;
+    if (user.avatarBg) dropAvatar.style.backgroundColor = user.avatarBg;
+  }
+  if (dropName) dropName.textContent = user.name;
+  if (dropEmail) dropEmail.textContent = user.email;
+  if (dropBadge) {
+    const seniorityText = user.seniority ? ` (${user.seniority})` : '';
+    dropBadge.textContent = `${roleLabel}${user.role !== 'admin' ? seniorityText : ''}`;
+    dropBadge.className = `user-badge-tag ${badgeClass}`;
+  }
+}
+
+function setupAuthEventListeners() {
+  // 1. Alternador de Abas de Autenticação
+  document.getElementById('tab-login-btn')?.addEventListener('click', () => switchAuthTab('login'));
+  document.getElementById('tab-register-btn')?.addEventListener('click', () => switchAuthTab('register'));
+  document.getElementById('link-go-to-register')?.addEventListener('click', () => switchAuthTab('register'));
+  document.getElementById('link-go-to-login')?.addEventListener('click', () => switchAuthTab('login'));
+
+  // 2. Chips de Contas Demo (1 clique)
+  document.querySelectorAll('.demo-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const email = chip.dataset.demoEmail;
+      const pass = chip.dataset.demoPass;
+      const emailInput = document.getElementById('login-email');
+      const passInput = document.getElementById('login-password');
+      if (emailInput && passInput) {
+        emailInput.value = email;
+        passInput.value = pass;
+        clearAuthAlert();
+        chip.style.transform = 'scale(0.96)';
+        setTimeout(() => { chip.style.transform = ''; }, 150);
+        document.getElementById('btn-submit-login')?.focus();
+      }
+    });
+  });
+
+  // 3. Mostrar / Ocultar Senha
+  document.querySelectorAll('.btn-toggle-pwd').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const targetId = btn.dataset.target;
+      const input = document.getElementById(targetId);
+      if (!input) return;
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = '🙈';
+      } else {
+        input.type = 'password';
+        btn.textContent = '👁️';
+      }
+    });
+  });
+
+  // 4. Medidor de Força de Senha no Cadastro
+  const regPassInput = document.getElementById('reg-password');
+  const pwdBar = document.getElementById('pwd-strength-bar');
+  const pwdText = document.getElementById('pwd-strength-text');
+
+  if (regPassInput && pwdBar && pwdText) {
+    regPassInput.addEventListener('input', () => {
+      const val = regPassInput.value;
+      if (!val) {
+        pwdBar.style.width = '0%';
+        pwdBar.style.background = '#64748b';
+        pwdText.textContent = 'Força da senha';
+        pwdText.style.color = '#94a3b8';
+        return;
+      }
+
+      let score = 0;
+      if (val.length >= 6) score++;
+      if (val.length >= 10) score++;
+      if (/[A-Z]/.test(val) && /[a-z]/.test(val)) score++;
+      if (/[0-9]/.test(val)) score++;
+      if (/[^A-Za-z0-9]/.test(val)) score++;
+
+      if (score <= 1) {
+        pwdBar.style.width = '25%';
+        pwdBar.style.background = '#ef4444';
+        pwdText.textContent = 'Senha Fraca (adicione mais caracteres)';
+        pwdText.style.color = '#f87171';
+      } else if (score === 2) {
+        pwdBar.style.width = '50%';
+        pwdBar.style.background = '#f97316';
+        pwdText.textContent = 'Senha Razoável (inclua números ou maiúsculas)';
+        pwdText.style.color = '#fb923c';
+      } else if (score === 3 || score === 4) {
+        pwdBar.style.width = '75%';
+        pwdBar.style.background = '#eab308';
+        pwdText.textContent = 'Senha Boa';
+        pwdText.style.color = '#facc15';
+      } else {
+        pwdBar.style.width = '100%';
+        pwdBar.style.background = '#10b981';
+        pwdText.textContent = 'Senha Forte e Segura!';
+        pwdText.style.color = '#34d399';
+      }
+    });
+  }
+
+  // 5. Ajuste Dinâmico de Senioridade com base no Perfil
+  const regRoleSelect = document.getElementById('reg-role');
+  const regSenioritySelect = document.getElementById('reg-seniority');
+  if (regRoleSelect && regSenioritySelect) {
+    regRoleSelect.addEventListener('change', () => {
+      if (regRoleSelect.value === 'admin') {
+        regSenioritySelect.innerHTML = `
+          <option value="Tech Lead / Gestão" selected>Tech Lead / Gestão</option>
+          <option value="Gerente de Engenharia">Gerente de Engenharia</option>
+          <option value="CTO / Diretor">CTO / Diretor</option>
+        `;
+      } else {
+        regSenioritySelect.innerHTML = `
+          <option value="Júnior">Júnior</option>
+          <option value="Pleno" selected>Pleno</option>
+          <option value="Sênior">Sênior</option>
+          <option value="Especialista">Especialista / Lead</option>
+        `;
+      }
+    });
+  }
+
+  // 6. Submissão do Formulário de Login
+  const loginForm = document.getElementById('form-auth-login');
+  if (loginForm) {
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      clearAuthAlert();
+
+      const email = document.getElementById('login-email')?.value.trim();
+      const password = document.getElementById('login-password')?.value;
+
+      if (!email || !password) {
+        showAuthAlert('Preencha seu e-mail e senha de acesso.', 'error');
+        return;
+      }
+
+      const result = authStore.login(email, password);
+      if (!result.success) {
+        showAuthAlert(result.message, 'error');
+        return;
+      }
+
+      showToast(`Login realizado com sucesso! Bem-vindo(a), ${result.user.name}!`);
+      document.getElementById('auth-screen')?.classList.add('hidden');
+      document.getElementById('alm-container')?.classList.remove('hidden');
+      updateTopbarUserUI(result.user);
+      loginForm.reset();
+      refreshAllUI();
+    });
+  }
+
+  // 7. Submissão do Formulário de Cadastro
+  const regForm = document.getElementById('form-auth-register');
+  if (regForm) {
+    regForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      clearAuthAlert();
+
+      const name = document.getElementById('reg-name')?.value.trim();
+      const email = document.getElementById('reg-email')?.value.trim();
+      const roleSelect = document.getElementById('reg-role')?.value;
+      const seniority = document.getElementById('reg-seniority')?.value;
+      const skills = document.getElementById('reg-skills')?.value;
+      const password = document.getElementById('reg-password')?.value;
+      const confirmPassword = document.getElementById('reg-password-confirm')?.value;
+
+      if (!name || !email || !password) {
+        showAuthAlert('Por favor, preencha todos os campos obrigatórios (*).', 'error');
+        return;
+      }
+
+      if (password.length < 6) {
+        showAuthAlert('A senha deve conter no mínimo 6 caracteres.', 'error');
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        showAuthAlert('As senhas digitadas não coincidem. Verifique e tente novamente.', 'error');
+        return;
+      }
+
+      let role = 'dev';
+      let devRole = 'frontend';
+      if (roleSelect === 'admin') {
+        role = 'admin';
+        devRole = null;
+      } else if (roleSelect === 'backend') {
+        role = 'dev';
+        devRole = 'backend';
+      } else if (roleSelect === 'frontend') {
+        role = 'dev';
+        devRole = 'frontend';
+      }
+
+      const result = authStore.register({
+        name,
+        email,
+        role,
+        devRole,
+        seniority,
+        skills,
+        password
+      });
+
+      if (!result.success) {
+        showAuthAlert(result.message, 'error');
+        return;
+      }
+
+      showToast(`Conta criada com sucesso! Bem-vindo(a), ${result.user.name}!`);
+      document.getElementById('auth-screen')?.classList.add('hidden');
+      document.getElementById('alm-container')?.classList.remove('hidden');
+      updateTopbarUserUI(result.user);
+      regForm.reset();
+      refreshAllUI();
+    });
+  }
+
+  // 8. Dropdown do Perfil no Topbar
+  const btnUserProfile = document.getElementById('btn-user-profile');
+  const userProfileMenu = document.getElementById('user-profile-menu');
+  const dropdownUserProfile = document.getElementById('dropdown-user-profile');
+
+  if (btnUserProfile && userProfileMenu) {
+    btnUserProfile.addEventListener('click', (e) => {
+      e.stopPropagation();
+      userProfileMenu.classList.toggle('show');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!dropdownUserProfile?.contains(e.target)) {
+        userProfileMenu.classList.remove('show');
+      }
+    });
+  }
+
+  // 9. Botão Sair da Conta (Logout)
+  const btnLogout = document.getElementById('btn-logout');
+  if (btnLogout) {
+    btnLogout.addEventListener('click', () => {
+      userProfileMenu?.classList.remove('show');
+      authStore.logout();
+      document.getElementById('alm-container')?.classList.add('hidden');
+      document.getElementById('auth-screen')?.classList.remove('hidden');
+      switchAuthTab('login');
+      showAuthAlert('Sessão encerrada com sucesso.', 'info');
+      showToast('Você saiu da sua conta.');
+    });
+  }
+}
+
+// ==============================================================================
 // 5. Inicialização e Event Listeners
 // ==============================================================================
 window.addEventListener('DOMContentLoaded', () => {
   const savedTheme = localStorage.getItem('devsquad_theme') || 'dark';
   document.documentElement.setAttribute('data-theme', savedTheme);
 
-  refreshAllUI();
+  // Inicializa Listeners de Autenticação e Topbar
+  setupAuthEventListeners();
+
+  // Verificação de Sessão Ativa
+  const currentUser = authStore.getCurrentUser();
+  if (currentUser) {
+    document.getElementById('auth-screen')?.classList.add('hidden');
+    document.getElementById('alm-container')?.classList.remove('hidden');
+    updateTopbarUserUI(currentUser);
+    refreshAllUI();
+  } else {
+    document.getElementById('alm-container')?.classList.add('hidden');
+    document.getElementById('auth-screen')?.classList.remove('hidden');
+    switchAuthTab('login');
+  }
 
   // Navegação da Sidebar
   document.querySelectorAll('.nav-item').forEach(item => {

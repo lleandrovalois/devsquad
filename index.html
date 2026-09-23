@@ -14,8 +14,196 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- ===================================================================
+       TELA DE AUTENTICAÇÃO: LOGIN & CADASTRO (FULLSCREEN OVERLAY)
+       =================================================================== -->
+  <div class="auth-screen-wrapper" id="auth-screen">
+    <!-- Efeitos de Luz de Fundo (Backdrop Glow Orbs) -->
+    <div class="auth-glow-orb orb-primary"></div>
+    <div class="auth-glow-orb orb-secondary"></div>
+    <div class="auth-glow-orb orb-accent"></div>
+
+    <div class="auth-card glass-panel">
+      <!-- Cabeçalho com Logo -->
+      <div class="auth-header">
+        <div class="auth-brand">
+          <div class="auth-logo-icon">🚀</div>
+          <div>
+            <h1 class="auth-logo-title">DevSquad <span class="auth-badge-pro">PRO</span></h1>
+            <p class="auth-logo-subtitle">Gestão de Requisitos, Equipe e Qualidade</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Abas: Entrar vs Cadastrar-se -->
+      <div class="auth-tabs-nav">
+        <button class="auth-tab-btn active" id="tab-login-btn" type="button">
+          <span>🔑 Entrar</span>
+        </button>
+        <button class="auth-tab-btn" id="tab-register-btn" type="button">
+          <span>📝 Criar Nova Conta</span>
+        </button>
+      </div>
+
+      <!-- Caixa de Mensagem / Alerta Feedback -->
+      <div class="auth-alert" id="auth-alert" style="display: none;"></div>
+
+      <!-- ==========================================
+           FORMULÁRIO 1: LOGIN (ENTRAR)
+           ========================================== -->
+      <div class="auth-tab-content active" id="auth-tab-login">
+        <!-- Contas de Demonstração Rápidas (Chips com 1 clique) -->
+        <div class="demo-accounts-box">
+          <span class="demo-box-label">⚡ ACESSO RÁPIDO COM CONTAS DEMO:</span>
+          <div class="demo-chips-grid">
+            <button type="button" class="demo-chip chip-admin" data-demo-email="admin@devsquad.com" data-demo-pass="admin123" title="Preencher com Administrador">
+              <span class="chip-icon">👑</span>
+              <div class="chip-text">
+                <strong>Admin</strong>
+                <small>Tech Lead</small>
+              </div>
+            </button>
+            <button type="button" class="demo-chip chip-back" data-demo-email="carlos@devsquad.com" data-demo-pass="dev123" title="Preencher com Dev Back-end">
+              <span class="chip-icon">⚙️</span>
+              <div class="chip-text">
+                <strong>Carlos</strong>
+                <small>Back-end Líder</small>
+              </div>
+            </button>
+            <button type="button" class="demo-chip chip-front" data-demo-email="lucas@devsquad.com" data-demo-pass="dev123" title="Preencher com Dev Front-end">
+              <span class="chip-icon">🎨</span>
+              <div class="chip-text">
+                <strong>Lucas</strong>
+                <small>Front-end Sênior</small>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <form id="form-auth-login" class="auth-form" autocomplete="on">
+          <div class="form-group">
+            <label for="login-email" class="form-label">E-mail Profissional</label>
+            <div class="input-with-icon">
+              <span class="input-icon">✉️</span>
+              <input type="email" id="login-email" class="custom-input" placeholder="seu.email@empresa.com" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label-row">
+              <label for="login-password" class="form-label">Senha de Acesso</label>
+              <span class="form-hint-text">Padrão demo: admin123 ou dev123</span>
+            </div>
+            <div class="input-with-icon">
+              <span class="input-icon">🔒</span>
+              <input type="password" id="login-password" class="custom-input" placeholder="••••••••" required>
+              <button type="button" class="btn-toggle-pwd" data-target="login-password" title="Mostrar/Ocultar Senha">👁️</button>
+            </div>
+          </div>
+
+          <div class="form-actions-auth">
+            <button type="submit" class="btn btn-primary btn-block btn-glow btn-auth-submit" id="btn-submit-login">
+              <span>Acessar Plataforma</span>
+              <span class="btn-arrow">➔</span>
+            </button>
+          </div>
+        </form>
+
+        <div class="auth-footer-prompt">
+          <span>Ainda não possui conta?</span>
+          <button type="button" class="btn-link" id="link-go-to-register">Cadastre-se gratuitamente</button>
+        </div>
+      </div>
+
+      <!-- ==========================================
+           FORMULÁRIO 2: CADASTRO (CRIAR CONTA)
+           ========================================== -->
+      <div class="auth-tab-content" id="auth-tab-register" style="display: none;">
+        <form id="form-auth-register" class="auth-form" autocomplete="off">
+          <div class="form-group">
+            <label for="reg-name" class="form-label">Nome Completo *</label>
+            <div class="input-with-icon">
+              <span class="input-icon">👤</span>
+              <input type="text" id="reg-name" class="custom-input" placeholder="Ex: Mariana Ferreira" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="reg-email" class="form-label">E-mail Corporativo *</label>
+            <div class="input-with-icon">
+              <span class="input-icon">✉️</span>
+              <input type="email" id="reg-email" class="custom-input" placeholder="nome@empresa.com" required>
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="reg-role" class="form-label">Perfil de Atuação *</label>
+              <select id="reg-role" class="custom-select" required>
+                <option value="admin">👑 Administrador (Tech Lead / Gestão)</option>
+                <option value="frontend" selected>🎨 Desenvolvedor Front-end</option>
+                <option value="backend">⚙️ Desenvolvedor Back-end</option>
+              </select>
+            </div>
+
+            <div class="form-group" id="group-reg-seniority">
+              <label for="reg-seniority" class="form-label">Nível de Senioridade</label>
+              <select id="reg-seniority" class="custom-select">
+                <option value="Júnior">Júnior</option>
+                <option value="Pleno" selected>Pleno</option>
+                <option value="Sênior">Sênior</option>
+                <option value="Especialista">Especialista / Lead</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group" id="group-reg-skills">
+            <label for="reg-skills" class="form-label">Principais Tecnologias / Skills (separadas por vírgula)</label>
+            <input type="text" id="reg-skills" class="custom-input" placeholder="Ex: React, TypeScript, Next.js, Node.js">
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="reg-password" class="form-label">Senha *</label>
+              <div class="input-with-icon">
+                <span class="input-icon">🔒</span>
+                <input type="password" id="reg-password" class="custom-input" placeholder="Mínimo 6 caracteres" minlength="6" required>
+                <button type="button" class="btn-toggle-pwd" data-target="reg-password" title="Mostrar/Ocultar Senha">👁️</button>
+              </div>
+              <div class="pwd-strength-bar-wrap">
+                <div class="pwd-strength-bar" id="pwd-strength-bar"></div>
+              </div>
+              <span class="pwd-strength-text" id="pwd-strength-text">Força da senha</span>
+            </div>
+
+            <div class="form-group">
+              <label for="reg-password-confirm" class="form-label">Confirmar Senha *</label>
+              <div class="input-with-icon">
+                <span class="input-icon">🔒</span>
+                <input type="password" id="reg-password-confirm" class="custom-input" placeholder="Repita a senha" minlength="6" required>
+                <button type="button" class="btn-toggle-pwd" data-target="reg-password-confirm" title="Mostrar/Ocultar Senha">👁️</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions-auth">
+            <button type="submit" class="btn btn-primary btn-block btn-glow btn-auth-submit" id="btn-submit-register">
+              <span>Criar Conta e Acessar</span>
+              <span class="btn-arrow">➔</span>
+            </button>
+          </div>
+        </form>
+
+        <div class="auth-footer-prompt">
+          <span>Já possui uma conta cadastrada?</span>
+          <button type="button" class="btn-link" id="link-go-to-login">Entrar com sua conta</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Layout Principal do Sistema -->
-  <div class="alm-container">
+  <div class="alm-container" id="alm-container">
     
     <!-- Sidebar de Navegação Lateral -->
     <aside class="alm-sidebar" id="alm-sidebar">
@@ -145,6 +333,39 @@
                 <div class="item-text">
                   <strong>Novo Desenvolvedor</strong>
                   <small>Front-end ou Back-end</small>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Card de Usuário Autenticado com Dropdown e Logout -->
+          <div class="dropdown-wrapper" id="dropdown-user-profile">
+            <button class="user-topbar-profile glass-subpanel" id="btn-user-profile" type="button" title="Minha Conta e Opções de Sessão">
+              <div class="user-topbar-avatar" id="topbar-user-avatar">👤</div>
+              <div class="user-topbar-meta">
+                <span class="user-topbar-name" id="topbar-user-name">Usuário</span>
+                <span class="user-topbar-role" id="topbar-user-role">Conectado</span>
+              </div>
+              <span class="arrow-down">▼</span>
+            </button>
+
+            <div class="dropdown-menu glass-panel user-dropdown-menu" id="user-profile-menu">
+              <div class="user-dropdown-header">
+                <div class="user-dropdown-avatar-lg" id="dropdown-user-avatar-lg">👤</div>
+                <div class="user-dropdown-info">
+                  <strong class="user-dropdown-name" id="dropdown-user-name">Nome do Usuário</strong>
+                  <span class="user-dropdown-email" id="dropdown-user-email">email@empresa.com</span>
+                  <div class="user-dropdown-badge-wrap">
+                    <span class="user-badge-tag tag-admin" id="dropdown-user-badge">👑 Administrador</span>
+                  </div>
+                </div>
+              </div>
+              <div class="dropdown-divider"></div>
+              <button type="button" class="dropdown-item btn-logout-action" id="btn-logout">
+                <span class="item-icon">🚪</span>
+                <div class="item-text">
+                  <strong style="color: #fb7185;">Sair da Conta</strong>
+                  <small>Encerrar sessão atual com segurança</small>
                 </div>
               </button>
             </div>
