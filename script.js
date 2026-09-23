@@ -422,15 +422,28 @@ class ALMStore {
   }
 
   loadState() {
+    let state = null;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        return JSON.parse(stored);
+        state = JSON.parse(stored);
       }
     } catch (e) {
       console.warn("Falha ao carregar estado do localStorage, usando dados padrão:", e);
     }
-    return JSON.parse(JSON.stringify(initialSeedData));
+    if (!state) state = JSON.parse(JSON.stringify(initialSeedData));
+
+    // Deduplicação defensiva de membros ao carregar estado local
+    if (Array.isArray(state.teamMembers)) {
+      const seen = new Set();
+      state.teamMembers = state.teamMembers.filter(m => {
+        const key = (m.name || '').trim().toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+    return state;
   }
 
   saveState() {
@@ -446,13 +459,28 @@ class ALMStore {
     if (data) {
       if (Array.isArray(data.projects)) this.state.projects = data.projects;
       if (Array.isArray(data.requirements)) this.state.requirements = data.requirements;
-      if (Array.isArray(data.teamMembers)) this.state.teamMembers = data.teamMembers;
+      if (Array.isArray(data.teamMembers)) {
+        const seen = new Set();
+        this.state.teamMembers = data.teamMembers.filter(m => {
+          const key = (m.name || '').trim().toLowerCase();
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
       if (Array.isArray(data.tasks)) this.state.tasks = data.tasks;
       if (Array.isArray(data.testCases)) this.state.testCases = data.testCases;
       this.saveState();
 
       if (Array.isArray(data.users) && typeof authStore !== 'undefined') {
-        authStore.saveUsers(data.users);
+        const seenEmails = new Set();
+        const uniqueUsers = data.users.filter(u => {
+          const key = (u.email || '').trim().toLowerCase();
+          if (!key || seenEmails.has(key)) return false;
+          seenEmails.add(key);
+          return true;
+        });
+        authStore.saveUsers(uniqueUsers);
       }
       refreshAllUI();
     }
@@ -524,12 +552,23 @@ class ALMStore {
   // --- CRUD: EQUIPE DE DESENVOLVEDORES ---
   getTeamMembers() {
     let list = this.state.teamMembers;
+    // Deduplica membros por nome normalizado para nunca exibir cartões duplicados
+    const seenNames = new Set();
+    const unique = [];
+    for (const m of list) {
+      const key = (m.name || '').trim().toLowerCase();
+      if (!key || seenNames.has(key)) continue;
+      seenNames.add(key);
+      unique.push(m);
+    }
+    list = unique;
+
     if (this.teamRoleFilter !== 'all') {
       list = list.filter(m => m.role === this.teamRoleFilter);
     }
     if (this.searchQuery) {
       const q = this.searchQuery.toLowerCase();
-      list = list.filter(m => m.name.toLowerCase().includes(q) || m.skills.some(s => s.toLowerCase().includes(q)));
+      list = list.filter(m => m.name.toLowerCase().includes(q) || (Array.isArray(m.skills) && m.skills.some(s => s.toLowerCase().includes(q))));
     }
     return list;
   }
@@ -552,20 +591,32 @@ class ALMStore {
   }
 
   addMember(memberData) {
+    const cleanName = (memberData.name || '').trim();
+    if (!cleanName) return null;
+
+    // Se já existir membro com este nome ou ID, atualiza os dados em vez de duplicar
+    const existing = this.state.teamMembers.find(
+      m => (memberData.id && m.id === memberData.id) || m.name.toLowerCase().trim() === cleanName.toLowerCase()
+    );
+    if (existing) {
+      this.updateMember(existing.id, memberData);
+      return existing;
+    }
+
     let parsedSkills = [];
     if (Array.isArray(memberData.skills)) {
       parsedSkills = memberData.skills;
     } else if (typeof memberData.skills === 'string') {
-      parsedSkills = memberData.skills.split(',').map(s => s.trim()).filter(Boolean);
+      try { parsedSkills = JSON.parse(memberData.skills); } catch(e) { parsedSkills = memberData.skills.split(',').map(s => s.trim()).filter(Boolean); }
     }
     const newMember = {
-      id: "m" + Date.now(),
-      name: memberData.name,
-      role: memberData.role,
+      id: memberData.id || ("m" + Date.now()),
+      name: cleanName,
+      role: memberData.role || 'frontend',
       seniority: memberData.seniority || 'Pleno',
       skills: parsedSkills,
       capacity: parseInt(memberData.capacity, 10) || 40,
-      avatarBg: memberData.role === 'frontend' ? '#0284c7' : '#059669'
+      avatarBg: memberData.avatarBg || (memberData.role === 'frontend' ? '#0284c7' : '#059669')
     };
     this.state.teamMembers.push(newMember);
     this.saveState();
@@ -930,10 +981,20 @@ class ALMStore {
 
   // --- CÁLCULO DE CAPACIDADE DA EQUIPE ---
   calculateDevWorkload(devId) {
-    const devTasks = this.state.tasks.filter(t => t.assigneeId === devId && t.status !== 'done');
-    const totalHours = devTasks.reduce((acc, t) => acc + (t.hours || 0), 0);
     const dev = this.getMemberById(devId);
-    const capacity = dev ? dev.capacity : 40;
+    const devName = dev ? (dev.name || '').toLowerCase().trim() : '';
+    const devTasks = this.state.tasks.filter(t => {
+      if (t.status === 'done') return false;
+      if (t.assigneeId === devId) return true;
+      if (dev && t.assigneeId === dev.id) return true;
+      if (devName && t.assigneeId) {
+        const assignedMember = this.getMemberById(t.assigneeId);
+        if (assignedMember && (assignedMember.name || '').toLowerCase().trim() === devName) return true;
+      }
+      return false;
+    });
+    const totalHours = devTasks.reduce((acc, t) => acc + (t.hours || 0), 0);
+    const capacity = dev ? (dev.capacity || 40) : 40;
     const percentage = Math.round((totalHours / capacity) * 100);
     return {
       hours: totalHours,
@@ -1171,7 +1232,15 @@ class UserAuthStore {
       const stored = localStorage.getItem(this.usersKey);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const seen = new Set();
+          return parsed.filter(u => {
+            const key = (u.email || '').trim().toLowerCase();
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+        }
       }
       return defaultAuthUsers;
     } catch (e) {
@@ -1181,6 +1250,15 @@ class UserAuthStore {
 
   saveUsers(users) {
     try {
+      if (Array.isArray(users)) {
+        const seen = new Set();
+        users = users.filter(u => {
+          const key = (u.email || '').trim().toLowerCase();
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
       localStorage.setItem(this.usersKey, JSON.stringify(users));
     } catch (e) {
       console.error("Erro ao salvar lista de usuários:", e);
@@ -1310,12 +1388,13 @@ class UserAuthStore {
       api.apiRequest('/api/auth/register', 'POST', newUser);
     }
 
-    // Sincronização automática com a equipe de desenvolvimento
+    // Sincronização automática com a equipe de desenvolvimento sem duplicidades
     if (newUser.role === 'dev' && typeof store !== 'undefined' && store.state && Array.isArray(store.state.teamMembers)) {
-      const existsInTeam = store.state.teamMembers.some(
-        m => m.name.toLowerCase() === newUser.name.toLowerCase()
+      const cleanDevName = newUser.name.trim().toLowerCase();
+      const existingInTeam = store.state.teamMembers.find(
+        m => (m.name || '').trim().toLowerCase() === cleanDevName
       );
-      if (!existsInTeam) {
+      if (!existingInTeam) {
         store.addMember({
           name: newUser.name,
           role: newUser.devRole || 'frontend',
@@ -1323,6 +1402,12 @@ class UserAuthStore {
           skills: newUser.skills,
           capacity: 40,
           avatarBg: newUser.avatarBg
+        });
+      } else {
+        store.updateMember(existingInTeam.id, {
+          role: newUser.devRole || existingInTeam.role,
+          seniority: newUser.seniority || existingInTeam.seniority,
+          skills: newUser.skills || existingInTeam.skills
         });
       }
     }
@@ -3314,8 +3399,15 @@ window.addEventListener('DOMContentLoaded', () => {
       store.updateMember(editId, { name, role, seniority, skills, capacity });
       showToast(`Desenvolvedor "${name}" atualizado com sucesso!`);
     } else {
-      store.addMember({ name, role, seniority, skills, capacity });
-      showToast(`Desenvolvedor "${name}" adicionado à equipe!`);
+      const cleanName = (name || '').trim();
+      const existing = store.state.teamMembers.find(m => m.name.toLowerCase().trim() === cleanName.toLowerCase());
+      if (existing) {
+        showToast(`Membro "${cleanName}" já existe na equipe. Dados atualizados!`);
+        store.updateMember(existing.id, { name: cleanName, role, seniority, skills, capacity });
+      } else {
+        store.addMember({ name: cleanName, role, seniority, skills, capacity });
+        showToast(`Desenvolvedor "${cleanName}" adicionado à equipe!`);
+      }
     }
 
     closeModal('modal-member');

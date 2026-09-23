@@ -210,6 +210,106 @@ function seedDatabaseIfEmpty() {
 seedDatabaseIfEmpty();
 
 // ==============================================================================
+// 2.1 Deduplicação e Integridade de Dados Automática
+// ==============================================================================
+function deduplicateEntities() {
+  try {
+    // 1. Deduplicar membros da equipe por nome normalizado (lower + trim)
+    const members = db.prepare('SELECT * FROM team_members').all();
+    const mapByName = new Map();
+
+    for (const m of members) {
+      const normName = (m.name || '').trim().toLowerCase();
+      if (!normName) continue;
+      if (!mapByName.has(normName)) {
+        mapByName.set(normName, []);
+      }
+      mapByName.get(normName).push(m);
+    }
+
+    for (const [normName, group] of mapByName.entries()) {
+      if (group.length > 1) {
+        console.log(`🧹 [Deduplicação] Detectada duplicidade na equipe para "${group[0].name}" (${group.length} registros). Mesclando...`);
+        // Escolhe o membro primário: prefere o que tiver demandas atribuídas ou skills
+        let primary = group.find(m => {
+          const taskCount = db.prepare('SELECT count(*) as c FROM tasks WHERE assignee_id = ?').get(m.id)?.c || 0;
+          return taskCount > 0;
+        });
+
+        if (!primary) {
+          primary = group.find(m => {
+            let s = [];
+            try { s = JSON.parse(m.skills); } catch(e) {}
+            return Array.isArray(s) && s.length > 0;
+          }) || group[0];
+        }
+
+        // Consolida habilidades e dados mais completos
+        const mergedSkillsSet = new Set();
+        let bestSeniority = primary.seniority;
+        let bestRole = primary.role;
+        let bestAvatarBg = primary.avatar_bg;
+
+        for (const m of group) {
+          try {
+            const s = JSON.parse(m.skills);
+            if (Array.isArray(s)) s.forEach(skill => mergedSkillsSet.add(skill));
+          } catch(e) {}
+          if (m.seniority && m.seniority !== 'Pleno') bestSeniority = m.seniority;
+          if (m.role) bestRole = m.role;
+          if (m.avatar_bg) bestAvatarBg = m.avatar_bg;
+        }
+
+        const mergedSkills = Array.from(mergedSkillsSet);
+
+        // Atualiza o registro primário com os dados consolidados
+        db.prepare(`
+          UPDATE team_members
+          SET role = ?, seniority = ?, skills = ?, avatar_bg = ?
+          WHERE id = ?
+        `).run(bestRole, bestSeniority, JSON.stringify(mergedSkills), bestAvatarBg, primary.id);
+
+        // Reatribui tarefas associadas aos registros duplicados e remove os clones
+        for (const m of group) {
+          if (m.id !== primary.id) {
+            db.prepare('UPDATE tasks SET assignee_id = ? WHERE assignee_id = ?').run(primary.id, m.id);
+            db.prepare('DELETE FROM team_members WHERE id = ?').run(m.id);
+            console.log(`   ↳ Clone removido: ID ${m.id} | Mantido ID principal: ${primary.id}`);
+          }
+        }
+      }
+    }
+
+    // 2. Deduplicar usuários por e-mail normalizado (lower + trim)
+    const users = db.prepare('SELECT * FROM users').all();
+    const mapByEmail = new Map();
+    for (const u of users) {
+      const normEmail = (u.email || '').trim().toLowerCase();
+      if (!normEmail) continue;
+      if (!mapByEmail.has(normEmail)) {
+        mapByEmail.set(normEmail, []);
+      }
+      mapByEmail.get(normEmail).push(u);
+    }
+
+    for (const [normEmail, group] of mapByEmail.entries()) {
+      if (group.length > 1) {
+        console.log(`🧹 [Deduplicação] Detectada duplicidade de usuário para "${normEmail}" (${group.length} registros).`);
+        const primary = group[0];
+        for (let i = 1; i < group.length; i++) {
+          db.prepare('DELETE FROM users WHERE id = ?').run(group[i].id);
+          console.log(`   ↳ Clone de usuário removido: ID ${group[i].id} | Mantido: ${primary.id}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Erro na rotina de deduplicação:', err);
+  }
+}
+
+deduplicateEntities();
+
+// ==============================================================================
 // 3. Utilitários para Respostas HTTP & Parsing
 // ==============================================================================
 function sendJson(res, statusCode, data) {
@@ -293,19 +393,28 @@ function getFullRequirements() {
 }
 
 function getFullTeamMembers() {
-  return db.prepare('SELECT * FROM team_members').all().map(m => {
+  const members = db.prepare('SELECT * FROM team_members').all();
+  const seen = new Set();
+  const unique = [];
+
+  for (const m of members) {
+    const key = (m.name || '').trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+
     let skills = [];
     try { skills = JSON.parse(m.skills); } catch(e) {}
-    return {
+    unique.push({
       id: m.id,
-      name: m.name,
+      name: m.name.trim(),
       role: m.role,
       seniority: m.seniority,
       skills: Array.isArray(skills) ? skills : [],
       capacity: m.capacity,
       avatarBg: m.avatar_bg
-    };
-  });
+    });
+  }
+  return unique;
 }
 
 function getFullProjects() {
@@ -334,13 +443,21 @@ function getFullTestCases() {
 }
 
 function getFullUsers() {
-  return db.prepare('SELECT * FROM users').all().map(u => {
+  const users = db.prepare('SELECT * FROM users').all();
+  const seen = new Set();
+  const unique = [];
+
+  for (const u of users) {
+    const key = (u.email || '').trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+
     let skills = [];
     try { skills = JSON.parse(u.skills); } catch(e) {}
-    return {
+    unique.push({
       id: u.id,
-      name: u.name,
-      email: u.email,
+      name: u.name.trim(),
+      email: u.email.trim(),
       password: u.password,
       role: u.role,
       devRole: u.dev_role,
@@ -348,8 +465,9 @@ function getFullUsers() {
       skills: Array.isArray(skills) ? skills : [],
       avatarBg: u.avatar_bg,
       createdAt: u.created_at
-    };
-  });
+    });
+  }
+  return unique;
 }
 
 // ==============================================================================
@@ -428,40 +546,55 @@ const server = http.createServer(async (req, res) => {
 
     if (method === 'POST' && pathname === '/api/auth/register') {
       const data = await parseJsonBody(req);
-      const email = data.email?.trim().toLowerCase();
-      if (!data.name || !email || !data.password) {
+      const email = (data.email || '').trim().toLowerCase();
+      const name = (data.name || '').trim();
+      if (!name || !email || !data.password) {
         return sendJson(res, 400, { success: false, message: 'Dados cadastrais incompletos.' });
       }
 
-      const existing = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(email);
+      const existing = db.prepare('SELECT id FROM users WHERE lower(trim(email)) = ?').get(email);
       if (existing) {
         return sendJson(res, 409, { success: false, message: 'Já existe um usuário cadastrado com este e-mail.' });
       }
 
       const newId = 'u_' + Date.now();
-      const skillsStr = JSON.stringify(Array.isArray(data.skills) ? data.skills : []);
+      let parsedSkills = [];
+      if (Array.isArray(data.skills)) parsedSkills = data.skills;
+      else if (typeof data.skills === 'string') {
+        try { parsedSkills = JSON.parse(data.skills); } catch(e) { parsedSkills = data.skills.split(',').map(s=>s.trim()).filter(Boolean); }
+      }
+      const skillsStr = JSON.stringify(parsedSkills);
       const createdAt = new Date().toISOString();
       const randomBg = data.avatarBg || '#6366f1';
 
       db.prepare(`
         INSERT INTO users (id, name, email, password, role, dev_role, seniority, skills, avatar_bg, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(newId, data.name, email, data.password, data.role || 'dev', data.devRole || null, data.seniority || 'Pleno', skillsStr, randomBg, createdAt);
+      `).run(newId, name, email, data.password, data.role || 'dev', data.devRole || null, data.seniority || 'Pleno', skillsStr, randomBg, createdAt);
 
-      // Se for perfil desenvolvedor, sincroniza na equipe
+      // Se for perfil desenvolvedor, sincroniza na equipe sem criar duplicidade
       if (data.role === 'dev') {
-        const memberExists = db.prepare('SELECT id FROM team_members WHERE lower(name) = lower(?)').get(data.name);
-        if (!memberExists) {
+        const memberExists = db.prepare('SELECT id, skills, role, seniority FROM team_members WHERE lower(trim(name)) = lower(trim(?))').get(name);
+        if (memberExists) {
+          let existingSkills = [];
+          try { existingSkills = JSON.parse(memberExists.skills); } catch(e) {}
+          const mergedSkills = parsedSkills.length > 0 ? parsedSkills : existingSkills;
+          db.prepare(`
+            UPDATE team_members
+            SET role = ?, seniority = ?, skills = ?, avatar_bg = ?
+            WHERE id = ?
+          `).run(data.devRole || memberExists.role || 'frontend', data.seniority || memberExists.seniority || 'Pleno', JSON.stringify(mergedSkills), randomBg, memberExists.id);
+        } else {
           db.prepare(`
             INSERT INTO team_members (id, name, role, seniority, skills, capacity, avatar_bg)
             VALUES (?, ?, ?, ?, ?, 40, ?)
-          `).run('m_' + Date.now(), data.name, data.devRole || 'frontend', data.seniority || 'Pleno', skillsStr, randomBg);
+          `).run('m_' + Date.now(), name, data.devRole || 'frontend', data.seniority || 'Pleno', skillsStr, randomBg);
         }
       }
 
       const safeUser = {
         id: newId,
-        name: data.name,
+        name: name,
         email: email,
         role: data.role || 'dev',
         devRole: data.devRole || null,
@@ -704,13 +837,66 @@ const server = http.createServer(async (req, res) => {
       }
       if (method === 'POST') {
         const m = await parseJsonBody(req);
+        const cleanName = (m.name || '').trim();
+        if (!cleanName) {
+          return sendJson(res, 400, { success: false, message: 'Nome do membro é obrigatório.' });
+        }
+
+        let parsedSkills = [];
+        if (Array.isArray(m.skills)) parsedSkills = m.skills;
+        else if (typeof m.skills === 'string') {
+          try { parsedSkills = JSON.parse(m.skills); } catch(e) { parsedSkills = m.skills.split(',').map(s=>s.trim()).filter(Boolean); }
+        }
+
+        // Verifica se já existe um membro com este ID ou com o mesmo nome (case-insensitive)
+        const existing = db.prepare('SELECT * FROM team_members WHERE id = ? OR lower(trim(name)) = lower(trim(?))').get(m.id || '', cleanName);
+
+        if (existing) {
+          let existingSkills = [];
+          try { existingSkills = JSON.parse(existing.skills); } catch(e) {}
+          const mergedSkills = parsedSkills.length > 0 ? parsedSkills : existingSkills;
+          const updatedRole = m.role || existing.role || 'frontend';
+          const updatedSeniority = m.seniority || existing.seniority || 'Pleno';
+          const updatedCapacity = parseFloat(m.capacity) || existing.capacity || 40;
+          const updatedAvatarBg = m.avatarBg || existing.avatar_bg || (updatedRole === 'frontend' ? '#0284c7' : '#059669');
+
+          db.prepare(`
+            UPDATE team_members
+            SET name = ?, role = ?, seniority = ?, skills = ?, capacity = ?, avatar_bg = ?
+            WHERE id = ?
+          `).run(cleanName, updatedRole, updatedSeniority, JSON.stringify(mergedSkills), updatedCapacity, updatedAvatarBg, existing.id);
+
+          return sendJson(res, 200, {
+            id: existing.id,
+            name: cleanName,
+            role: updatedRole,
+            seniority: updatedSeniority,
+            skills: mergedSkills,
+            capacity: updatedCapacity,
+            avatarBg: updatedAvatarBg
+          });
+        }
+
         const id = m.id || 'm_' + Date.now();
-        const skillsStr = JSON.stringify(Array.isArray(m.skills) ? m.skills : []);
+        const role = m.role || 'frontend';
+        const seniority = m.seniority || 'Pleno';
+        const capacity = parseFloat(m.capacity) || 40;
+        const avatarBg = m.avatarBg || (role === 'frontend' ? '#0284c7' : '#059669');
+
         db.prepare(`
           INSERT INTO team_members (id, name, role, seniority, skills, capacity, avatar_bg)
           VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(id, m.name, m.role || 'frontend', m.seniority || 'Pleno', skillsStr, parseFloat(m.capacity) || 40, m.avatarBg || '#0284c7');
-        return sendJson(res, 201, { id, ...m });
+        `).run(id, cleanName, role, seniority, JSON.stringify(parsedSkills), capacity, avatarBg);
+
+        return sendJson(res, 201, {
+          id,
+          name: cleanName,
+          role,
+          seniority,
+          skills: parsedSkills,
+          capacity,
+          avatarBg
+        });
       }
     }
 
