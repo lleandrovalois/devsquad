@@ -388,6 +388,14 @@
                 </div>
               </div>
               <div class="dropdown-divider"></div>
+              <button type="button" class="dropdown-item" id="btn-open-my-profile">
+                <span class="item-icon">⚙️</span>
+                <div class="item-text">
+                  <strong>Meu Perfil</strong>
+                  <small>Editar meus dados e senha</small>
+                </div>
+              </button>
+              <div class="dropdown-divider"></div>
               <button type="button" class="dropdown-item btn-logout-action" id="btn-logout">
                 <span class="item-icon">🚪</span>
                 <div class="item-text">
@@ -1345,6 +1353,49 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-ghost" data-close="modal-qa-validation">Cancelar</button>
           <button type="submit" class="btn btn-primary" id="btn-confirm-qa">Confirmar Parecer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Meu Perfil de Usuário -->
+  <div class="modal-backdrop" id="modal-user-profile">
+    <div class="modal-dialog glass-panel" style="max-width: 520px;">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-profile-title">👤 Editar Meu Perfil</h2>
+        <button class="modal-close" data-close="modal-user-profile">&times;</button>
+      </div>
+      <form id="form-user-profile" class="modal-body">
+        <div class="form-group">
+          <label for="profile-name">Nome Completo *</label>
+          <input type="text" id="profile-name" required placeholder="Seu nome completo">
+        </div>
+        <div class="form-group">
+          <label for="profile-email">E-mail de Acesso</label>
+          <input type="email" id="profile-email" disabled style="opacity: 0.65; cursor: not-allowed;">
+        </div>
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="profile-role">Papel de Atuação</label>
+            <input type="text" id="profile-role" disabled style="opacity: 0.65; cursor: not-allowed;">
+          </div>
+          <div class="form-group flex-1">
+            <label for="profile-seniority">Senioridade *</label>
+            <input type="text" id="profile-seniority" required placeholder="Ex: Sênior, Pleno, Lead">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="profile-skills">Habilidades / Tecnologias (separadas por vírgula)</label>
+          <input type="text" id="profile-skills" placeholder="React, Node.js, TypeScript, SQL">
+        </div>
+        <div class="form-group">
+          <label for="profile-password">Alterar Senha de Acesso</label>
+          <input type="password" id="profile-password" placeholder="Deixe em branco para manter a senha atual">
+          <small style="color: var(--text-muted); font-size: 0.75rem; margin-top: 0.25rem; display: block;">Mínimo de 6 caracteres caso queira alterar.</small>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close="modal-user-profile">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-profile">Salvar Alterações</button>
         </div>
       </form>
     </div>

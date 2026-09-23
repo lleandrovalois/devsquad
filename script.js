@@ -535,7 +535,20 @@ class ALMStore {
   }
 
   getMemberById(id) {
-    return this.state.teamMembers.find(m => m.id === id);
+    let m = this.state.teamMembers.find(m => m.id === id);
+    if (!m && typeof authStore !== 'undefined') {
+      const u = authStore.getUsers().find(u => u.id === id || u.name === id);
+      if (u) {
+        return {
+          id: u.id,
+          name: u.name,
+          role: u.devRole || u.role || 'dev',
+          seniority: u.seniority,
+          avatarBg: u.avatarBg || '#6366f1'
+        };
+      }
+    }
+    return m;
   }
 
   addMember(memberData) {
@@ -707,6 +720,13 @@ class ALMStore {
   }
 
   addTask(data) {
+    if (typeof authStore !== 'undefined') {
+      const currentUser = authStore.getCurrentUser();
+      if (currentUser && (currentUser.role === 'dev' || currentUser.role === 'qa')) {
+        console.warn("Permissão negada: Desenvolvedores e QAs não podem criar demandas.");
+        return null;
+      }
+    }
     const newTask = {
       id: "t" + Date.now(),
       title: data.title,
@@ -1076,16 +1096,18 @@ const RolePermissions = {
     canDeleteProject: false,
     canCreateReq: false,
     canDeleteReq: false,
-    canCreateTask: true,
+    canCreateTask: false,
     canDeleteTask: false,
     canAssignTask: false,
+    canSelfAssign: true,
+    canEditSelf: true,
     canLogTime: true,
     canValidateQA: false,
     canRunTests: false,
     canCreateTest: false,
     canManageTeam: false,
     canManageGovernance: false,
-    allowedNewItems: ['task']
+    allowedNewItems: []
   },
   qa: {
     label: "🧪 Revisor / Validador (QA / Tech Lead)",
@@ -1095,16 +1117,18 @@ const RolePermissions = {
     canDeleteProject: false,
     canCreateReq: false,
     canDeleteReq: false,
-    canCreateTask: true,
+    canCreateTask: false,
     canDeleteTask: false,
     canAssignTask: false,
+    canSelfAssign: true,
+    canEditSelf: true,
     canLogTime: false,
     canValidateQA: true,
     canRunTests: true,
     canCreateTest: true,
     canManageTeam: false,
     canManageGovernance: false,
-    allowedNewItems: ['test', 'task']
+    allowedNewItems: ['test']
   }
 };
 
@@ -1723,6 +1747,21 @@ function renderKanban() {
       opBtnsHtml += `<button class="task-qa-btn" onclick="openQAModal('${task.id}')" title="Validação Formal de QA">🧪 Validar QA</button>`;
     }
 
+    // Auto-atribuição de demanda para Dev / QA
+    let assignBtnHtml = '';
+    const isAssignedToMe = currentUser && (
+      task.assigneeId === currentUser.id ||
+      (assignee && (assignee.id === currentUser.id || assignee.name.toLowerCase() === currentUser.name.toLowerCase()))
+    );
+
+    if (perms.canSelfAssign) {
+      if (isAssignedToMe) {
+        assignBtnHtml = `<button class="task-assigned-me-btn" onclick="unassignTask('${task.id}')" title="Demanda atribuída a você (clique para desatribuir se desejar)">✓ Minha Demanda</button>`;
+      } else {
+        assignBtnHtml = `<button class="task-self-assign-btn" onclick="selfAssignTask('${task.id}')" title="Assumir esta demanda para mim">🙋 Assumir</button>`;
+      }
+    }
+
     const hoursText = task.hoursSpent ? `${task.hoursSpent}/${task.hours || 8}h` : `${task.hours || 8}h`;
 
     card.innerHTML = `
@@ -1732,7 +1771,7 @@ function renderKanban() {
         <span style="font-size: 0.7rem; color: var(--text-muted); margin-left: auto;">⏱️ ${hoursText}</span>
         
         <div class="card-header-actions" style="margin-left: 0.35rem;">
-          <button class="card-btn-action" onclick="openTaskModalForEdit('${task.id}')" title="Editar Demanda">✏️</button>
+          <button class="card-btn-action" onclick="openTaskModalForEdit('${task.id}')" title="${perms.canCreateTask ? 'Editar Demanda' : 'Ver Detalhes'}">${perms.canCreateTask ? '✏️' : '👁️'}</button>
           ${perms.canDeleteTask ? `<button class="card-btn-action btn-del" onclick="confirmDeleteTask('${task.id}', '${task.title}')" title="Excluir Demanda">🗑️</button>` : ''}
         </div>
       </div>
@@ -1749,6 +1788,7 @@ function renderKanban() {
           </div>
           <span style="color: var(--text-secondary);">${assignee ? assignee.name.split(' ')[0] : 'Livre'}</span>
         </div>
+        ${assignBtnHtml}
 
         <div style="display: flex; align-items: center; gap: 0.35rem; margin-left: auto;">
           ${opBtnsHtml}
@@ -1793,12 +1833,77 @@ window.moveTaskAction = function(taskId, targetCol) {
   showToast(`Demanda movida para "${colNames[targetCol] || targetCol}"!`);
 };
 
-// Funções de CRUD de Demandas (Tarefas)
+// Funções de CRUD & Auto-Atribuição de Demandas (Tarefas)
+window.selfAssignTask = function(taskId) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser) {
+    showToast('Você precisa estar conectado para assumir uma demanda.');
+    return;
+  }
+
+  const task = store.getTaskById(taskId);
+  if (!task) return;
+
+  let member = store.getTeamMembers().find(m => m.id === currentUser.id || m.name.toLowerCase() === currentUser.name.toLowerCase());
+  let assigneeId = member ? member.id : currentUser.id;
+
+  if (!member && currentUser.role === 'dev') {
+    member = store.addMember({
+      id: currentUser.id,
+      name: currentUser.name,
+      role: currentUser.devRole || 'frontend',
+      seniority: currentUser.seniority || 'Pleno',
+      skills: currentUser.skills || [],
+      capacity: 40,
+      avatarBg: currentUser.avatarBg || '#6366f1'
+    });
+    assigneeId = member.id;
+  }
+
+  task.assigneeId = assigneeId;
+  store.saveState();
+  if (typeof api !== 'undefined') {
+    api.apiRequest(`/api/tasks/${taskId}/assign`, 'PUT', { assigneeId });
+  }
+
+  renderKanban();
+  renderDashboard();
+  showToast(`Demanda "${task.title}" atribuída a você com sucesso! 🙋`);
+};
+
+window.unassignTask = function(taskId) {
+  const task = store.getTaskById(taskId);
+  if (!task) return;
+
+  task.assigneeId = null;
+  store.saveState();
+  if (typeof api !== 'undefined') {
+    api.apiRequest(`/api/tasks/${taskId}/assign`, 'PUT', { assigneeId: null });
+  }
+
+  renderKanban();
+  renderDashboard();
+  showToast(`Demanda desatribuída com sucesso.`);
+};
+
 window.openTaskModalForCreate = function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const isDevOrQa = currentUser && (currentUser.role === 'dev' || currentUser.role === 'qa');
+  if (isDevOrQa) {
+    showToast('Desenvolvedores e QAs não possuem permissão para criar demandas.');
+    return;
+  }
+
+  ['task-title', 'task-project', 'task-requirement', 'task-role', 'task-assignee', 'task-priority', 'task-hours', 'task-desc'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = false;
+  });
+
   document.getElementById('modal-task-title').textContent = "🚀 Cadastrar Nova Demanda";
   document.getElementById('task-id-edit').value = "";
   document.getElementById('form-new-task').reset();
   document.getElementById('btn-save-task').textContent = "Salvar Demanda";
+  document.getElementById('btn-save-task').style.display = 'inline-flex';
   openModal('modal-task');
 };
 
@@ -1807,7 +1912,10 @@ window.openTaskModalForEdit = function(taskId) {
   if (!task) return;
 
   populateModalSelects();
-  document.getElementById('modal-task-title').textContent = "✏️ Editar Demanda";
+
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const isDevOrQa = currentUser && (currentUser.role === 'dev' || currentUser.role === 'qa');
+
   document.getElementById('task-id-edit').value = task.id;
   document.getElementById('task-title').value = task.title;
   document.getElementById('task-project').value = task.projectId;
@@ -1817,7 +1925,25 @@ window.openTaskModalForEdit = function(taskId) {
   document.getElementById('task-priority').value = task.priority;
   document.getElementById('task-hours').value = task.hours || 8;
   document.getElementById('task-desc').value = task.desc || "";
-  document.getElementById('btn-save-task').textContent = "Atualizar Demanda";
+
+  ['task-title', 'task-project', 'task-requirement', 'task-role', 'task-priority', 'task-hours', 'task-desc'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = isDevOrQa;
+  });
+
+  if (isDevOrQa) {
+    document.getElementById('modal-task-title').textContent = "📄 Detalhes da Demanda";
+    const assigneeSelect = document.getElementById('task-assignee');
+    if (assigneeSelect) assigneeSelect.disabled = false;
+    document.getElementById('btn-save-task').textContent = "Salvar Atribuição";
+    document.getElementById('btn-save-task').style.display = 'inline-flex';
+  } else {
+    document.getElementById('modal-task-title').textContent = "✏️ Editar Demanda";
+    const assigneeSelect = document.getElementById('task-assignee');
+    if (assigneeSelect) assigneeSelect.disabled = false;
+    document.getElementById('btn-save-task').textContent = "Atualizar Demanda";
+    document.getElementById('btn-save-task').style.display = 'inline-flex';
+  }
 
   openModal('modal-task');
 };
@@ -1892,6 +2018,22 @@ function renderTeam() {
     const roleLabel = member.role === 'frontend' ? 'FRONT-END' : 'BACK-END';
     const statusBg = workload.percentage > 100 ? '#f43f5e' : (workload.percentage > 80 ? '#f59e0b' : '#10b981');
 
+    const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+    const currentRole = currentUser ? currentUser.role : 'dev';
+    const perms = RolePermissions[currentRole] || RolePermissions.dev;
+    const isSelf = currentUser && (member.id === currentUser.id || member.name.toLowerCase() === currentUser.name.toLowerCase());
+
+    const canEditMember = perms.canManageTeam || (perms.canEditSelf && isSelf);
+    const canDeleteMember = perms.canManageTeam && !isSelf;
+
+    let memberActionButtons = '';
+    if (canEditMember) {
+      memberActionButtons += `<button class="card-btn-action" onclick="openMemberModalForEdit('${member.id}')" title="${isSelf ? 'Editar Meus Dados de Equipe' : 'Editar Desenvolvedor'}">✏️</button>`;
+    }
+    if (canDeleteMember) {
+      memberActionButtons += `<button class="card-btn-action btn-del" onclick="confirmDeleteMember('${member.id}', '${member.name}')" title="Excluir Desenvolvedor">🗑️</button>`;
+    }
+
     const card = document.createElement('div');
     card.className = 'team-card glass-panel';
     card.innerHTML = `
@@ -1910,8 +2052,7 @@ function renderTeam() {
         </div>
 
         <div class="card-header-actions" style="margin-left: auto;">
-          <button class="card-btn-action" onclick="openMemberModalForEdit('${member.id}')" title="Editar Desenvolvedor">✏️</button>
-          <button class="card-btn-action btn-del" onclick="confirmDeleteMember('${member.id}', '${member.name}')" title="Excluir Desenvolvedor">🗑️</button>
+          ${memberActionButtons}
         </div>
       </div>
 
@@ -1938,6 +2079,12 @@ function renderTeam() {
 
 // Funções de CRUD de Desenvolvedores
 window.openMemberModalForCreate = function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const isDevOrQa = currentUser && (currentUser.role === 'dev' || currentUser.role === 'qa');
+  if (isDevOrQa) {
+    showToast('Desenvolvedores e QAs não possuem permissão para cadastrar membros.');
+    return;
+  }
   document.getElementById('modal-member-title').textContent = "👤 Adicionar Desenvolvedor à Equipe";
   document.getElementById('member-id-edit').value = "";
   document.getElementById('form-new-member').reset();
@@ -1950,15 +2097,23 @@ window.openMemberModalForEdit = function(memberId) {
   const member = store.getMemberById(memberId);
   if (!member) return;
 
-  document.getElementById('modal-member-title').textContent = "✏️ Editar Desenvolvedor";
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const isDevOrQa = currentUser && (currentUser.role === 'dev' || currentUser.role === 'qa');
+  const isSelf = currentUser && (member.id === currentUser.id || member.name.toLowerCase() === currentUser.name.toLowerCase());
+
+  if (isDevOrQa && !isSelf) {
+    showToast('Você só possui permissão para editar o seu próprio perfil de usuário.');
+    return;
+  }
+
+  document.getElementById('modal-member-title').textContent = isSelf ? "👤 Editar Meus Dados de Equipe" : "✏️ Editar Desenvolvedor";
   document.getElementById('member-id-edit').value = member.id;
   document.getElementById('member-name').value = member.name;
   document.getElementById('member-role').value = member.role;
   document.getElementById('member-seniority').value = member.seniority;
-  document.getElementById('member-skills').value = member.skills.join(', ');
+  document.getElementById('member-skills').value = Array.isArray(member.skills) ? member.skills.join(', ') : member.skills;
   document.getElementById('member-capacity').value = member.capacity;
   document.getElementById('btn-save-member').textContent = "Atualizar Desenvolvedor";
-
   openModal('modal-member');
 };
 
@@ -2391,6 +2546,11 @@ function applyRolePermissions(user) {
   if (btnMember) btnMember.style.display = perms.canManageTeam ? 'inline-flex' : 'none';
   if (btnTest) btnTest.style.display = perms.canCreateTest ? 'inline-flex' : 'none';
   if (btnRunTests) btnRunTests.style.display = perms.canRunTests ? 'inline-flex' : 'none';
+
+  const btnNewMenu = document.getElementById('btn-open-new-menu');
+  if (btnNewMenu) {
+    btnNewMenu.style.display = perms.allowedNewItems.length > 0 ? 'inline-flex' : 'none';
+  }
 }
 
 function refreshAllUI() {
@@ -2755,6 +2915,15 @@ function setupAuthEventListeners() {
     });
   }
 
+  // 8.1 Botão Meu Perfil (Edição do próprio usuário)
+  const btnMyProfile = document.getElementById('btn-open-my-profile');
+  if (btnMyProfile) {
+    btnMyProfile.addEventListener('click', () => {
+      userProfileMenu?.classList.remove('show');
+      openMyProfileModal();
+    });
+  }
+
   // 9. Botão Sair da Conta (Logout)
   const btnLogout = document.getElementById('btn-logout');
   if (btnLogout) {
@@ -3026,10 +3195,27 @@ window.addEventListener('DOMContentLoaded', () => {
     refreshAllUI();
   });
 
-  // 2. FORMULÁRIO DE DEMANDA / KANBAN (CRUD)
+  // 2. FORMULÁRIO DE DEMANDA / KANBAN (CRUD & ATRIBUIÇÃO)
   document.getElementById('form-new-task')?.addEventListener('submit', (e) => {
     e.preventDefault();
+    const currentUser = authStore.getCurrentUser();
+    const isDevOrQa = currentUser && (currentUser.role === 'dev' || currentUser.role === 'qa');
     const editId = document.getElementById('task-id-edit').value;
+
+    if (!editId && isDevOrQa) {
+      showToast('Desenvolvedores e QAs não possuem permissão para criar demandas.');
+      return;
+    }
+
+    if (editId && isDevOrQa) {
+      const assigneeId = document.getElementById('task-assignee').value;
+      store.updateTask(editId, { assigneeId });
+      showToast('Atribuição da demanda atualizada com sucesso!');
+      closeModal('modal-task');
+      refreshAllUI();
+      return;
+    }
+
     const title = document.getElementById('task-title').value;
     const projectId = document.getElementById('task-project').value;
     const reqId = document.getElementById('task-requirement').value;
@@ -3110,7 +3296,21 @@ window.addEventListener('DOMContentLoaded', () => {
     const skills = document.getElementById('member-skills').value;
     const capacity = document.getElementById('member-capacity').value;
 
+    const currentUser = authStore.getCurrentUser();
+    const isDevOrQa = currentUser && (currentUser.role === 'dev' || currentUser.role === 'qa');
+
+    if (!editId && isDevOrQa) {
+      showToast('Desenvolvedores e QAs não possuem permissão para cadastrar membros.');
+      return;
+    }
+
     if (editId) {
+      const member = store.getMemberById(editId);
+      const isSelf = currentUser && (editId === currentUser.id || (member && member.name.toLowerCase() === currentUser.name.toLowerCase()));
+      if (isDevOrQa && !isSelf) {
+        showToast('Você só pode editar o seu próprio perfil de usuário.');
+        return;
+      }
       store.updateMember(editId, { name, role, seniority, skills, capacity });
       showToast(`Desenvolvedor "${name}" atualizado com sucesso!`);
     } else {
@@ -3160,4 +3360,107 @@ window.addEventListener('DOMContentLoaded', () => {
       showToast(`Demanda reprovada com bloqueio e retornada para Desenvolvimento.`);
     }
   });
+
+  // 8. FORMULÁRIO DE EDIÇÃO DO MEU PERFIL DE USUÁRIO
+  document.getElementById('form-user-profile')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const currentUser = authStore.getCurrentUser();
+    if (!currentUser) return;
+
+    const newName = document.getElementById('profile-name').value.trim();
+    const newSeniority = document.getElementById('profile-seniority').value.trim();
+    const newSkillsStr = document.getElementById('profile-skills').value.trim();
+    const newPassword = document.getElementById('profile-password').value;
+
+    if (!newName || !newSeniority) {
+      showToast('Preencha os campos obrigatórios (*).');
+      return;
+    }
+
+    if (newPassword && newPassword.length < 6) {
+      showToast('A nova senha deve ter no mínimo 6 caracteres.');
+      return;
+    }
+
+    const parsedSkills = newSkillsStr ? newSkillsStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    const updatedData = {
+      name: newName,
+      seniority: newSeniority,
+      skills: parsedSkills
+    };
+    if (newPassword) {
+      updatedData.password = newPassword;
+    }
+
+    // Atualiza via API backend no SQLite
+    if (typeof api !== 'undefined' && api.isOnline) {
+      const res = await api.apiRequest(`/api/users/${currentUser.id}`, 'PUT', updatedData);
+      if (res && res.success && res.user) {
+        currentUser.name = res.user.name;
+        currentUser.seniority = res.user.seniority;
+        currentUser.skills = res.user.skills;
+        if (newPassword) currentUser.password = newPassword;
+      }
+    } else {
+      currentUser.name = newName;
+      currentUser.seniority = newSeniority;
+      currentUser.skills = parsedSkills;
+      if (newPassword) currentUser.password = newPassword;
+    }
+
+    // Salva na sessão e na lista local de usuários
+    authStore.setSession(currentUser);
+    const users = authStore.getUsers();
+    const uIdx = users.findIndex(u => u.id === currentUser.id);
+    if (uIdx !== -1) {
+      users[uIdx] = { ...users[uIdx], ...currentUser };
+      if (newPassword) users[uIdx].password = newPassword;
+      authStore.saveUsers(users);
+    }
+
+    // Sincroniza também no teamMember correspondente
+    const member = store.getTeamMembers().find(m => m.id === currentUser.id || m.name.toLowerCase() === currentUser.name.toLowerCase());
+    if (member) {
+      store.updateMember(member.id, {
+        name: newName,
+        seniority: newSeniority,
+        skills: parsedSkills
+      });
+    }
+
+    closeModal('modal-user-profile');
+    updateTopbarUserUI(currentUser);
+    refreshAllUI();
+    showToast('Seu perfil foi atualizado com sucesso! ✨');
+  });
 });
+
+window.openMyProfileModal = function() {
+  const currentUser = authStore.getCurrentUser();
+  if (!currentUser) return;
+
+  const nameInput = document.getElementById('profile-name');
+  const emailInput = document.getElementById('profile-email');
+  const roleInput = document.getElementById('profile-role');
+  const seniorityInput = document.getElementById('profile-seniority');
+  const skillsInput = document.getElementById('profile-skills');
+  const pwdInput = document.getElementById('profile-password');
+
+  if (nameInput) nameInput.value = currentUser.name || '';
+  if (emailInput) emailInput.value = currentUser.email || '';
+  if (roleInput) {
+    const roleLabels = {
+      admin: '👑 Administrador',
+      pm: '📊 Gerente de Projetos (PM)',
+      dev: `💻 Desenvolvedor (${currentUser.devRole === 'backend' ? 'Back-end' : 'Front-end'})`,
+      qa: '🧪 QA Lead / Homologador'
+    };
+    roleInput.value = roleLabels[currentUser.role] || currentUser.role;
+  }
+  if (seniorityInput) seniorityInput.value = currentUser.seniority || '';
+  if (skillsInput) skillsInput.value = Array.isArray(currentUser.skills) ? currentUser.skills.join(', ') : (currentUser.skills || '');
+  if (pwdInput) pwdInput.value = '';
+
+  openModal('modal-user-profile');
+};

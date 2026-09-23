@@ -478,6 +478,54 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, getFullUsers());
     }
 
+    // Atualização de Perfil de Usuário
+    const userMatch = pathname.match(/^\/api\/users\/([^/]+)$/);
+    if (userMatch && method === 'PUT') {
+      const targetUserId = userMatch[1];
+      const data = await parseJsonBody(req);
+      const user = db.prepare('SELECT * FROM users WHERE id = ?').get(targetUserId);
+      if (!user) {
+        return sendJson(res, 404, { success: false, message: 'Usuário não encontrado.' });
+      }
+
+      const newName = (data.name || user.name).trim();
+      const newSeniority = data.seniority || user.seniority;
+      const skillsStr = JSON.stringify(Array.isArray(data.skills) ? data.skills : (typeof data.skills === 'string' ? data.skills.split(',').map(s=>s.trim()).filter(Boolean) : []));
+      const newAvatarBg = data.avatarBg || user.avatar_bg;
+      const newPassword = (data.password && data.password.trim()) ? data.password.trim() : user.password;
+
+      db.prepare(`
+        UPDATE users
+        SET name = ?, seniority = ?, skills = ?, avatar_bg = ?, password = ?
+        WHERE id = ?
+      `).run(newName, newSeniority, skillsStr, newAvatarBg, newPassword, targetUserId);
+
+      // Sincroniza também na tabela de equipe se houver correspondente
+      db.prepare(`
+        UPDATE team_members
+        SET name = ?, seniority = ?, skills = ?, avatar_bg = ?
+        WHERE id = ? OR lower(name) = lower(?)
+      `).run(newName, newSeniority, skillsStr, newAvatarBg, targetUserId, user.name);
+
+      let parsedSkills = [];
+      try { parsedSkills = JSON.parse(skillsStr); } catch(e) {}
+
+      const safeUser = {
+        id: targetUserId,
+        name: newName,
+        email: user.email,
+        password: newPassword,
+        role: user.role,
+        devRole: user.dev_role,
+        seniority: newSeniority,
+        skills: parsedSkills,
+        avatarBg: newAvatarBg,
+        createdAt: user.created_at
+      };
+
+      return sendJson(res, 200, { success: true, user: safeUser });
+    }
+
     // 4. CRUD: Projetos
     if (pathname === '/api/projects') {
       if (method === 'GET') {
@@ -615,14 +663,32 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { success: true, decision });
       }
 
+      if (action === 'assign' && method === 'PUT') {
+        const { assigneeId } = await parseJsonBody(req);
+        db.prepare('UPDATE tasks SET assignee_id = ? WHERE id = ?').run(assigneeId || null, taskId);
+        return sendJson(res, 200, { success: true, taskId, assigneeId });
+      }
+
       if (method === 'PUT') {
         const t = await parseJsonBody(req);
-        db.prepare(`
-          UPDATE tasks
-          SET title = ?, project_id = ?, req_id = ?, role = ?, assignee_id = ?, priority = ?, hours = ?, desc = ?
-          WHERE id = ?
-        `).run(t.title, t.projectId || null, t.reqId || null, t.role, t.assigneeId || null, t.priority, parseFloat(t.hours) || 8, t.desc, taskId);
-        return sendJson(res, 200, { id: taskId, ...t });
+        const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
+        if (existing) {
+          const newTitle = t.title !== undefined ? t.title : existing.title;
+          const newProj = t.projectId !== undefined ? t.projectId : existing.project_id;
+          const newReq = t.reqId !== undefined ? t.reqId : existing.req_id;
+          const newRole = t.role !== undefined ? t.role : existing.role;
+          const newAssignee = t.assigneeId !== undefined ? t.assigneeId : existing.assignee_id;
+          const newPriority = t.priority !== undefined ? t.priority : existing.priority;
+          const newHours = t.hours !== undefined ? parseFloat(t.hours) : existing.hours;
+          const newDesc = t.desc !== undefined ? t.desc : existing.desc;
+          db.prepare(`
+            UPDATE tasks
+            SET title = ?, project_id = ?, req_id = ?, role = ?, assignee_id = ?, priority = ?, hours = ?, desc = ?
+            WHERE id = ?
+          `).run(newTitle, newProj, newReq, newRole, newAssignee, newPriority, newHours, newDesc, taskId);
+          return sendJson(res, 200, { success: true, id: taskId, ...t });
+        }
+        return sendJson(res, 404, { success: false, message: 'Demanda não encontrada.' });
       }
 
       if (method === 'DELETE') {

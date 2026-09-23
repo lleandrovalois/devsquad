@@ -2598,4 +2598,48 @@ html, body {
   50% { opacity: 0.5; transform: scale(1.2); }
 }
 
+/* Botões de Auto-Atribuição de Demandas (Dev / QA) */
+.task-self-assign-btn {
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  color: #818cf8;
+  border-radius: var(--radius-sm);
+  padding: 0.22rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.task-self-assign-btn:hover {
+  background: rgba(99, 102, 241, 0.35);
+  color: #c7d2fe;
+  border-color: #6366f1;
+  transform: translateY(-1px);
+}
+
+.task-assigned-me-btn {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+  border-radius: var(--radius-sm);
+  padding: 0.22rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.task-assigned-me-btn:hover {
+  background: rgba(244, 63, 94, 0.18);
+  border-color: rgba(244, 63, 94, 0.5);
+  color: #fb7185;
+}
+
 
