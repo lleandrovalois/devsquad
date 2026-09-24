@@ -992,7 +992,6 @@ class ALMStore {
     const dev = this.getMemberById(devId);
     const devName = dev ? (dev.name || '').toLowerCase().trim() : '';
     const devTasks = this.state.tasks.filter(t => {
-      if (t.status === 'done') return false;
       if (t.assigneeId === devId) return true;
       if (dev && t.assigneeId === dev.id) return true;
       if (devName && t.assigneeId) {
@@ -1001,14 +1000,40 @@ class ALMStore {
       }
       return false;
     });
-    const totalHours = devTasks.reduce((acc, t) => acc + (t.hours || 0), 0);
-    const capacity = dev ? (dev.capacity || 40) : 40;
-    const percentage = Math.round((totalHours / capacity) * 100);
+
+    let totalEstimated = 0;
+    let totalSpent = 0;
+    let totalHours = 0;
+
+    devTasks.forEach(t => {
+      const est = parseFloat(t.hours) || 0;
+      const spent = parseFloat(t.hoursSpent) || 0;
+      totalEstimated += est;
+      totalSpent += spent;
+
+      // Para tarefas concluídas ('done'), consideramos o total de horas já consumidas/apontadas.
+      // Para tarefas ativas (backlog, spec, dev, qa), a carga real é o maior valor entre o estimado e o apontado,
+      // refletindo o impacto real caso o desenvolvedor já tenha excedido a estimativa original.
+      if (t.status === 'done') {
+        totalHours += spent;
+      } else {
+        totalHours += Math.max(est, spent);
+      }
+    });
+
+    const capacity = dev ? (parseFloat(dev.capacity) || 40) : 40;
+    const percentage = capacity > 0 ? Math.round((totalHours / capacity) * 100) : 0;
+
     return {
       hours: totalHours,
+      hoursEstimated: totalEstimated,
+      hoursSpent: totalSpent,
       capacity: capacity,
       percentage: percentage,
-      activeTasksCount: devTasks.length
+      isOverloaded: totalHours > capacity,
+      overloadHours: Math.max(0, totalHours - capacity),
+      activeTasksCount: devTasks.filter(t => t.status !== 'done').length,
+      totalTasksCount: devTasks.length
     };
   }
 
@@ -1593,10 +1618,18 @@ function renderDashboard() {
   workloadListEl.innerHTML = '';
 
   const members = store.state.teamMembers;
+  let totalOverloadedCount = 0;
+
   members.forEach(member => {
     const workload = store.calculateDevWorkload(member.id);
+    if (workload.isOverloaded) totalOverloadedCount++;
+
     const roleLabel = member.role === 'frontend' ? 'Front-end' : 'Back-end';
     const statusColor = workload.percentage > 100 ? '#f43f5e' : (workload.percentage > 80 ? '#f59e0b' : '#10b981');
+
+    const overloadBadge = workload.isOverloaded 
+      ? `<span class="badge-overload" style="background: rgba(244, 63, 94, 0.2); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.4); font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; font-weight: 700; margin-left: 6px; display: inline-flex; align-items: center; gap: 3px;">⚠️ Carga Excedida (+${workload.overloadHours}h)</span>` 
+      : '';
 
     const item = document.createElement('div');
     item.className = 'workload-item';
@@ -1606,16 +1639,33 @@ function renderDashboard() {
       </div>
       <div class="workload-info">
         <div class="workload-name-row">
-          <span>${member.name} <small style="color: var(--text-muted); font-weight: normal;">(${roleLabel} • ${member.seniority})</small></span>
-          <span style="color: ${statusColor}; font-weight: 700;">${workload.hours}h / ${workload.capacity}h</span>
+          <span>${member.name} <small style="color: var(--text-muted); font-weight: normal;">(${roleLabel} • ${member.seniority})</small>${overloadBadge}</span>
+          <span style="color: ${statusColor}; font-weight: 700;">${workload.hours}h / ${workload.capacity}h <small style="font-size: 0.72rem; opacity: 0.85;">(${workload.percentage}%)</small></span>
         </div>
-        <div class="progress-track">
-          <div class="progress-fill" style="width: ${Math.min(workload.percentage, 100)}%; background: ${statusColor};"></div>
+        <div class="progress-track" title="Carga total: ${workload.hours}h (Apontadas: ${workload.hoursSpent}h, Estimadas: ${workload.hoursEstimated}h)">
+          <div class="progress-fill" style="width: ${Math.min(workload.percentage, 100)}%; background: ${statusColor}; ${workload.isOverloaded ? 'box-shadow: 0 0 10px rgba(244, 63, 94, 0.5);' : ''}"></div>
         </div>
       </div>
     `;
     workloadListEl.appendChild(item);
   });
+
+  const workloadBadge = document.getElementById('dashboard-workload-badge');
+  if (workloadBadge) {
+    if (totalOverloadedCount > 0) {
+      workloadBadge.innerHTML = `⚠️ ${totalOverloadedCount} Profissional(is) com Carga Excedida`;
+      workloadBadge.style.background = 'rgba(244, 63, 94, 0.2)';
+      workloadBadge.style.color = '#f43f5e';
+      workloadBadge.style.borderColor = 'rgba(244, 63, 94, 0.4)';
+      workloadBadge.style.fontWeight = '700';
+    } else {
+      workloadBadge.textContent = 'Capacidade Saudável';
+      workloadBadge.style.background = '';
+      workloadBadge.style.color = '';
+      workloadBadge.style.borderColor = '';
+      workloadBadge.style.fontWeight = '';
+    }
+  }
 
   const traceTableBody = document.getElementById('trace-table-body');
   traceTableBody.innerHTML = '';
@@ -1626,6 +1676,11 @@ function renderDashboard() {
     const project = store.getProjectById(task.projectId);
     const assignee = store.getMemberById(task.assigneeId);
     const hasTest = store.state.testCases.some(tc => tc.reqId === task.reqId);
+
+    const isTaskOver = task.hoursSpent && (parseFloat(task.hoursSpent) > (parseFloat(task.hours) || 8));
+    const hoursBadge = task.hoursSpent 
+      ? `<span style="font-size: 0.72rem; ${isTaskOver ? 'color: #f43f5e; font-weight: 700;' : 'color: var(--text-muted);'} margin-left: 6px;" title="${isTaskOver ? `Horas apontadas (${task.hoursSpent}h) excederam a estimativa (${task.hours || 8}h)` : 'Horas apontadas / estimadas'}">⏱️ ${task.hoursSpent}/${task.hours || 8}h${isTaskOver ? ' ⚠️' : ''}</span>`
+      : `<span style="font-size: 0.72rem; color: var(--text-muted); margin-left: 6px;">⏱️ ${task.hours || 8}h</span>`;
 
     const statusLabels = {
       backlog: 'A Fazer',
@@ -1639,7 +1694,7 @@ function renderDashboard() {
     tr.innerHTML = `
       <td><strong>${req ? req.code : 'Avulso'}</strong> - ${req ? req.title : task.title}</td>
       <td><span class="badge-subtle">${project ? project.name : '-'}</span></td>
-      <td>${task.title} <br><small style="color: var(--text-muted);">Responsável: ${assignee ? assignee.name : 'Não Atribuído'}</small></td>
+      <td>${task.title} ${hoursBadge} <br><small style="color: var(--text-muted);">Responsável: ${assignee ? assignee.name : 'Não Atribuído'}</small></td>
       <td><span class="task-role-tag ${task.role === 'frontend' ? 'role-front' : 'role-back'}">${task.role === 'frontend' ? 'Front-end' : 'Back-end'}</span></td>
       <td><span class="status-pill status-${task.status === 'done' ? 'pass' : 'pending'}">${statusLabels[task.status] || task.status}</span></td>
       <td><span class="status-pill ${hasTest ? 'status-pass' : 'status-pending'}">${hasTest ? '✓ Coberto' : '⏳ Pendente'}</span></td>
@@ -2020,13 +2075,17 @@ function renderKanban() {
       }
     }
 
+    const isOverEstimated = task.hoursSpent && (parseFloat(task.hoursSpent) > (parseFloat(task.hours) || 8));
     const hoursText = task.hoursSpent ? `${task.hoursSpent}/${task.hours || 8}h` : `${task.hours || 8}h`;
+    const hoursColor = isOverEstimated ? '#f43f5e' : 'var(--text-muted)';
+    const hoursFontWeight = isOverEstimated ? '700' : 'normal';
+    const hoursTitle = isOverEstimated ? `⚠️ Horas apontadas (${task.hoursSpent}h) excederam a estimativa (${task.hours || 8}h)!` : 'Horas gastas / estimadas';
 
     card.innerHTML = `
       <div class="task-tags-row">
         <span class="task-role-tag ${task.role === 'frontend' ? 'role-front' : 'role-back'}">${roleLabel}</span>
         <span class="task-priority-tag ${priorityClass}">${task.priority}</span>
-        <span style="font-size: 0.7rem; color: var(--text-muted); margin-left: auto;">⏱️ ${hoursText}</span>
+        <span style="font-size: 0.7rem; color: ${hoursColor}; font-weight: ${hoursFontWeight}; margin-left: auto;" title="${hoursTitle}">⏱️ ${hoursText}${isOverEstimated ? ' ⚠️' : ''}</span>
         
         <div class="card-header-actions" style="margin-left: 0.35rem;">
           <button class="card-btn-action" onclick="openTaskModalForEdit('${task.id}')" title="${perms.canCreateTask ? 'Editar Demanda' : 'Ver Detalhes'}">${perms.canCreateTask ? '✏️' : '👁️'}</button>
@@ -2321,14 +2380,21 @@ function renderTeam() {
       <div class="capacity-section">
         <div class="capacity-text-row">
           <span>Carga Alocada: <strong>${workload.hours}h / ${workload.capacity}h</strong></span>
-          <span style="color: ${statusBg};">${workload.percentage}%</span>
+          <span style="color: ${statusBg}; font-weight: 700;">${workload.percentage}%</span>
         </div>
-        <div class="progress-track">
-          <div class="progress-fill" style="width: ${Math.min(workload.percentage, 100)}%; background: ${statusBg};"></div>
+        <div class="progress-track" title="Total alocado/consumido: ${workload.hours}h (${workload.hoursSpent}h apontadas, ${workload.hoursEstimated}h estimadas)">
+          <div class="progress-fill" style="width: ${Math.min(workload.percentage, 100)}%; background: ${statusBg}; ${workload.isOverloaded ? 'box-shadow: 0 0 10px rgba(244, 63, 94, 0.5);' : ''}"></div>
         </div>
-        <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.4rem;">
-          ${workload.activeTasksCount} demandas ativas atribuídas
+        <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.4rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+          <span>${workload.activeTasksCount} demandas ativas atribuídas</span>
+          <span>⏱️ ${workload.hoursSpent}h apontadas</span>
         </div>
+        ${workload.isOverloaded ? `
+          <div style="margin-top: 0.6rem; padding: 0.45rem 0.75rem; border-radius: 6px; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.4); color: #f43f5e; font-size: 0.75rem; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+            <span>⚠️</span>
+            <span><strong>Sobrecarga:</strong> Carga horária semanal excedida em +${workload.overloadHours}h (${workload.percentage}% da capacidade).</span>
+          </div>
+        ` : ''}
       </div>
     `;
     container.appendChild(card);
@@ -2398,6 +2464,27 @@ function renderTesting() {
   document.getElementById('tests-pending-count').textContent = pending;
   document.getElementById('tests-failed-count').textContent = failed;
   document.getElementById('tests-coverage-percent').textContent = `${coveragePercent}%`;
+
+  // Alerta preventivo de carga horária excedida na tela de testes
+  const members = store.state.teamMembers;
+  const overloadedMembers = [];
+  members.forEach(m => {
+    const workload = store.calculateDevWorkload(m.id);
+    if (workload.isOverloaded) {
+      overloadedMembers.push(`${m.name} (${workload.hours}h / ${workload.capacity}h • ${workload.percentage}%)`);
+    }
+  });
+
+  const testAlertBox = document.getElementById('testing-workload-alert');
+  const testAlertText = document.getElementById('testing-workload-alert-text');
+  if (testAlertBox && testAlertText) {
+    if (overloadedMembers.length > 0) {
+      testAlertBox.style.display = 'flex';
+      testAlertText.textContent = `Atenção: ${overloadedMembers.length} profissional(is) com carga horária semanal excedida detectado(s): ${overloadedMembers.join(', ')}.`;
+    } else {
+      testAlertBox.style.display = 'none';
+    }
+  }
 
   const tbody = document.getElementById('test-cases-table-body');
   tbody.innerHTML = '';
@@ -2692,12 +2779,17 @@ async function runAutomatedTestSuite() {
       name: "5. Auditoria de Carga Horária e Alocação dos Desenvolvedores",
       run: () => {
         const members = store.state.teamMembers;
-        let overloaded = 0;
+        const overloadedList = [];
         members.forEach(m => {
           const workload = store.calculateDevWorkload(m.id);
-          if (workload.percentage > 100) overloaded++;
+          if (workload.isOverloaded) {
+            overloadedList.push(`${m.name} (${workload.hours}h / ${workload.capacity}h • ${workload.percentage}%)`);
+          }
         });
-        return `Auditoria concluída: ${overloaded} profissional(is) com carga acima do limite semanal.`;
+        if (overloadedList.length > 0) {
+          throw new Error(`ALERTA DE SOBRECARGA: ${overloadedList.length} profissional(is) com carga horária semanal excedida (> 40h/semana): ${overloadedList.join(', ')}.`);
+        }
+        return `Todos os ${members.length} profissionais estão com alocação saudável dentro da capacidade semanal.`;
       }
     },
     {
@@ -2733,9 +2825,9 @@ async function runAutomatedTestSuite() {
     statusBadge.style.color = '#34d399';
     appendLog("🎉 Bateria de testes automatizados concluída com APROVAÇÃO TOTAL!", "pass");
   } else {
-    statusBadge.textContent = `${passedTests}/${testSteps.length} Aprovados`;
-    statusBadge.style.color = '#f59e0b';
-    appendLog(`Atenção: ${testSteps.length - passedTests} testes reprovaram na validação.`, "warn");
+    statusBadge.textContent = `⚠️ ${passedTests}/${testSteps.length} Aprovados (${testSteps.length - passedTests} Alerta/Falha)`;
+    statusBadge.style.color = '#f43f5e';
+    appendLog(`⚠️ ATENÇÃO: ${testSteps.length - passedTests} teste(s) reprovaram ou emitiram alerta crítico de conformidade/sobrecarga.`, "warn");
   }
 }
 

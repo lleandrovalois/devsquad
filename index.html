@@ -406,7 +406,7 @@
             <div class="glass-panel content-card">
               <div class="card-title-row">
                 <h3>👥 Carga de Trabalho da Equipe Dev</h3>
-                <span class="badge-subtle">Front-ends & Back-ends</span>
+                <span class="badge-subtle" id="dashboard-workload-badge">Front-ends & Back-ends</span>
               </div>
               <div class="team-workload-list" id="dashboard-team-workload">
                 <!-- Preenchido via script -->
@@ -717,6 +717,16 @@
                 <span class="kpi-number text-blue" id="tests-coverage-percent">0%</span>
               </div>
             </div>
+          <!-- Alerta Visual de Auditoria de Carga de Trabalho -->
+          <div id="testing-workload-alert" style="display: none; margin-bottom: 1.25rem; padding: 0.85rem 1.25rem; border-radius: var(--radius-md); background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.4); color: #f43f5e; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 0.65rem;">
+              <span style="font-size: 1.35rem;">⚠️</span>
+              <div>
+                <strong style="color: #fb7185; font-size: 0.95rem;">Alerta de Auditoria: Carga Horária Excedida!</strong>
+                <div id="testing-workload-alert-text" style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px;"></div>
+              </div>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="switchView('team')" style="border-color: rgba(244, 63, 94, 0.4); color: #fb7185;">Ver Equipe ➔</button>
           </div>
 
           <!-- Console do Test Runner Interativo -->
