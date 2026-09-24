@@ -1046,6 +1046,14 @@
             <label for="task-hours">Horas Estimadas (h)</label>
             <input type="number" id="task-hours" min="1" max="120" value="8">
           </div>
+          <div class="form-group" id="group-task-hours-spent">
+            <label for="task-hours-spent" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Horas Apontadas (h)</span>
+              <span id="badge-admin-hours" style="font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; background: rgba(99, 102, 241, 0.2); color: #818cf8; font-weight: 600;">👑 Admin</span>
+            </label>
+            <input type="number" id="task-hours-spent" min="0" max="999" step="0.5" value="0" placeholder="0">
+            <small id="task-hours-spent-hint" class="text-muted" style="font-size: 0.72rem; margin-top: 3px; display: block;"></small>
+          </div>
         </div>
         <div class="form-group">
           <label for="task-desc">Descrição Técnica & Detalhes</label>
@@ -1222,7 +1230,38 @@
         <input type="hidden" id="timesheet-task-id" value="">
         <div class="card-highlight-info" style="margin-bottom: 1rem; padding: 0.75rem 1rem; border-radius: 8px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.25);">
           <small class="text-muted" style="display: block;">Demanda em Execução:</small>
-          <strong id="timesheet-task-title" style="color: var(--text-primary); font-size: 0.95rem;">-</strong>
+          <div id="timesheet-task-title" style="color: var(--text-primary); font-size: 0.95rem;">-</div>
+        </div>
+
+        <!-- Painel de Ajuste Administrativo de Horas (Apenas Admin) -->
+        <div id="timesheet-admin-adjust-panel" style="display: none; margin-bottom: 1.25rem; padding: 0.85rem 1rem; border-radius: 8px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.3);">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 0.45rem;">
+              <span style="font-size: 1.05rem;">👑</span>
+              <div>
+                <strong style="color: #a5b4fc; font-size: 0.86rem; display: block;">Ajuste de Horas pelo Administrador</strong>
+                <span style="font-size: 0.74rem; color: var(--text-muted);">Defina diretamente o total acumulado de horas apontadas</span>
+              </div>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-toggle-timesheet-mode" style="font-size: 0.74rem; padding: 0.25rem 0.65rem; border-color: rgba(99, 102, 241, 0.4); color: #c7d2fe;">
+              ✏️ Alterar Total
+            </button>
+          </div>
+          <div id="timesheet-admin-fields" style="display: none; margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px dashed rgba(99, 102, 241, 0.25);">
+            <div class="form-row" style="margin-bottom: 0.75rem;">
+              <div class="form-group">
+                <label for="timesheet-admin-total-hours" style="font-size: 0.8rem; color: #c7d2fe;">Novo Total de Horas Apontadas (h) *</label>
+                <input type="number" id="timesheet-admin-total-hours" min="0" max="999" step="0.5" placeholder="Ex: 35">
+              </div>
+              <div class="form-group">
+                <label for="timesheet-admin-reason" style="font-size: 0.8rem; color: #c7d2fe;">Motivo do Ajuste</label>
+                <input type="text" id="timesheet-admin-reason" placeholder="Ex: Correção de horas lançadas a mais">
+              </div>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-save-admin-hours-override" style="width: 100%; background: linear-gradient(135deg, #6366f1, #4f46e5); font-weight: 600;">
+              ✓ Salvar Novo Total de Horas Apontadas
+            </button>
+          </div>
         </div>
 
         <div class="form-row">

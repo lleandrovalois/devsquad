@@ -873,24 +873,73 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { success: true, taskId, assigneeId });
       }
 
+      // Ajuste de horas apontadas por Administrador
+      if (action === 'adjust-hours' && method === 'POST') {
+        const callerRole = req.headers['x-user-role'];
+        if (callerRole && callerRole !== 'admin') {
+          return sendJson(res, 403, { success: false, message: 'Apenas Administradores podem ajustar as horas apontadas de uma demanda.' });
+        }
+        const { newHoursSpent, reason, author } = await parseJsonBody(req);
+        const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
+        if (!task) {
+          return sendJson(res, 404, { success: false, message: 'Demanda não encontrada.' });
+        }
+        const oldHours = task.hours_spent || 0;
+        const nh = Math.max(0, parseFloat(newHoursSpent) || 0);
+        db.prepare('UPDATE tasks SET hours_spent = ? WHERE id = ?').run(nh, taskId);
+
+        // Registrar entrada de auditoria no timesheet
+        const tsId = 'ts_' + Date.now();
+        const now = new Date().toISOString();
+        const diff = nh - oldHours;
+        const notes = `[Ajuste Administrativo] Saldo de horas alterado de ${oldHours}h para ${nh}h. Motivo: ${reason || 'Ajuste de horas apontadas'}`;
+        db.prepare(`
+          INSERT INTO task_timesheet (id, task_id, hours, date, notes, impediment, author, created_at)
+          VALUES (?, ?, ?, ?, ?, null, ?, ?)
+        `).run(tsId, taskId, diff, now.split('T')[0], notes, author || 'Administrador', now);
+
+        return sendJson(res, 200, { success: true, taskId, oldHours, newHours: nh, tsId });
+      }
+
       if (method === 'PUT') {
         const t = await parseJsonBody(req);
         const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
         if (existing) {
+          const callerRole = req.headers['x-user-role'];
           const newTitle = t.title !== undefined ? t.title : existing.title;
-          const newProj = t.projectId !== undefined ? t.projectId : existing.project_id;
-          const newReq = t.reqId !== undefined ? t.reqId : existing.req_id;
+          const newProj = t.projectId !== undefined ? (t.projectId || null) : existing.project_id;
+          const newReq = t.reqId !== undefined ? (t.reqId || null) : existing.req_id;
           const newRole = t.role !== undefined ? t.role : existing.role;
-          const newAssignee = t.assigneeId !== undefined ? t.assigneeId : existing.assignee_id;
+          const newAssignee = t.assigneeId !== undefined ? (t.assigneeId || null) : existing.assignee_id;
           const newPriority = t.priority !== undefined ? t.priority : existing.priority;
           const newHours = t.hours !== undefined ? parseFloat(t.hours) : existing.hours;
+          
+          let newHoursSpent = existing.hours_spent || 0;
+          if (t.hoursSpent !== undefined) {
+            // Apenas admin (ou sem header de role restritivo) pode alterar horas apontadas
+            if (callerRole === 'admin' || !callerRole) {
+              const candidate = Math.max(0, parseFloat(t.hoursSpent) || 0);
+              if (Math.abs(candidate - newHoursSpent) > 0.001) {
+                const diff = candidate - newHoursSpent;
+                const tsId = 'ts_' + Date.now();
+                const now = new Date().toISOString();
+                const notes = `[Ajuste Administrativo via Edição de Demanda] Saldo alterado de ${newHoursSpent}h para ${candidate}h`;
+                db.prepare(`
+                  INSERT INTO task_timesheet (id, task_id, hours, date, notes, impediment, author, created_at)
+                  VALUES (?, ?, ?, ?, ?, null, ?, ?)
+                `).run(tsId, taskId, diff, now.split('T')[0], notes, 'Administrador', now);
+                newHoursSpent = candidate;
+              }
+            }
+          }
+
           const newDesc = t.desc !== undefined ? t.desc : existing.desc;
           db.prepare(`
             UPDATE tasks
-            SET title = ?, project_id = ?, req_id = ?, role = ?, assignee_id = ?, priority = ?, hours = ?, desc = ?
+            SET title = ?, project_id = ?, req_id = ?, role = ?, assignee_id = ?, priority = ?, hours = ?, hours_spent = ?, desc = ?
             WHERE id = ?
-          `).run(newTitle, newProj, newReq, newRole, newAssignee, newPriority, newHours, newDesc, taskId);
-          return sendJson(res, 200, { success: true, id: taskId, ...t });
+          `).run(newTitle, newProj, newReq, newRole, newAssignee, newPriority, newHours, newHoursSpent, newDesc, taskId);
+          return sendJson(res, 200, { success: true, id: taskId, ...t, hoursSpent: newHoursSpent });
         }
         return sendJson(res, 404, { success: false, message: 'Demanda não encontrada.' });
       }

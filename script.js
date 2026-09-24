@@ -814,12 +814,43 @@ class ALMStore {
       if (data.assigneeId !== undefined) task.assigneeId = data.assigneeId || null;
       if (data.priority !== undefined) task.priority = data.priority;
       if (data.hours !== undefined) task.hours = parseInt(data.hours, 10) || 8;
+      if (data.hoursSpent !== undefined) task.hoursSpent = Math.max(0, parseFloat(data.hoursSpent) || 0);
       if (data.desc !== undefined) task.desc = data.desc || '';
       this.saveState();
       api.apiRequest(`/api/tasks/${id}`, 'PUT', data);
       return true;
     }
     return false;
+  }
+
+  adjustTaskHours(taskId, newHoursSpent, reason) {
+    const task = this.getTaskById(taskId);
+    if (!task) return false;
+    const oldHours = task.hoursSpent || 0;
+    const nh = Math.max(0, parseFloat(newHoursSpent) || 0);
+    task.hoursSpent = nh;
+
+    const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+    const authorName = currentUser ? currentUser.name : 'Administrador';
+    const entry = {
+      id: "ts_" + Date.now(),
+      hours: nh - oldHours,
+      date: new Date().toISOString().split('T')[0],
+      notes: `[Ajuste Administrativo] Saldo alterado de ${oldHours}h para ${nh}h. Motivo: ${reason || 'Ajuste de horas apontadas'}`,
+      impediment: null,
+      author: authorName,
+      timestamp: new Date().toISOString()
+    };
+    task.timesheet = task.timesheet || [];
+    task.timesheet.push(entry);
+
+    this.saveState();
+    api.apiRequest(`/api/tasks/${taskId}/adjust-hours`, 'POST', {
+      newHoursSpent: nh,
+      reason: reason || 'Ajuste de horas apontadas',
+      author: authorName
+    });
+    return true;
   }
 
   deleteTask(id) {
@@ -1157,6 +1188,7 @@ const RolePermissions = {
     canCreateTask: true,
     canDeleteTask: true,
     canAssignTask: true,
+    canEditTaskHoursSpent: true,
     canLogTime: true,
     canValidateQA: true,
     canRunTests: true,
@@ -1179,6 +1211,7 @@ const RolePermissions = {
     canCreateTask: true,
     canDeleteTask: false,
     canAssignTask: true,
+    canEditTaskHoursSpent: false,
     canLogTime: true,
     canValidateQA: false,
     canRunTests: false,
@@ -1203,6 +1236,7 @@ const RolePermissions = {
     canAssignTask: false,
     canSelfAssign: true,
     canEditSelf: true,
+    canEditTaskHoursSpent: false,
     canLogTime: true,
     canValidateQA: false,
     canRunTests: false,
@@ -1227,6 +1261,7 @@ const RolePermissions = {
     canAssignTask: false,
     canSelfAssign: true,
     canEditSelf: true,
+    canEditTaskHoursSpent: false,
     canLogTime: false,
     canValidateQA: true,
     canRunTests: true,
@@ -2075,17 +2110,20 @@ function renderKanban() {
       }
     }
 
+    const isAdmin = currentUser && currentUser.role === 'admin';
     const isOverEstimated = task.hoursSpent && (parseFloat(task.hoursSpent) > (parseFloat(task.hours) || 8));
     const hoursText = task.hoursSpent ? `${task.hoursSpent}/${task.hours || 8}h` : `${task.hours || 8}h`;
     const hoursColor = isOverEstimated ? '#f43f5e' : 'var(--text-muted)';
     const hoursFontWeight = isOverEstimated ? '700' : 'normal';
-    const hoursTitle = isOverEstimated ? `⚠️ Horas apontadas (${task.hoursSpent}h) excederam a estimativa (${task.hours || 8}h)!` : 'Horas gastas / estimadas';
+    const hoursTitle = isAdmin 
+      ? `👑 Admin: ${task.hoursSpent || 0}h apontadas / ${task.hours || 8}h estimadas. Clique para alterar o saldo de horas.` 
+      : (isOverEstimated ? `⚠️ Horas apontadas (${task.hoursSpent}h) excederam a estimativa (${task.hours || 8}h)!` : 'Horas gastas / estimadas');
 
     card.innerHTML = `
       <div class="task-tags-row">
         <span class="task-role-tag ${task.role === 'frontend' ? 'role-front' : 'role-back'}">${roleLabel}</span>
         <span class="task-priority-tag ${priorityClass}">${task.priority}</span>
-        <span style="font-size: 0.7rem; color: ${hoursColor}; font-weight: ${hoursFontWeight}; margin-left: auto;" title="${hoursTitle}">⏱️ ${hoursText}${isOverEstimated ? ' ⚠️' : ''}</span>
+        <span style="font-size: 0.7rem; color: ${hoursColor}; font-weight: ${hoursFontWeight}; margin-left: auto; ${isAdmin ? 'cursor: pointer;' : ''}" title="${hoursTitle}" ${isAdmin ? `onclick="openTimesheetModal('${task.id}')"` : ''}>⏱️ ${hoursText}${isOverEstimated ? ' ⚠️' : ''}</span>
         
         <div class="card-header-actions" style="margin-left: 0.35rem;">
           <button class="card-btn-action" onclick="openTaskModalForEdit('${task.id}')" title="${perms.canCreateTask ? 'Editar Demanda' : 'Ver Detalhes'}">${perms.canCreateTask ? '✏️' : '👁️'}</button>
@@ -2216,6 +2254,9 @@ window.openTaskModalForCreate = function() {
     if (el) el.disabled = false;
   });
 
+  const groupHoursSpent = document.getElementById('group-task-hours-spent');
+  if (groupHoursSpent) groupHoursSpent.style.display = 'none';
+
   document.getElementById('modal-task-title').textContent = "🚀 Cadastrar Nova Demanda";
   document.getElementById('task-id-edit').value = "";
   document.getElementById('form-new-task').reset();
@@ -2232,6 +2273,7 @@ window.openTaskModalForEdit = function(taskId) {
 
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
   const isDevOrQa = currentUser && (currentUser.role === 'dev' || currentUser.role === 'qa');
+  const isAdmin = currentUser && currentUser.role === 'admin';
 
   document.getElementById('task-id-edit').value = task.id;
   document.getElementById('task-title').value = task.title;
@@ -2247,6 +2289,28 @@ window.openTaskModalForEdit = function(taskId) {
     const el = document.getElementById(id);
     if (el) el.disabled = isDevOrQa;
   });
+
+  // Campo de Horas Apontadas (Apenas Admin pode editar)
+  const groupHoursSpent = document.getElementById('group-task-hours-spent');
+  const hoursSpentInput = document.getElementById('task-hours-spent');
+  const badgeAdminHours = document.getElementById('badge-admin-hours');
+  const hintAdminHours = document.getElementById('task-hours-spent-hint');
+
+  if (groupHoursSpent) groupHoursSpent.style.display = 'block';
+  if (hoursSpentInput) {
+    hoursSpentInput.value = task.hoursSpent || 0;
+    hoursSpentInput.disabled = !isAdmin;
+  }
+  if (badgeAdminHours) {
+    badgeAdminHours.textContent = isAdmin ? '👑 Admin (Editável)' : '🔒 Apenas Admin';
+    badgeAdminHours.style.background = isAdmin ? 'rgba(99, 102, 241, 0.25)' : 'rgba(148, 163, 184, 0.15)';
+    badgeAdminHours.style.color = isAdmin ? '#818cf8' : '#94a3b8';
+  }
+  if (hintAdminHours) {
+    hintAdminHours.textContent = isAdmin 
+      ? 'Como Administrador, você pode alterar diretamente o total de horas apontadas desta demanda.' 
+      : 'Apenas Administradores podem alterar o saldo de horas apontadas.';
+  }
 
   if (isDevOrQa) {
     document.getElementById('modal-task-title').textContent = "📄 Detalhes da Demanda";
@@ -2277,6 +2341,9 @@ window.openTimesheetModal = function(taskId) {
   const task = store.getTaskById(taskId);
   if (!task) return;
 
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const isAdmin = currentUser && currentUser.role === 'admin';
+
   const idInput = document.getElementById('timesheet-task-id');
   const titleEl = document.getElementById('timesheet-task-title');
   const hoursInput = document.getElementById('timesheet-hours');
@@ -2285,11 +2352,39 @@ window.openTimesheetModal = function(taskId) {
   const impInput = document.getElementById('timesheet-impediment');
 
   if (idInput) idInput.value = task.id;
-  if (titleEl) titleEl.textContent = `#${task.id} - ${task.title}`;
+  if (titleEl) {
+    const isOver = task.hoursSpent && (parseFloat(task.hoursSpent) > (parseFloat(task.hours) || 8));
+    titleEl.innerHTML = `
+      <div style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">#${task.id} - ${task.title}</div>
+      <div style="font-size: 0.8rem; font-weight: 500; margin-top: 4px; color: ${isOver ? '#f43f5e' : 'var(--text-secondary)'};">
+        Total Apontado: <strong>${task.hoursSpent || 0}h</strong> / Estimativa: <strong>${task.hours || 8}h</strong>
+        ${isOver ? ' <span style="background: rgba(244,63,94,0.2); padding: 1px 6px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; color: #fb7185;">⚠️ Carga Excedida</span>' : ''}
+      </div>
+    `;
+  }
   if (hoursInput) hoursInput.value = "2";
   if (dateInput) dateInput.value = new Date().toISOString().split('T')[0];
   if (notesInput) notesInput.value = "";
   if (impInput) impInput.value = task.impediment || "";
+
+  // Painel de ajuste exclusivo para Administrador
+  const adminPanel = document.getElementById('timesheet-admin-adjust-panel');
+  const adminTotalInput = document.getElementById('timesheet-admin-total-hours');
+  const adminReasonInput = document.getElementById('timesheet-admin-reason');
+  const adminFields = document.getElementById('timesheet-admin-fields');
+  const toggleBtn = document.getElementById('btn-toggle-timesheet-mode');
+
+  if (adminPanel) {
+    if (isAdmin) {
+      adminPanel.style.display = 'block';
+      if (adminTotalInput) adminTotalInput.value = task.hoursSpent || 0;
+      if (adminReasonInput) adminReasonInput.value = "";
+      if (adminFields) adminFields.style.display = 'none';
+      if (toggleBtn) toggleBtn.textContent = '✏️ Alterar Total';
+    } else {
+      adminPanel.style.display = 'none';
+    }
+  }
 
   openModal('modal-timesheet');
 };
@@ -3673,7 +3768,15 @@ window.addEventListener('DOMContentLoaded', () => {
     const desc = document.getElementById('task-desc').value;
 
     if (editId) {
-      store.updateTask(editId, { title, projectId, reqId, role, assigneeId, priority, hours, desc });
+      const updateData = { title, projectId, reqId, role, assigneeId, priority, hours, desc };
+      const isAdmin = currentUser && currentUser.role === 'admin';
+      if (isAdmin) {
+        const spentVal = document.getElementById('task-hours-spent')?.value;
+        if (spentVal !== undefined && spentVal !== '') {
+          updateData.hoursSpent = Math.max(0, parseFloat(spentVal) || 0);
+        }
+      }
+      store.updateTask(editId, updateData);
       showToast(`Demanda "${title}" atualizada com sucesso!`);
     } else {
       store.addTask({ title, projectId, reqId, role, assigneeId, priority, hours, desc });
@@ -3806,6 +3909,38 @@ window.addEventListener('DOMContentLoaded', () => {
     e.target.reset();
     refreshAllUI();
     showToast(`Apontamento de ${hours}h registrado com sucesso!`);
+  });
+
+  // Alternar painel de ajuste de horas do administrador no timesheet
+  document.getElementById('btn-toggle-timesheet-mode')?.addEventListener('click', () => {
+    const adminFields = document.getElementById('timesheet-admin-fields');
+    const toggleBtn = document.getElementById('btn-toggle-timesheet-mode');
+    if (adminFields) {
+      const isHidden = adminFields.style.display === 'none';
+      adminFields.style.display = isHidden ? 'block' : 'none';
+      if (toggleBtn) {
+        toggleBtn.textContent = isHidden ? '✕ Fechar Ajuste' : '✏️ Alterar Total';
+      }
+    }
+  });
+
+  // Salvar ajuste administrativo de horas apontadas
+  document.getElementById('btn-save-admin-hours-override')?.addEventListener('click', () => {
+    const taskId = document.getElementById('timesheet-task-id')?.value;
+    const totalVal = document.getElementById('timesheet-admin-total-hours')?.value;
+    const reason = document.getElementById('timesheet-admin-reason')?.value || 'Ajuste administrativo de horas';
+    
+    if (!taskId) return;
+    if (totalVal === '' || isNaN(parseFloat(totalVal)) || parseFloat(totalVal) < 0) {
+      showToast('Por favor, informe um valor válido de horas (maior ou igual a zero).');
+      return;
+    }
+
+    const newHoursSpent = parseFloat(totalVal);
+    store.adjustTaskHours(taskId, newHoursSpent, reason);
+    closeModal('modal-timesheet');
+    refreshAllUI();
+    showToast(`Horas apontadas da demanda #${taskId} atualizadas para ${newHoursSpent}h!`);
   });
 
   // 7. FORMULÁRIO DE VALIDAÇÃO FORMAL DE QUALIDADE (QA / REVISOR)
