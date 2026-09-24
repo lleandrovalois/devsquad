@@ -545,6 +545,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (method === 'POST' && pathname === '/api/auth/register') {
+      const callerRole = req.headers['x-user-role'];
+      if (callerRole !== 'admin') {
+        return sendJson(res, 403, { 
+          success: false, 
+          message: 'Apenas Administradores do Sistema (Workspace Owner) possuem permissão para cadastrar novos usuários e definir papéis.' 
+        });
+      }
+
       const data = await parseJsonBody(req);
       const email = (data.email || '').trim().toLowerCase();
       const name = (data.name || '').trim();
@@ -615,6 +623,14 @@ const server = http.createServer(async (req, res) => {
     const userMatch = pathname.match(/^\/api\/users\/([^/]+)$/);
     if (userMatch && method === 'PUT') {
       const targetUserId = userMatch[1];
+      const callerRole = req.headers['x-user-role'];
+      const callerId = req.headers['x-user-id'];
+
+      // Usuários comuns só editam seu próprio perfil. Apenas Admin pode editar qualquer um e alterar papéis.
+      if (callerRole !== 'admin' && callerId !== targetUserId) {
+        return sendJson(res, 403, { success: false, message: 'Você não possui permissão para editar outros usuários.' });
+      }
+
       const data = await parseJsonBody(req);
       const user = db.prepare('SELECT * FROM users WHERE id = ?').get(targetUserId);
       if (!user) {
@@ -622,6 +638,8 @@ const server = http.createServer(async (req, res) => {
       }
 
       const newName = (data.name || user.name).trim();
+      const newRole = (callerRole === 'admin' && data.role) ? data.role : user.role;
+      const newDevRole = (callerRole === 'admin' && typeof data.devRole !== 'undefined') ? (newRole === 'dev' ? data.devRole : null) : user.dev_role;
       const newSeniority = data.seniority || user.seniority;
       const skillsStr = JSON.stringify(Array.isArray(data.skills) ? data.skills : (typeof data.skills === 'string' ? data.skills.split(',').map(s=>s.trim()).filter(Boolean) : []));
       const newAvatarBg = data.avatarBg || user.avatar_bg;
@@ -629,16 +647,26 @@ const server = http.createServer(async (req, res) => {
 
       db.prepare(`
         UPDATE users
-        SET name = ?, seniority = ?, skills = ?, avatar_bg = ?, password = ?
+        SET name = ?, role = ?, dev_role = ?, seniority = ?, skills = ?, avatar_bg = ?, password = ?
         WHERE id = ?
-      `).run(newName, newSeniority, skillsStr, newAvatarBg, newPassword, targetUserId);
+      `).run(newName, newRole, newDevRole, newSeniority, skillsStr, newAvatarBg, newPassword, targetUserId);
 
-      // Sincroniza também na tabela de equipe se houver correspondente
-      db.prepare(`
-        UPDATE team_members
-        SET name = ?, seniority = ?, skills = ?, avatar_bg = ?
-        WHERE id = ? OR lower(name) = lower(?)
-      `).run(newName, newSeniority, skillsStr, newAvatarBg, targetUserId, user.name);
+      // Sincroniza também na tabela de equipe se for dev
+      if (newRole === 'dev') {
+        const teamMember = db.prepare('SELECT id FROM team_members WHERE id = ? OR lower(name) = lower(?)').get(targetUserId, user.name);
+        if (teamMember) {
+          db.prepare(`
+            UPDATE team_members
+            SET name = ?, role = ?, seniority = ?, skills = ?, avatar_bg = ?
+            WHERE id = ?
+          `).run(newName, newDevRole || 'frontend', newSeniority, skillsStr, newAvatarBg, teamMember.id);
+        } else {
+          db.prepare(`
+            INSERT INTO team_members (id, name, role, seniority, skills, capacity, avatar_bg)
+            VALUES (?, ?, ?, ?, ?, 40, ?)
+          `).run('m_' + Date.now(), newName, newDevRole || 'frontend', newSeniority, skillsStr, newAvatarBg);
+        }
+      }
 
       let parsedSkills = [];
       try { parsedSkills = JSON.parse(skillsStr); } catch(e) {}
@@ -647,9 +675,8 @@ const server = http.createServer(async (req, res) => {
         id: targetUserId,
         name: newName,
         email: user.email,
-        password: newPassword,
-        role: user.role,
-        devRole: user.dev_role,
+        role: newRole,
+        devRole: newDevRole,
         seniority: newSeniority,
         skills: parsedSkills,
         avatarBg: newAvatarBg,
@@ -657,6 +684,26 @@ const server = http.createServer(async (req, res) => {
       };
 
       return sendJson(res, 200, { success: true, user: safeUser });
+    }
+
+    // Exclusão de Usuário (Apenas Admin)
+    if (userMatch && method === 'DELETE') {
+      const callerRole = req.headers['x-user-role'];
+      if (callerRole !== 'admin') {
+        return sendJson(res, 403, { success: false, message: 'Apenas Administradores do Sistema (Workspace Owner) podem excluir usuários.' });
+      }
+      const targetUserId = userMatch[1];
+      const callerId = req.headers['x-user-id'];
+      if (callerId === targetUserId) {
+        return sendJson(res, 400, { success: false, message: 'Você não pode excluir sua própria conta enquanto estiver logado.' });
+      }
+
+      const targetUser = db.prepare('SELECT name FROM users WHERE id = ?').get(targetUserId);
+      db.prepare('DELETE FROM users WHERE id = ?').run(targetUserId);
+      if (targetUser) {
+        db.prepare('DELETE FROM team_members WHERE id = ? OR lower(name) = lower(?)').run(targetUserId, targetUser.name);
+      }
+      return sendJson(res, 200, { success: true, id: targetUserId });
     }
 
     // 4. CRUD: Projetos

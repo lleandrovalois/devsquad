@@ -35,21 +35,17 @@
         </div>
       </div>
 
-      <!-- Abas: Entrar vs Cadastrar-se -->
-      <div class="auth-tabs-nav">
-        <button class="auth-tab-btn active" id="tab-login-btn" type="button">
-          <span>🔑 Entrar</span>
-        </button>
-        <button class="auth-tab-btn" id="tab-register-btn" type="button">
-          <span>📝 Criar Nova Conta</span>
-        </button>
+      <!-- Cabeçalho de Identificação de Acesso -->
+      <div class="auth-header-notice glass-subpanel" style="padding: 0.65rem 1rem; border-radius: var(--radius-md); text-align: center; margin-bottom: 1.25rem; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+        <span style="font-size: 1.05rem;">🔐</span>
+        <span style="font-size: 0.88rem; font-weight: 600; color: var(--text-main);">Acesso Corporativo ao Workspace</span>
       </div>
 
       <!-- Caixa de Mensagem / Alerta Feedback -->
       <div class="auth-alert" id="auth-alert" style="display: none;"></div>
 
       <!-- ==========================================
-           FORMULÁRIO 1: LOGIN (ENTRAR)
+           FORMULÁRIO DE LOGIN (ENTRAR)
            ========================================== -->
       <div class="auth-tab-content active" id="auth-tab-login">
         <!-- Contas de Demonstração Rápidas (Chips com 1 clique) -->
@@ -123,96 +119,10 @@
           </div>
         </form>
 
-        <div class="auth-footer-prompt">
-          <span>Ainda não possui conta?</span>
-          <button type="button" class="btn-link" id="link-go-to-register">Cadastre-se gratuitamente</button>
-        </div>
-      </div>
-
-      <!-- ==========================================
-           FORMULÁRIO 2: CADASTRO (CRIAR CONTA)
-           ========================================== -->
-      <div class="auth-tab-content" id="auth-tab-register" style="display: none;">
-        <form id="form-auth-register" class="auth-form" autocomplete="off">
-          <div class="form-group">
-            <label for="reg-name" class="form-label">Nome Completo *</label>
-            <div class="input-with-icon">
-              <span class="input-icon">👤</span>
-              <input type="text" id="reg-name" class="custom-input" placeholder="Ex: Mariana Ferreira" required>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="reg-email" class="form-label">E-mail Corporativo *</label>
-            <div class="input-with-icon">
-              <span class="input-icon">✉️</span>
-              <input type="email" id="reg-email" class="custom-input" placeholder="nome@empresa.com" required>
-            </div>
-          </div>
-
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="reg-role" class="form-label">Perfil de Atuação *</label>
-              <select id="reg-role" class="custom-select" required>
-                <option value="admin">👑 Administrador do Sistema (Workspace Owner)</option>
-                <option value="pm">📊 Gerente / Gestor de Projeto (Scrum Master)</option>
-                <option value="frontend" selected>🎨 Membro Executor (Dev Front-end)</option>
-                <option value="backend">⚙️ Membro Executor (Dev Back-end)</option>
-                <option value="qa">🧪 Revisor / Validador (QA / Tech Lead / Homologador)</option>
-              </select>
-            </div>
-
-            <div class="form-group" id="group-reg-seniority">
-              <label for="reg-seniority" class="form-label">Nível de Senioridade</label>
-              <select id="reg-seniority" class="custom-select">
-                <option value="Júnior">Júnior</option>
-                <option value="Pleno" selected>Pleno</option>
-                <option value="Sênior">Sênior</option>
-                <option value="Especialista">Especialista / Lead</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group" id="group-reg-skills">
-            <label for="reg-skills" class="form-label">Principais Tecnologias / Skills (separadas por vírgula)</label>
-            <input type="text" id="reg-skills" class="custom-input" placeholder="Ex: React, TypeScript, Next.js, Node.js">
-          </div>
-
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="reg-password" class="form-label">Senha *</label>
-              <div class="input-with-icon">
-                <span class="input-icon">🔒</span>
-                <input type="password" id="reg-password" class="custom-input" placeholder="Mínimo 6 caracteres" minlength="6" required>
-                <button type="button" class="btn-toggle-pwd" data-target="reg-password" title="Mostrar/Ocultar Senha">👁️</button>
-              </div>
-              <div class="pwd-strength-bar-wrap">
-                <div class="pwd-strength-bar" id="pwd-strength-bar"></div>
-              </div>
-              <span class="pwd-strength-text" id="pwd-strength-text">Força da senha</span>
-            </div>
-
-            <div class="form-group">
-              <label for="reg-password-confirm" class="form-label">Confirmar Senha *</label>
-              <div class="input-with-icon">
-                <span class="input-icon">🔒</span>
-                <input type="password" id="reg-password-confirm" class="custom-input" placeholder="Repita a senha" minlength="6" required>
-                <button type="button" class="btn-toggle-pwd" data-target="reg-password-confirm" title="Mostrar/Ocultar Senha">👁️</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="form-actions-auth">
-            <button type="submit" class="btn btn-primary btn-block btn-glow btn-auth-submit" id="btn-submit-register">
-              <span>Criar Conta e Acessar</span>
-              <span class="btn-arrow">➔</span>
-            </button>
-          </div>
-        </form>
-
-        <div class="auth-footer-prompt">
-          <span>Já possui uma conta cadastrada?</span>
-          <button type="button" class="btn-link" id="link-go-to-login">Entrar com sua conta</button>
+        <div class="auth-footer-prompt" style="padding-top: 1rem; border-top: 1px solid var(--border-subtle); margin-top: 1.25rem;">
+          <span style="font-size: 0.8rem; color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; width: 100%; text-align: center;">
+            <span>🛡️</span> Novos usuários e papéis são cadastrados exclusivamente pelo Administrador do Workspace.
+          </span>
         </div>
       </div>
     </div>
@@ -874,6 +784,9 @@
               <p class="view-subtitle">Matriz de permissões, papéis de segurança e gestão de usuários do workspace.</p>
             </div>
             <div class="view-actions-group">
+              <button class="btn btn-primary" id="btn-open-user-modal" onclick="openUserModalForCreate()">
+                <span>+ Cadastrar Novo Usuário</span>
+              </button>
               <span class="badge-role-current" id="gov-current-role-badge">Seu Perfil: Administrador</span>
             </div>
           </div>
@@ -979,9 +892,14 @@
 
           <!-- Tabela de Usuários Registrados no Workspace -->
           <div class="glass-panel content-card mt-4">
-            <div class="card-title-row">
-              <h3>👥 Usuários e Permissões Ativas no Workspace</h3>
-              <span class="text-muted" style="font-size: 0.85rem;" id="gov-users-summary">5 usuários cadastrados</span>
+            <div class="card-title-row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+              <div>
+                <h3>👥 Usuários e Permissões Ativas no Workspace</h3>
+                <span class="text-muted" style="font-size: 0.85rem;" id="gov-users-summary">5 usuários cadastrados</span>
+              </div>
+              <button class="btn btn-primary btn-sm" id="btn-open-user-modal" style="display: none;">
+                <span>+ Cadastrar Novo Usuário</span>
+              </button>
             </div>
             <div class="table-responsive mt-3">
               <table class="alm-table" id="gov-users-table">
@@ -992,6 +910,7 @@
                     <th>Papel no Sistema</th>
                     <th>Especialidade / Nível</th>
                     <th>Status</th>
+                    <th>Ações</th>
                   </tr>
                 </thead>
                 <tbody id="gov-users-tbody">
@@ -1396,6 +1315,76 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-ghost" data-close="modal-user-profile">Cancelar</button>
           <button type="submit" class="btn btn-primary" id="btn-save-profile">Salvar Alterações</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Gestão de Usuários (Administrador / Workspace Owner) -->
+  <div class="modal-backdrop" id="modal-admin-user">
+    <div class="modal-dialog glass-panel" style="max-width: 620px;">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-admin-user-title">👤 Cadastrar Novo Usuário</h2>
+        <button class="modal-close" data-close="modal-admin-user">&times;</button>
+      </div>
+      <form id="form-admin-user" class="modal-body">
+        <input type="hidden" id="admin-user-id-edit" value="">
+        
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="admin-user-name">Nome Completo *</label>
+            <input type="text" id="admin-user-name" required placeholder="Ex: Mariana Ferreira">
+          </div>
+          <div class="form-group flex-1">
+            <label for="admin-user-email">E-mail Corporativo *</label>
+            <input type="email" id="admin-user-email" required placeholder="nome@empresa.com">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="admin-user-role">Papel / Perfil no Workspace *</label>
+            <select id="admin-user-role" class="custom-select" required>
+              <option value="admin">👑 Administrador do Sistema (Workspace Owner)</option>
+              <option value="pm">📊 Gerente de Projetos (PM / Scrum Master)</option>
+              <option value="dev" selected>💻 Membro Executor (Desenvolvedor)</option>
+              <option value="qa">🧪 Revisor / Validador (QA / Tech Lead)</option>
+            </select>
+          </div>
+          <div class="form-group flex-1" id="group-admin-user-devrole">
+            <label for="admin-user-devrole">Especialidade Dev *</label>
+            <select id="admin-user-devrole" class="custom-select">
+              <option value="backend" selected>⚙️ Back-end</option>
+              <option value="frontend">🎨 Front-end</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="admin-user-seniority">Nível de Senioridade</label>
+            <select id="admin-user-seniority" class="custom-select">
+              <option value="Júnior">Júnior</option>
+              <option value="Pleno" selected>Pleno</option>
+              <option value="Sênior">Sênior</option>
+              <option value="Especialista">Especialista / Lead</option>
+            </select>
+          </div>
+          <div class="form-group flex-1">
+            <label for="admin-user-password" id="label-admin-user-password">Senha de Acesso *</label>
+            <input type="password" id="admin-user-password" placeholder="Mínimo 6 caracteres" minlength="6" required>
+            <small id="hint-admin-user-password" style="color: var(--text-muted); font-size: 0.75rem; margin-top: 0.25rem; display: none;">Deixe em branco para manter a senha atual.</small>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="admin-user-skills">Principais Tecnologias / Skills (separadas por vírgula)</label>
+          <input type="text" id="admin-user-skills" placeholder="Ex: React, TypeScript, Node.js, Go, PostgreSQL">
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close="modal-admin-user">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-admin-user">Salvar Usuário</button>
         </div>
       </form>
     </div>

@@ -1346,7 +1346,7 @@ class UserAuthStore {
     const user = users.find(u => u.email.toLowerCase() === cleanEmail);
 
     if (!user) {
-      return { success: false, message: 'Usuário não encontrado com este e-mail. Verifique a digitação ou cadastre-se.' };
+      return { success: false, message: 'Usuário não encontrado com este e-mail. Verifique a digitação ou contate o Administrador.' };
     }
 
     if (user.password !== password) {
@@ -1357,7 +1357,7 @@ class UserAuthStore {
     return { success: true, user: sessionUser };
   }
 
-  register({ name, email, role, devRole, seniority, skills, password }) {
+  async createUserByAdmin({ name, email, role, devRole, seniority, skills, password }) {
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanName = (name || '').trim();
 
@@ -1371,7 +1371,7 @@ class UserAuthStore {
 
     const users = this.getUsers();
     if (users.some(u => u.email.toLowerCase() === cleanEmail)) {
-      return { success: false, message: 'Este e-mail já está cadastrado. Tente entrar com sua conta.' };
+      return { success: false, message: 'Já existe um usuário cadastrado com este e-mail no workspace.' };
     }
 
     const palette = ['#3b82f6', '#10b981', '#8b5cf6', '#0284c7', '#059669', '#d97706', '#ec4899', '#06b6d4'];
@@ -1394,7 +1394,7 @@ class UserAuthStore {
       email: cleanEmail,
       password: password,
       role: role || 'dev',
-      devRole: (role === 'admin' || role === 'pm' || role === 'qa') ? null : (devRole || 'frontend'),
+      devRole: (role === 'admin' || role === 'pm' || role === 'qa') ? null : (devRole || 'backend'),
       seniority: seniority || 'Pleno',
       skills: parsedSkills,
       avatarBg: randomBg,
@@ -1405,10 +1405,10 @@ class UserAuthStore {
     this.saveUsers(users);
 
     if (typeof api !== 'undefined') {
-      api.apiRequest('/api/auth/register', 'POST', newUser);
+      await api.apiRequest('/api/auth/register', 'POST', newUser);
     }
 
-    // Sincronização automática com a equipe de desenvolvimento sem duplicidades
+    // Sincronização automática com a equipe de desenvolvimento se for Dev
     if (newUser.role === 'dev' && typeof store !== 'undefined' && store.state && Array.isArray(store.state.teamMembers)) {
       const cleanDevName = newUser.name.trim().toLowerCase();
       const existingInTeam = store.state.teamMembers.find(
@@ -1432,8 +1432,93 @@ class UserAuthStore {
       }
     }
 
-    const sessionUser = this.setSession(newUser);
-    return { success: true, user: sessionUser };
+    return { success: true, user: newUser };
+  }
+
+  async updateUserByAdmin(id, { name, role, devRole, seniority, skills, password }) {
+    const users = this.getUsers();
+    const idx = users.findIndex(u => u.id === id);
+    if (idx === -1) return { success: false, message: 'Usuário não encontrado.' };
+
+    const user = users[idx];
+    if (name) user.name = name.trim();
+    if (role) {
+      user.role = role;
+      user.devRole = (role === 'admin' || role === 'pm' || role === 'qa') ? null : (devRole || 'backend');
+    }
+    if (seniority) user.seniority = seniority;
+    if (skills) {
+      user.skills = Array.isArray(skills) ? skills : skills.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    if (password && password.trim()) user.password = password.trim();
+
+    users[idx] = user;
+    this.saveUsers(users);
+
+    if (typeof api !== 'undefined') {
+      await api.apiRequest(`/api/users/${id}`, 'PUT', user);
+    }
+
+    // Sincroniza na equipe se for perfil dev
+    if (user.role === 'dev' && typeof store !== 'undefined' && store.state && Array.isArray(store.state.teamMembers)) {
+      const teamMember = store.state.teamMembers.find(m => m.id === id || (m.name || '').toLowerCase() === user.name.toLowerCase());
+      if (teamMember) {
+        store.updateMember(teamMember.id, {
+          name: user.name,
+          role: user.devRole || 'backend',
+          seniority: user.seniority,
+          skills: user.skills
+        });
+      } else {
+        store.addMember({
+          name: user.name,
+          role: user.devRole || 'backend',
+          seniority: user.seniority,
+          skills: user.skills,
+          capacity: 40,
+          avatarBg: user.avatarBg
+        });
+      }
+    }
+
+    // Se o usuário editado for o da sessão ativa, atualiza sessão
+    const current = this.getCurrentUser();
+    if (current && current.id === id) {
+      this.setSession(user);
+      updateLoggedUserUI(user);
+    }
+
+    return { success: true, user };
+  }
+
+  async deleteUserByAdmin(id) {
+    const current = this.getCurrentUser();
+    if (current && current.id === id) {
+      return { success: false, message: 'Você não pode excluir sua própria conta enquanto estiver logado.' };
+    }
+
+    let users = this.getUsers();
+    const targetUser = users.find(u => u.id === id);
+    users = users.filter(u => u.id !== id);
+    this.saveUsers(users);
+
+    if (typeof api !== 'undefined') {
+      await api.apiRequest(`/api/users/${id}`, 'DELETE');
+    }
+
+    // Remove também da equipe se houver
+    if (targetUser && typeof store !== 'undefined' && store.state && Array.isArray(store.state.teamMembers)) {
+      const teamMember = store.state.teamMembers.find(m => m.id === id || (m.name || '').toLowerCase() === targetUser.name.toLowerCase());
+      if (teamMember) {
+        store.deleteMember(teamMember.id);
+      }
+    }
+
+    return { success: true, id };
+  }
+
+  register(data) {
+    return this.createUserByAdmin(data);
   }
 
   logout() {
@@ -2404,6 +2489,11 @@ function renderGovernance() {
     badgeEl.className = `badge-role-current ${perms.badgeClass}`;
   }
 
+  const btnOpenUser = document.getElementById('btn-open-user-modal');
+  if (btnOpenUser) {
+    btnOpenUser.style.display = perms.canManageGovernance ? 'inline-flex' : 'none';
+  }
+
   const allUsers = typeof authStore !== 'undefined' ? authStore.getUsers() : [];
   const usersCountEl = document.getElementById('gov-users-count');
   const usersSummaryEl = document.getElementById('gov-users-summary');
@@ -2417,6 +2507,21 @@ function renderGovernance() {
       const p = RolePermissions[u.role] || RolePermissions.dev;
       const tr = document.createElement('tr');
       const isYou = currentUser && currentUser.email.toLowerCase() === u.email.toLowerCase();
+
+      let actionsHtml = '';
+      if (perms.canManageGovernance) {
+        actionsHtml = `
+          <div style="display: flex; gap: 0.35rem; align-items: center;">
+            <button class="btn btn-secondary btn-sm" onclick="openUserModalForEdit('${u.id}')" title="Editar Usuário e Papel">✏️ Editar</button>
+            ${!isYou ? `<button class="btn btn-danger btn-sm" onclick="confirmDeleteUser('${u.id}', '${u.name}')" title="Excluir Usuário">🗑️ Excluir</button>` : ''}
+          </div>
+        `;
+      } else {
+        actionsHtml = `<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">🔒 Restrito</span>`;
+      }
+
+      const devRoleBadge = u.devRole ? ` <span class="task-role-tag ${u.devRole === 'backend' ? 'role-back' : 'role-front'}" style="margin-left: 4px;">${u.devRole === 'backend' ? 'Back' : 'Front'}</span>` : '';
+
       tr.innerHTML = `
         <td>
           <div style="display: flex; align-items: center; gap: 0.65rem;">
@@ -2431,13 +2536,88 @@ function renderGovernance() {
         </td>
         <td style="color: var(--text-secondary); font-size: 0.85rem;">${u.email}</td>
         <td><span class="user-badge-tag ${p.badgeClass}">${p.label}</span></td>
-        <td style="color: var(--text-secondary); font-size: 0.85rem;">${u.seniority || '-'}</td>
+        <td style="color: var(--text-secondary); font-size: 0.85rem;">${u.seniority || '-'}${devRoleBadge}</td>
         <td><span class="status-pill status-pass">Ativo</span></td>
+        <td>${actionsHtml}</td>
       `;
       tbody.appendChild(tr);
     });
   }
 }
+
+// Funções de Gestão de Usuários (Administrador / Workspace Owner)
+window.openUserModalForCreate = function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Apenas administradores podem cadastrar novos usuários.');
+    return;
+  }
+
+  document.getElementById('modal-admin-user-title').textContent = "👤 Cadastrar Novo Usuário";
+  document.getElementById('admin-user-id-edit').value = "";
+  document.getElementById('form-admin-user').reset();
+  document.getElementById('admin-user-email').disabled = false;
+  document.getElementById('label-admin-user-password').textContent = "Senha de Acesso *";
+  document.getElementById('admin-user-password').required = true;
+  document.getElementById('admin-user-password').placeholder = "Mínimo 6 caracteres";
+  document.getElementById('hint-admin-user-password').style.display = 'none';
+  document.getElementById('group-admin-user-devrole').style.display = 'block';
+  document.getElementById('btn-save-admin-user').textContent = "Salvar Usuário";
+  openModal('modal-admin-user');
+};
+
+window.openUserModalForEdit = function(userId) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Apenas administradores podem gerenciar usuários.');
+    return;
+  }
+
+  const user = typeof authStore !== 'undefined' ? authStore.getUsers().find(u => u.id === userId) : null;
+  if (!user) {
+    showToast('Usuário não localizado.');
+    return;
+  }
+
+  document.getElementById('modal-admin-user-title').textContent = "✏️ Editar Usuário & Papel";
+  document.getElementById('admin-user-id-edit').value = user.id;
+  document.getElementById('admin-user-name').value = user.name;
+  document.getElementById('admin-user-email').value = user.email;
+  document.getElementById('admin-user-email').disabled = true; // Email fixo
+  document.getElementById('admin-user-role').value = user.role || 'dev';
+  document.getElementById('admin-user-devrole').value = user.devRole || 'backend';
+  document.getElementById('admin-user-seniority').value = user.seniority || 'Pleno';
+  document.getElementById('admin-user-password').value = "";
+  document.getElementById('admin-user-password').required = false;
+  document.getElementById('label-admin-user-password').textContent = "Nova Senha (Opcional)";
+  document.getElementById('admin-user-password').placeholder = "Deixe em branco para manter a senha atual";
+  document.getElementById('hint-admin-user-password').style.display = 'block';
+  document.getElementById('admin-user-skills').value = Array.isArray(user.skills) ? user.skills.join(', ') : (user.skills || '');
+
+  const isDev = user.role === 'dev';
+  document.getElementById('group-admin-user-devrole').style.display = isDev ? 'block' : 'none';
+  document.getElementById('btn-save-admin-user').textContent = "Atualizar Usuário";
+
+  openModal('modal-admin-user');
+};
+
+window.confirmDeleteUser = async function(userId, userName) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Apenas administradores podem excluir usuários.');
+    return;
+  }
+
+  if (confirm(`Tem certeza que deseja excluir o usuário "${userName}" do workspace?\n\nEle perderá imediatamente o acesso ao sistema.`)) {
+    const res = await authStore.deleteUserByAdmin(userId);
+    if (!res.success) {
+      showToast(res.message);
+      return;
+    }
+    showToast(`Usuário "${userName}" excluído com sucesso.`);
+    refreshAllUI();
+  }
+};
 
 // ==============================================================================
 // 3. Executor Automatizado de Testes (Test Runner)
@@ -2804,24 +2984,9 @@ function clearAuthAlert() {
 
 function switchAuthTab(tab) {
   clearAuthAlert();
-  const tabLoginBtn = document.getElementById('tab-login-btn');
-  const tabRegBtn = document.getElementById('tab-register-btn');
   const tabLoginContent = document.getElementById('auth-tab-login');
-  const tabRegContent = document.getElementById('auth-tab-register');
-
-  if (tab === 'login') {
-    tabLoginBtn?.classList.add('active');
-    tabRegBtn?.classList.remove('active');
-    if (tabLoginContent) tabLoginContent.style.display = 'block';
-    if (tabRegContent) tabRegContent.style.display = 'none';
-    document.getElementById('login-email')?.focus();
-  } else {
-    tabRegBtn?.classList.add('active');
-    tabLoginBtn?.classList.remove('active');
-    if (tabRegContent) tabRegContent.style.display = 'block';
-    if (tabLoginContent) tabLoginContent.style.display = 'none';
-    document.getElementById('reg-name')?.focus();
-  }
+  if (tabLoginContent) tabLoginContent.style.display = 'block';
+  document.getElementById('login-email')?.focus();
 }
 
 function updateTopbarUserUI(user) {
@@ -2880,13 +3045,7 @@ function updateTopbarUserUI(user) {
 }
 
 function setupAuthEventListeners() {
-  // 1. Alternador de Abas de Autenticação
-  document.getElementById('tab-login-btn')?.addEventListener('click', () => switchAuthTab('login'));
-  document.getElementById('tab-register-btn')?.addEventListener('click', () => switchAuthTab('register'));
-  document.getElementById('link-go-to-register')?.addEventListener('click', () => switchAuthTab('register'));
-  document.getElementById('link-go-to-login')?.addEventListener('click', () => switchAuthTab('login'));
-
-  // 2. Chips de Contas Demo (1 clique)
+  // 1. Chips de Contas Demo (1 clique)
   document.querySelectorAll('.demo-chip').forEach(chip => {
     chip.addEventListener('click', () => {
       const email = chip.dataset.demoEmail;
@@ -2904,7 +3063,7 @@ function setupAuthEventListeners() {
     });
   });
 
-  // 3. Mostrar / Ocultar Senha
+  // 2. Mostrar / Ocultar Senha
   document.querySelectorAll('.btn-toggle-pwd').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -2921,88 +3080,7 @@ function setupAuthEventListeners() {
     });
   });
 
-  // 4. Medidor de Força de Senha no Cadastro
-  const regPassInput = document.getElementById('reg-password');
-  const pwdBar = document.getElementById('pwd-strength-bar');
-  const pwdText = document.getElementById('pwd-strength-text');
-
-  if (regPassInput && pwdBar && pwdText) {
-    regPassInput.addEventListener('input', () => {
-      const val = regPassInput.value;
-      if (!val) {
-        pwdBar.style.width = '0%';
-        pwdBar.style.background = '#64748b';
-        pwdText.textContent = 'Força da senha';
-        pwdText.style.color = '#94a3b8';
-        return;
-      }
-
-      let score = 0;
-      if (val.length >= 6) score++;
-      if (val.length >= 10) score++;
-      if (/[A-Z]/.test(val) && /[a-z]/.test(val)) score++;
-      if (/[0-9]/.test(val)) score++;
-      if (/[^A-Za-z0-9]/.test(val)) score++;
-
-      if (score <= 1) {
-        pwdBar.style.width = '25%';
-        pwdBar.style.background = '#ef4444';
-        pwdText.textContent = 'Senha Fraca (adicione mais caracteres)';
-        pwdText.style.color = '#f87171';
-      } else if (score === 2) {
-        pwdBar.style.width = '50%';
-        pwdBar.style.background = '#f97316';
-        pwdText.textContent = 'Senha Razoável (inclua números ou maiúsculas)';
-        pwdText.style.color = '#fb923c';
-      } else if (score === 3 || score === 4) {
-        pwdBar.style.width = '75%';
-        pwdBar.style.background = '#eab308';
-        pwdText.textContent = 'Senha Boa';
-        pwdText.style.color = '#facc15';
-      } else {
-        pwdBar.style.width = '100%';
-        pwdBar.style.background = '#10b981';
-        pwdText.textContent = 'Senha Forte e Segura!';
-        pwdText.style.color = '#34d399';
-      }
-    });
-  }
-
-  // 5. Ajuste Dinâmico de Senioridade com base no Perfil
-  const regRoleSelect = document.getElementById('reg-role');
-  const regSenioritySelect = document.getElementById('reg-seniority');
-  if (regRoleSelect && regSenioritySelect) {
-    regRoleSelect.addEventListener('change', () => {
-      if (regRoleSelect.value === 'admin') {
-        regSenioritySelect.innerHTML = `
-          <option value="Workspace Owner / Diretor" selected>Workspace Owner / Diretor</option>
-          <option value="Tech Lead / Gestão">Tech Lead / Gestão</option>
-          <option value="Gerente de Engenharia">Gerente de Engenharia</option>
-        `;
-      } else if (regRoleSelect.value === 'pm') {
-        regSenioritySelect.innerHTML = `
-          <option value="Scrum Master" selected>Scrum Master</option>
-          <option value="Project Manager (PM)">Project Manager (PM)</option>
-          <option value="Agile Coach">Agile Coach</option>
-        `;
-      } else if (regRoleSelect.value === 'qa') {
-        regSenioritySelect.innerHTML = `
-          <option value="QA Lead / Homologadora" selected>QA Lead / Homologadora</option>
-          <option value="Analista de Qualidade Pleno">Analista de Qualidade Pleno</option>
-          <option value="Engenheiro de Automação de Testes">Engenheiro de Automação de Testes</option>
-        `;
-      } else {
-        regSenioritySelect.innerHTML = `
-          <option value="Júnior">Júnior</option>
-          <option value="Pleno" selected>Pleno</option>
-          <option value="Sênior">Sênior</option>
-          <option value="Especialista">Especialista / Lead</option>
-        `;
-      }
-    });
-  }
-
-  // 6. Submissão do Formulário de Login
+  // 3. Submissão do Formulário de Login Corporativo
   const loginForm = document.getElementById('form-auth-login');
   if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
@@ -3032,75 +3110,131 @@ function setupAuthEventListeners() {
     });
   }
 
-  // 7. Submissão do Formulário de Cadastro
-  const regForm = document.getElementById('form-auth-register');
-  if (regForm) {
-    regForm.addEventListener('submit', (e) => {
+  // 4. Gestão de Usuários (Administrador / Workspace Owner)
+  const adminRoleSelect = document.getElementById('admin-user-role');
+  const adminSenioritySelect = document.getElementById('admin-user-seniority');
+  const groupAdminDevRole = document.getElementById('group-admin-user-devrole');
+
+  if (adminRoleSelect) {
+    adminRoleSelect.addEventListener('change', () => {
+      const val = adminRoleSelect.value;
+      if (groupAdminDevRole) {
+        groupAdminDevRole.style.display = val === 'dev' ? 'block' : 'none';
+      }
+      if (adminSenioritySelect) {
+        if (val === 'admin') {
+          adminSenioritySelect.innerHTML = `
+            <option value="Workspace Owner / Diretor" selected>Workspace Owner / Diretor</option>
+            <option value="Tech Lead / Gestão">Tech Lead / Gestão</option>
+            <option value="Gerente de Engenharia">Gerente de Engenharia</option>
+          `;
+        } else if (val === 'pm') {
+          adminSenioritySelect.innerHTML = `
+            <option value="Scrum Master" selected>Scrum Master</option>
+            <option value="Project Manager (PM)">Project Manager (PM)</option>
+            <option value="Agile Coach">Agile Coach</option>
+          `;
+        } else if (val === 'qa') {
+          adminSenioritySelect.innerHTML = `
+            <option value="QA Lead / Homologadora" selected>QA Lead / Homologadora</option>
+            <option value="Analista de Qualidade Pleno">Analista de Qualidade Pleno</option>
+            <option value="Engenheiro de Automação de Testes">Engenheiro de Automação de Testes</option>
+          `;
+        } else {
+          adminSenioritySelect.innerHTML = `
+            <option value="Júnior">Júnior</option>
+            <option value="Pleno" selected>Pleno</option>
+            <option value="Sênior">Sênior</option>
+            <option value="Especialista">Especialista / Lead</option>
+          `;
+        }
+      }
+    });
+  }
+
+  const btnOpenUserModal = document.getElementById('btn-open-user-modal');
+  if (btnOpenUserModal) {
+    btnOpenUserModal.addEventListener('click', () => {
+      window.openUserModalForCreate();
+    });
+  }
+
+  const formAdminUser = document.getElementById('form-admin-user');
+  if (formAdminUser) {
+    formAdminUser.addEventListener('submit', async (e) => {
       e.preventDefault();
-      clearAuthAlert();
-
-      const name = document.getElementById('reg-name')?.value.trim();
-      const email = document.getElementById('reg-email')?.value.trim();
-      const roleSelect = document.getElementById('reg-role')?.value;
-      const seniority = document.getElementById('reg-seniority')?.value;
-      const skills = document.getElementById('reg-skills')?.value;
-      const password = document.getElementById('reg-password')?.value;
-      const confirmPassword = document.getElementById('reg-password-confirm')?.value;
-
-      if (!name || !email || !password) {
-        showAuthAlert('Por favor, preencha todos os campos obrigatórios (*).', 'error');
+      const currentUser = authStore.getCurrentUser();
+      if (!currentUser || currentUser.role !== 'admin') {
+        showToast('Apenas administradores do sistema possuem permissão para gerenciar contas.');
         return;
       }
 
-      if (password.length < 6) {
-        showAuthAlert('A senha deve conter no mínimo 6 caracteres.', 'error');
+      const id = document.getElementById('admin-user-id-edit')?.value;
+      const name = document.getElementById('admin-user-name')?.value.trim();
+      const email = document.getElementById('admin-user-email')?.value.trim();
+      const role = document.getElementById('admin-user-role')?.value;
+      const devRole = role === 'dev' ? document.getElementById('admin-user-devrole')?.value : null;
+      const seniority = document.getElementById('admin-user-seniority')?.value;
+      const skills = document.getElementById('admin-user-skills')?.value;
+      const password = document.getElementById('admin-user-password')?.value;
+
+      if (!name) {
+        showToast('Por favor, informe o nome completo.');
         return;
       }
 
-      if (password !== confirmPassword) {
-        showAuthAlert('As senhas digitadas não coincidem. Verifique e tente novamente.', 'error');
-        return;
+      if (!id) {
+        // Novo Usuário
+        if (!email || !password) {
+          showToast('E-mail corporativo e senha são obrigatórios.');
+          return;
+        }
+        if (password.length < 6) {
+          showToast('A senha deve conter no mínimo 6 caracteres.');
+          return;
+        }
+
+        const res = await authStore.createUserByAdmin({
+          name,
+          email,
+          role,
+          devRole,
+          seniority,
+          skills,
+          password
+        });
+
+        if (!res.success) {
+          showToast(res.message || 'Erro ao cadastrar usuário.');
+          return;
+        }
+
+        showToast(`Usuário "${name}" cadastrado com sucesso!`);
+      } else {
+        // Edição de Usuário Existente
+        if (password && password.length < 6) {
+          showToast('A nova senha deve conter no mínimo 6 caracteres.');
+          return;
+        }
+
+        const res = await authStore.updateUserByAdmin(id, {
+          name,
+          role,
+          devRole,
+          seniority,
+          skills,
+          password: password ? password : undefined
+        });
+
+        if (!res.success) {
+          showToast(res.message || 'Erro ao atualizar usuário.');
+          return;
+        }
+
+        showToast(`Usuário "${name}" atualizado com sucesso!`);
       }
 
-      let role = 'dev';
-      let devRole = 'frontend';
-      if (roleSelect === 'admin') {
-        role = 'admin';
-        devRole = null;
-      } else if (roleSelect === 'pm') {
-        role = 'pm';
-        devRole = null;
-      } else if (roleSelect === 'qa') {
-        role = 'qa';
-        devRole = null;
-      } else if (roleSelect === 'backend') {
-        role = 'dev';
-        devRole = 'backend';
-      } else if (roleSelect === 'frontend') {
-        role = 'dev';
-        devRole = 'frontend';
-      }
-
-      const result = authStore.register({
-        name,
-        email,
-        role,
-        devRole,
-        seniority,
-        skills,
-        password
-      });
-
-      if (!result.success) {
-        showAuthAlert(result.message, 'error');
-        return;
-      }
-
-      showToast(`Conta criada com sucesso! Bem-vindo(a), ${result.user.name}!`);
-      document.getElementById('auth-screen')?.classList.add('hidden');
-      document.getElementById('alm-container')?.classList.remove('hidden');
-      updateTopbarUserUI(result.user);
-      regForm.reset();
+      closeModal('modal-admin-user');
       refreshAllUI();
     });
   }
