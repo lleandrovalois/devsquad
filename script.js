@@ -380,9 +380,17 @@ class DevSquadAPI {
 
   async apiRequest(endpoint, method = 'GET', body = null) {
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (typeof authStore !== 'undefined') {
+        const u = authStore.getCurrentUser();
+        if (u) {
+          headers['x-user-id'] = u.id;
+          headers['x-user-role'] = u.role;
+        }
+      }
       const options = {
         method,
-        headers: { 'Content-Type': 'application/json' }
+        headers
       };
       if (body) options.body = JSON.stringify(body);
       const res = await fetch(`${this.baseUrl}${endpoint}`, options);
@@ -1116,8 +1124,10 @@ const RolePermissions = {
     category: "Governança & Administração",
     badgeClass: "tag-admin",
     canCreateProject: true,
+    canEditProject: true,
     canDeleteProject: true,
     canCreateReq: true,
+    canEditReq: true,
     canDeleteReq: true,
     canCreateTask: true,
     canDeleteTask: true,
@@ -1128,6 +1138,7 @@ const RolePermissions = {
     canCreateTest: true,
     canManageTeam: true,
     canManageGovernance: true,
+    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing', 'governance'],
     allowedNewItems: ['project', 'task', 'req', 'test', 'member']
   },
   pm: {
@@ -1135,8 +1146,10 @@ const RolePermissions = {
     category: "Governança & Administração",
     badgeClass: "tag-pm",
     canCreateProject: true,
+    canEditProject: true,
     canDeleteProject: false,
     canCreateReq: true,
+    canEditReq: true,
     canDeleteReq: false,
     canCreateTask: true,
     canDeleteTask: false,
@@ -1147,6 +1160,7 @@ const RolePermissions = {
     canCreateTest: false,
     canManageTeam: true,
     canManageGovernance: false,
+    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing'],
     allowedNewItems: ['project', 'task', 'req', 'member']
   },
   dev: {
@@ -1154,8 +1168,10 @@ const RolePermissions = {
     category: "Execução & Operação",
     badgeClass: "tag-back",
     canCreateProject: false,
+    canEditProject: false,
     canDeleteProject: false,
     canCreateReq: false,
+    canEditReq: false,
     canDeleteReq: false,
     canCreateTask: false,
     canDeleteTask: false,
@@ -1168,6 +1184,7 @@ const RolePermissions = {
     canCreateTest: false,
     canManageTeam: false,
     canManageGovernance: false,
+    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban'],
     allowedNewItems: []
   },
   qa: {
@@ -1175,8 +1192,10 @@ const RolePermissions = {
     category: "Execução & Operação",
     badgeClass: "tag-qa",
     canCreateProject: false,
+    canEditProject: false,
     canDeleteProject: false,
     canCreateReq: false,
+    canEditReq: false,
     canDeleteReq: false,
     canCreateTask: false,
     canDeleteTask: false,
@@ -1189,6 +1208,7 @@ const RolePermissions = {
     canCreateTest: true,
     canManageTeam: false,
     canManageGovernance: false,
+    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'testing'],
     allowedNewItems: ['test']
   }
 };
@@ -1549,12 +1569,15 @@ function renderProjects() {
   container.innerHTML = '';
 
   const projects = store.getProjects();
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
 
   if (projects.length === 0) {
     container.innerHTML = `
       <div class="glass-panel" style="padding: 3rem; text-align: center; color: var(--text-muted); grid-column: 1 / -1;">
         <p style="font-size: 1.15rem; margin-bottom: 0.85rem;">Nenhum projeto encontrado com os filtros aplicados.</p>
-        <button class="btn btn-primary" onclick="openProjectModalForCreate()">+ Cadastrar Novo Projeto</button>
+        ${perms.canCreateProject ? '<button class="btn btn-primary" onclick="openProjectModalForCreate()">+ Cadastrar Novo Projeto</button>' : ''}
       </div>
     `;
     return;
@@ -1569,6 +1592,17 @@ function renderProjects() {
     const completedTasks = pTasks.filter(t => t.status === 'done').length;
     const progressPercent = pTasks.length > 0 ? Math.round((completedTasks / pTasks.length) * 100) : 0;
     const statusBadgeClass = project.status === 'Ativo' ? 'status-pass' : (project.status === 'Concluído' ? 'status-pass' : 'status-pending');
+
+    const canEditProject = perms.canEditProject;
+    const canDeleteProject = perms.canDeleteProject;
+
+    let actionsHtml = '';
+    if (canEditProject) {
+      actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="openProjectModalForEdit('${project.id}')" title="Editar Projeto">✏️ Editar</button>`;
+    }
+    if (canDeleteProject) {
+      actionsHtml += `<button class="btn btn-danger btn-sm" onclick="confirmDeleteProject('${project.id}', '${project.name}')" title="Excluir Projeto">🗑️ Excluir</button>`;
+    }
 
     const card = document.createElement('article');
     card.className = 'project-card glass-panel';
@@ -1612,11 +1646,7 @@ function renderProjects() {
 
       <div class="project-card-footer">
         <span class="project-deadline-text">📅 Entrega: ${project.deadline ? formatDateBR(project.deadline) : 'A definir'}</span>
-        
-        <div class="project-actions-group">
-          <button class="btn btn-secondary btn-sm" onclick="openProjectModalForEdit('${project.id}')" title="Editar Projeto">✏️ Editar</button>
-          <button class="btn btn-danger btn-sm" onclick="confirmDeleteProject('${project.id}', '${project.name}')" title="Excluir Projeto">🗑️ Excluir</button>
-        </div>
+        ${actionsHtml ? `<div class="project-actions-group">${actionsHtml}</div>` : '<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">🔒 Somente leitura</span>'}
       </div>
     `;
     container.appendChild(card);
@@ -1632,6 +1662,14 @@ function formatDateBR(dateStr) {
 
 // Funções de CRUD de Projetos
 window.openProjectModalForCreate = function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+  if (!perms.canCreateProject) {
+    showToast('Desenvolvedores não possuem permissão para cadastrar projetos.');
+    return;
+  }
+
   document.getElementById('modal-project-title').textContent = "📁 Cadastrar Novo Projeto";
   document.getElementById('project-id-edit').value = "";
   document.getElementById('form-project').reset();
@@ -1641,6 +1679,14 @@ window.openProjectModalForCreate = function() {
 };
 
 window.openProjectModalForEdit = function(projectId) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+  if (!perms.canEditProject) {
+    showToast('Desenvolvedores não possuem permissão para editar projetos.');
+    return;
+  }
+
   const project = store.getProjectById(projectId);
   if (!project) return;
 
@@ -1657,6 +1703,14 @@ window.openProjectModalForEdit = function(projectId) {
 };
 
 window.confirmDeleteProject = function(projectId, projectName) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+  if (!perms.canDeleteProject) {
+    showToast('Desenvolvedores não possuem permissão para excluir projetos.');
+    return;
+  }
+
   if (confirm(`Tem certeza que deseja excluir o projeto "${projectName}"?\n\nAs demandas e requisitos associados permanecerão salvos como referências avulsas.`)) {
     store.deleteProject(projectId);
     refreshAllUI();
@@ -1670,12 +1724,15 @@ function renderRequirements() {
   container.innerHTML = '';
 
   const requirements = store.getRequirements();
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
 
   if (requirements.length === 0) {
     container.innerHTML = `
       <div class="glass-panel" style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
         <p style="font-size: 1.1rem; margin-bottom: 0.5rem;">Nenhum requisito encontrado para os filtros selecionados.</p>
-        <button class="btn btn-secondary btn-sm" onclick="openReqModalForCreate()">+ Especificar Primeiro Requisito</button>
+        ${perms.canCreateReq ? '<button class="btn btn-secondary btn-sm" onclick="openReqModalForCreate()">+ Especificar Primeiro Requisito</button>' : ''}
       </div>
     `;
     return;
@@ -1694,6 +1751,14 @@ function renderRequirements() {
     const linkedTests = store.state.testCases.filter(tc => tc.reqId === req.id);
     const moscowClass = req.moscow === 'Must' ? 'moscow-must' : (req.moscow === 'Should' ? 'moscow-should' : 'moscow-could');
 
+    let reqActionsHtml = '';
+    if (perms.canEditReq) {
+      reqActionsHtml += `<button class="card-btn-action" onclick="openReqModalForEdit('${req.id}')" title="Editar Requisito">✏️ Editar</button>`;
+    }
+    if (perms.canDeleteReq) {
+      reqActionsHtml += `<button class="card-btn-action btn-del" onclick="confirmDeleteRequirement('${req.id}', '${req.code}', '${req.title}')" title="Excluir Requisito">🗑️ Excluir</button>`;
+    }
+
     const card = document.createElement('article');
     card.className = 'requirement-card glass-panel';
     card.innerHTML = `
@@ -1704,8 +1769,7 @@ function renderRequirements() {
         <span class="badge-subtle">${project ? project.name : 'Geral'}</span>
         
         <div class="card-header-actions" style="margin-left: auto;">
-          <button class="card-btn-action" onclick="openReqModalForEdit('${req.id}')" title="Editar Requisito">✏️ Editar</button>
-          <button class="card-btn-action btn-del" onclick="confirmDeleteRequirement('${req.id}', '${req.code}', '${req.title}')" title="Excluir Requisito">🗑️ Excluir</button>
+          ${reqActionsHtml ? reqActionsHtml : '<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">🔒 Somente leitura</span>'}
         </div>
       </div>
 
@@ -1734,6 +1798,14 @@ function renderRequirements() {
 
 // Funções de CRUD de Requisitos
 window.openReqModalForCreate = function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+  if (!perms.canCreateReq) {
+    showToast('Desenvolvedores não possuem permissão para criar requisitos.');
+    return;
+  }
+
   document.getElementById('modal-req-title').textContent = "📋 Especificar Novo Requisito";
   document.getElementById('req-id-edit').value = "";
   document.getElementById('form-new-req').reset();
@@ -1742,6 +1814,14 @@ window.openReqModalForCreate = function() {
 };
 
 window.openReqModalForEdit = function(reqId) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+  if (!perms.canEditReq) {
+    showToast('Desenvolvedores não possuem permissão para editar requisitos.');
+    return;
+  }
+
   const req = store.getRequirementById(reqId);
   if (!req) return;
 
@@ -1760,6 +1840,14 @@ window.openReqModalForEdit = function(reqId) {
 };
 
 window.confirmDeleteRequirement = function(reqId, reqCode, reqTitle) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+  if (!perms.canDeleteReq) {
+    showToast('Desenvolvedores não possuem permissão para excluir requisitos.');
+    return;
+  }
+
   if (confirm(`Deseja realmente excluir o requisito [${reqCode}] "${reqTitle}"?\n\nAs demandas e testes associados a ele terão o vínculo desfeito.`)) {
     store.deleteRequirement(reqId);
     refreshAllUI();
@@ -2574,6 +2662,17 @@ function updateSidebarCounters() {
 }
 
 function switchView(viewName) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+
+  if (perms && perms.allowedViews && !perms.allowedViews.includes(viewName)) {
+    showToast(`Acesso restrito: seu perfil (${perms.label}) não tem permissão para acessar esta área.`);
+    const fallbackView = perms.allowedViews.includes('kanban') ? 'kanban' : perms.allowedViews[0];
+    switchView(fallbackView);
+    return;
+  }
+
   store.activeView = viewName;
 
   document.querySelectorAll('.nav-item').forEach(btn => {
@@ -2603,6 +2702,30 @@ function applyRolePermissions(user) {
   if (!user) return;
   const roleKey = user.role || 'dev';
   const perms = RolePermissions[roleKey] || RolePermissions.dev;
+
+  // 0. Sidebar de Navegação - Controle de Visibilidade por Perfil
+  const allNavViews = [
+    { id: 'nav-dashboard', view: 'dashboard' },
+    { id: 'nav-projects', view: 'projects' },
+    { id: 'nav-requirements', view: 'requirements' },
+    { id: 'nav-kanban', view: 'kanban' },
+    { id: 'nav-team', view: 'team' },
+    { id: 'nav-testing', view: 'testing' },
+    { id: 'nav-governance', view: 'governance' }
+  ];
+
+  allNavViews.forEach(item => {
+    const el = document.getElementById(item.id);
+    if (el) {
+      const isAllowed = !perms.allowedViews || perms.allowedViews.includes(item.view);
+      el.style.display = isAllowed ? 'flex' : 'none';
+    }
+  });
+
+  // Se a aba atualmente ativa for restrita para o perfil, redireciona
+  if (perms.allowedViews && !perms.allowedViews.includes(store.activeView)) {
+    store.activeView = perms.allowedViews.includes('kanban') ? 'kanban' : perms.allowedViews[0];
+  }
 
   // 1. Dropdown "+ Novo Item"
   const itemProject = document.getElementById('action-new-project');
@@ -3260,7 +3383,20 @@ window.addEventListener('DOMContentLoaded', () => {
   // 1. FORMULÁRIO DE PROJETO (CRUD)
   document.getElementById('form-project')?.addEventListener('submit', (e) => {
     e.preventDefault();
+    const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+    const currentRole = currentUser ? currentUser.role : 'dev';
+    const perms = RolePermissions[currentRole] || RolePermissions.dev;
     const editId = document.getElementById('project-id-edit').value;
+
+    if (editId && !perms.canEditProject) {
+      showToast('Desenvolvedores não possuem permissão para editar projetos.');
+      return;
+    }
+    if (!editId && !perms.canCreateProject) {
+      showToast('Desenvolvedores não possuem permissão para cadastrar projetos.');
+      return;
+    }
+
     const name = document.getElementById('project-name-input').value;
     const code = document.getElementById('project-code-input').value;
     const desc = document.getElementById('project-desc-input').value;
@@ -3326,7 +3462,20 @@ window.addEventListener('DOMContentLoaded', () => {
   // 3. FORMULÁRIO DE REQUISITO (CRUD)
   document.getElementById('form-new-req')?.addEventListener('submit', (e) => {
     e.preventDefault();
+    const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+    const currentRole = currentUser ? currentUser.role : 'dev';
+    const perms = RolePermissions[currentRole] || RolePermissions.dev;
     const editId = document.getElementById('req-id-edit').value;
+
+    if (editId && !perms.canEditReq) {
+      showToast('Desenvolvedores não possuem permissão para editar requisitos.');
+      return;
+    }
+    if (!editId && !perms.canCreateReq) {
+      showToast('Desenvolvedores não possuem permissão para cadastrar requisitos.');
+      return;
+    }
+
     const title = document.getElementById('req-title').value;
     const code = document.getElementById('req-code').value;
     const projectId = document.getElementById('req-project').value;

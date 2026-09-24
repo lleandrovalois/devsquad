@@ -665,6 +665,10 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, getFullProjects());
       }
       if (method === 'POST') {
+        const callerRole = req.headers['x-user-role'];
+        if (callerRole === 'dev' || callerRole === 'qa') {
+          return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para cadastrar projetos.' });
+        }
         const p = await parseJsonBody(req);
         const id = p.id || 'p_' + Date.now();
         db.prepare(`
@@ -678,6 +682,10 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith('/api/projects/')) {
       const projId = pathname.split('/')[3];
       if (method === 'PUT') {
+        const callerRole = req.headers['x-user-role'];
+        if (callerRole === 'dev' || callerRole === 'qa') {
+          return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para editar projetos.' });
+        }
         const p = await parseJsonBody(req);
         db.prepare(`
           UPDATE projects
@@ -687,6 +695,10 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { id: projId, ...p });
       }
       if (method === 'DELETE') {
+        const callerRole = req.headers['x-user-role'];
+        if (callerRole === 'dev' || callerRole === 'qa' || callerRole === 'pm') {
+          return sendJson(res, 403, { success: false, message: 'Seu perfil não possui permissão para excluir projetos.' });
+        }
         db.prepare('DELETE FROM projects WHERE id = ?').run(projId);
         return sendJson(res, 200, { success: true, id: projId });
       }
@@ -698,6 +710,10 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, getFullRequirements());
       }
       if (method === 'POST') {
+        const callerRole = req.headers['x-user-role'];
+        if (callerRole === 'dev' || callerRole === 'qa') {
+          return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para cadastrar requisitos.' });
+        }
         const r = await parseJsonBody(req);
         const id = r.id || 'req_' + Date.now();
         db.prepare(`
@@ -711,6 +727,10 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith('/api/requirements/')) {
       const reqId = pathname.split('/')[3];
       if (method === 'PUT') {
+        const callerRole = req.headers['x-user-role'];
+        if (callerRole === 'dev' || callerRole === 'qa') {
+          return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para editar requisitos.' });
+        }
         const r = await parseJsonBody(req);
         db.prepare(`
           UPDATE requirements
@@ -720,6 +740,10 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { id: reqId, ...r });
       }
       if (method === 'DELETE') {
+        const callerRole = req.headers['x-user-role'];
+        if (callerRole === 'dev' || callerRole === 'qa') {
+          return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para excluir requisitos.' });
+        }
         db.prepare('DELETE FROM requirements WHERE id = ?').run(reqId);
         return sendJson(res, 200, { success: true, id: reqId });
       }
