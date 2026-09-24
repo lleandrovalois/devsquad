@@ -181,6 +181,11 @@
           <span class="nav-text">Governança & RBAC</span>
           <span class="nav-counter" id="counter-nav-governance">5</span>
         </button>
+        <button class="nav-item" data-view="performance" id="nav-performance">
+          <span class="nav-icon">📈</span>
+          <span class="nav-text">Desempenho & Promoção</span>
+          <span class="nav-counter" id="counter-nav-performance" style="background: rgba(99, 102, 241, 0.25); color: #818cf8; font-size: 0.68rem; padding: 2px 6px;">Admin</span>
+        </button>
       </nav>
 
       <!-- Widget de Saúde dos Projetos no Rodapé da Sidebar -->
@@ -897,6 +902,13 @@
                     <td><span class="perm-tag perm-none">Restrito</span></td>
                     <td><span class="perm-tag perm-none">Restrito</span></td>
                   </tr>
+                  <tr>
+                    <td><strong>Desempenho & Promoção (Evolução Técnica)</strong></td>
+                    <td><span class="perm-tag perm-full">Acesso Exclusivo (Gráficos & Promoções)</span></td>
+                    <td><span class="perm-tag perm-none">Restrito</span></td>
+                    <td><span class="perm-tag perm-none">Restrito</span></td>
+                    <td><span class="perm-tag perm-none">Restrito</span></td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -931,6 +943,309 @@
               </table>
             </div>
           </div>
+        </section>
+
+        <!-- ===================================================================
+             7. ABA: DESEMPENHO INDIVIDUAL & PROMOÇÕES (EXCLUSIVO ADMINISTRADOR)
+             =================================================================== -->
+        <section class="view-panel" id="view-performance">
+          <div class="view-header">
+            <div>
+              <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.25rem;">
+                <h1 class="view-title" style="margin-bottom: 0;">Desempenho Individual & Promoções</h1>
+                <span class="badge-role-current" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; border-color: rgba(99, 102, 241, 0.35);">👑 Exclusivo Admin</span>
+              </div>
+              <p class="view-subtitle">Acompanhe a curva de evolução técnica por complexidade de demandas e gerencie a prontidão para promoções do time.</p>
+            </div>
+
+            <!-- Seletor do Desenvolvedor em Destaque -->
+            <div class="view-actions-group" style="align-items: center; gap: 0.75rem;">
+              <div class="perf-dev-picker glass-panel" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.4rem 0.85rem; border-radius: var(--radius-md);">
+                <div class="dev-avatar-sm" id="perf-dev-avatar" style="width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; background: var(--gradient-brand);">L</div>
+                <div style="display: flex; flex-direction: column;">
+                  <span style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Desenvolvedor Avaliado</span>
+                  <select id="perf-dev-select" class="custom-select" style="font-size: 0.88rem; font-weight: 600; padding: 2px 24px 2px 4px; border: none; background: transparent; cursor: pointer; color: var(--text-main);" title="Selecione o profissional para análise">
+                    <!-- Preenchido dinamicamente via script -->
+                  </select>
+                </div>
+              </div>
+
+              <!-- Seletor de Período -->
+              <div class="perf-period-picker glass-panel" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.6rem; border-radius: var(--radius-md);">
+                <span style="font-size: 0.78rem; color: var(--text-muted);">Ciclo:</span>
+                <select id="perf-period-select" class="custom-select" style="font-size: 0.82rem; padding: 2px 20px 2px 4px; border: none; background: transparent; cursor: pointer; color: var(--text-main);">
+                  <option value="sprints" selected>Últimas 6 Sprints</option>
+                  <option value="months">Últimos 6 Meses</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Banner Informativo do Desenvolvedor Selecionado -->
+          <div class="glass-panel perf-dev-hero" id="perf-dev-hero" style="margin-top: 1rem; padding: 1.25rem 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; border-left: 4px solid #6366f1;">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+              <div class="dev-avatar-lg" id="perf-hero-avatar" style="width: 56px; height: 56px; border-radius: 50%; font-size: 1.5rem; font-weight: 700; color: #fff; background: #3b82f6; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm);">L</div>
+              <div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                  <h2 id="perf-hero-name" style="font-size: 1.25rem; font-weight: 700; margin: 0; color: var(--text-main);">Nome do Desenvolvedor</h2>
+                  <span id="perf-hero-seniority-badge" class="badge-role-current" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; font-size: 0.75rem; padding: 2px 8px;">Júnior</span>
+                  <span id="perf-hero-role-badge" class="task-role-tag role-front" style="font-size: 0.72rem;">🎨 Front-end</span>
+                </div>
+                <p id="perf-hero-skills" style="margin: 0.25rem 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Stack: React, TypeScript, CSS Grid</p>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">
+              <div style="text-align: right;">
+                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase;">Status de Promoção</span>
+                <span id="perf-hero-status-pill" style="font-size: 0.85rem; font-weight: 700; color: #34d399; display: inline-flex; align-items: center; gap: 4px;">🟢 Elegível para Promoção</span>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm btn-glow" id="btn-quick-promote-cta" onclick="document.getElementById('card-promotion-action').scrollIntoView({ behavior: 'smooth' })">
+                <span>🎖️ Avaliar Promoção</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Cards de Indicadores de Desempenho do Dev -->
+          <div class="kpi-grid mt-4">
+            <div class="kpi-card glass-panel">
+              <div class="kpi-icon-box" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">🏆</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Tarefas Realizadas</span>
+                <span class="kpi-number" id="perf-kpi-total-tasks" style="color: #818cf8;">0</span>
+                <small id="perf-kpi-total-sub" class="text-muted" style="font-size: 0.72rem;">0/sprint em média</small>
+              </div>
+            </div>
+            <div class="kpi-card glass-panel">
+              <div class="kpi-icon-box" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">⏱️</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Horas Produtivas</span>
+                <span class="kpi-number text-emerald" id="perf-kpi-total-hours">0h</span>
+                <small id="perf-kpi-hours-sub" class="text-muted" style="font-size: 0.72rem;">Apontadas em demandas</small>
+              </div>
+            </div>
+            <div class="kpi-card glass-panel">
+              <div class="kpi-icon-box" style="background: rgba(244, 63, 94, 0.15); color: #f43f5e;">⚡</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Alta Complexidade</span>
+                <span class="kpi-number" id="perf-kpi-high-tasks" style="color: #f43f5e;">0</span>
+                <small id="perf-kpi-high-sub" class="text-muted" style="font-size: 0.72rem;">0% do total entregue</small>
+              </div>
+            </div>
+            <div class="kpi-card glass-panel">
+              <div class="kpi-icon-box" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">🎖️</div>
+              <div class="kpi-content">
+                <span class="kpi-label">Prontidão p/ Promoção</span>
+                <span class="kpi-number text-amber" id="perf-kpi-score">85%</span>
+                <small id="perf-kpi-score-sub" class="text-muted" style="font-size: 0.72rem;">Score de maturidade</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- CARD PRINCIPAL: GRÁFICO DE LINHA POR COMPLEXIDADE -->
+          <div class="glass-panel content-card mt-4" style="padding: 1.5rem; position: relative;">
+            <div class="card-title-row" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+              <div>
+                <h3 style="font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                  <span>📈</span> Curva de Demandas Realizadas por Complexidade
+                </h3>
+                <p class="text-muted" style="margin: 0.2rem 0 0 0; font-size: 0.85rem;">
+                  Uma linha por complexidade demonstrando a transição de maturidade técnica do desenvolvedor.
+                </p>
+              </div>
+
+              <!-- Legendas Interativas com Switches -->
+              <div class="perf-chart-legend" id="perf-chart-legend" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                <button type="button" class="perf-legend-chip active" data-series="high" id="legend-high">
+                  <span class="legend-color-dot" style="background: #f43f5e;"></span>
+                  <span>Alta Complexidade</span>
+                  <strong class="legend-counter" id="legend-count-high">0</strong>
+                </button>
+                <button type="button" class="perf-legend-chip active" data-series="medium" id="legend-medium">
+                  <span class="legend-color-dot" style="background: #f59e0b;"></span>
+                  <span>Média Complexidade</span>
+                  <strong class="legend-counter" id="legend-count-medium">0</strong>
+                </button>
+                <button type="button" class="perf-legend-chip active" data-series="low" id="legend-low">
+                  <span class="legend-color-dot" style="background: #10b981;"></span>
+                  <span>Baixa Complexidade</span>
+                  <strong class="legend-counter" id="legend-count-low">0</strong>
+                </button>
+                <button type="button" class="perf-legend-chip active" data-series="total" id="legend-total">
+                  <span class="legend-color-dot" style="background: #818cf8;"></span>
+                  <span>Total Geral</span>
+                  <strong class="legend-counter" id="legend-count-total">0</strong>
+                </button>
+              </div>
+            </div>
+
+            <!-- Container do Gráfico SVG Vetorial -->
+            <div class="perf-chart-wrapper" style="position: relative; width: 100%; margin-top: 1.25rem; min-height: 330px;">
+              <div id="perf-line-chart-svg-container" style="width: 100%; height: 100%; overflow: hidden;">
+                <!-- O SVG responsivo é desenhado aqui dinamicamente -->
+              </div>
+              
+              <!-- Tooltip Flutuante do Gráfico -->
+              <div id="perf-chart-tooltip" class="perf-tooltip" style="display: none; position: absolute; pointer-events: none; z-index: 50;">
+                <div class="perf-tooltip-content glass-panel" style="padding: 0.6rem 0.85rem; border-radius: 8px; font-size: 0.8rem; box-shadow: var(--shadow-md);">
+                  <div id="perf-tooltip-title" style="font-weight: 700; margin-bottom: 4px; color: var(--text-main);">Sprint 4</div>
+                  <div id="perf-tooltip-body" style="color: var(--text-secondary);"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Rodapé com Resumo Analítico do Gráfico -->
+            <div class="perf-chart-footer" style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; font-size: 0.8rem; color: var(--text-muted);">
+              <div style="display: flex; align-items: center; gap: 0.4rem;">
+                <span>💡</span>
+                <span><strong>Dica de Análise:</strong> O crescimento da linha vermelha (Alta Complexidade) com redução da verde (Baixa) indica ganho de autonomia e domínio arquitetural.</span>
+              </div>
+              <div id="perf-chart-summary-tag" style="font-weight: 600; color: #818cf8;">
+                Taxa de Alta Complexidade: 0%
+              </div>
+            </div>
+          </div>
+
+          <!-- SEÇÃO DUPLA: AVALIAÇÃO DE PROMOÇÕES & MATRIZ DE MATURIDADE -->
+          <div class="perf-promotion-grid mt-4" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.25rem;">
+            
+            <!-- Coluna 1: Diagnóstico de Maturidade Técnica & Parecer de Promoção -->
+            <div class="glass-panel content-card" style="padding: 1.5rem;">
+              <div class="card-title-row" style="margin-bottom: 1rem;">
+                <div>
+                  <h3 style="font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                    <span>🎯</span> Diagnóstico de Carreira & Elegibilidade
+                  </h3>
+                  <p class="text-muted" style="margin: 0.2rem 0 0 0; font-size: 0.82rem;">Avaliação algorítmica de competência baseada no histórico de entregas.</p>
+                </div>
+              </div>
+
+              <!-- Indicador de Senioridade: Atual vs Recomendada -->
+              <div class="perf-seniority-flow" style="display: flex; align-items: center; justify-content: space-around; padding: 1rem; border-radius: var(--radius-md); background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); margin-bottom: 1.25rem;">
+                <div style="text-align: center;">
+                  <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase;">Nível Atual</span>
+                  <span id="diag-current-seniority" style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">Júnior</span>
+                </div>
+                <div style="font-size: 1.4rem; color: #6366f1;">➔</div>
+                <div style="text-align: center;">
+                  <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase;">Nível Recomendado</span>
+                  <span id="diag-target-seniority" style="font-size: 1.05rem; font-weight: 700; color: #34d399;">Pleno</span>
+                </div>
+              </div>
+
+              <!-- Barra de Progresso do Score de Maturidade -->
+              <div style="margin-bottom: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 0.35rem;">
+                  <span>Score de Prontidão para Promoção:</span>
+                  <strong id="diag-score-text" style="color: #34d399;">88% (Apto)</strong>
+                </div>
+                <div class="progress-track" style="height: 10px; border-radius: 999px; background: rgba(255,255,255,0.08);">
+                  <div class="progress-fill" id="diag-score-progress" style="width: 88%; background: linear-gradient(90deg, #6366f1, #10b981); height: 100%; border-radius: 999px;"></div>
+                </div>
+              </div>
+
+              <!-- Parecer Técnico Executivo -->
+              <div class="perf-opinion-box" id="diag-opinion-box" style="padding: 1rem; border-radius: var(--radius-sm); background: rgba(99, 102, 241, 0.1); border-left: 3px solid #818cf8; margin-bottom: 1.25rem;">
+                <div style="font-size: 0.75rem; font-weight: 700; color: #818cf8; text-transform: uppercase; margin-bottom: 0.25rem;">📋 Parecer Analítico do Sistema</div>
+                <p id="diag-opinion-text" style="margin: 0; font-size: 0.85rem; color: var(--text-main); line-height: 1.45;">
+                  O desenvolvedor demonstra consistência superior à média na entrega de tarefas de Média e Alta complexidade. Baixa taxa de bloqueios e autonomia técnica comprovada indicam plena aptidão para o próximo nível.
+                </p>
+              </div>
+
+              <!-- Checklist de Requisitos de Carreira -->
+              <div class="perf-checklist">
+                <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; display: block; margin-bottom: 0.5rem;">Critérios Observados</span>
+                <ul id="diag-criteria-list" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.82rem;">
+                  <!-- Preenchido via script -->
+                </ul>
+              </div>
+            </div>
+
+            <!-- Coluna 2: Ação Administrativa de Efetivação da Promoção -->
+            <div class="glass-panel content-card" id="card-promotion-action" style="padding: 1.5rem; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div class="card-title-row" style="margin-bottom: 1rem;">
+                  <div>
+                    <h3 style="font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                      <span>🎖️</span> Ação Administrativa de Promoção
+                    </h3>
+                    <p class="text-muted" style="margin: 0.2rem 0 0 0; font-size: 0.82rem;">Como Administrador, efetive a progressão de carreira com atualização imediata no banco de dados.</p>
+                  </div>
+                </div>
+
+                <form id="form-dev-promotion" class="perf-promotion-form" onsubmit="event.preventDefault(); promoteCurrentDev();">
+                  <div class="form-group" style="margin-bottom: 1rem;">
+                    <label for="perf-target-seniority" style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 0.35rem;">Nova Senioridade / Cargo *</label>
+                    <select id="perf-target-seniority" class="custom-select" style="width: 100%;" required>
+                      <option value="Júnior">Júnior (Início de Carreira)</option>
+                      <option value="Pleno" selected>Pleno (Autonomia & Entregas Médias/Altas)</option>
+                      <option value="Sênior">Sênior (Liderança Técnica & Alta Complexidade)</option>
+                      <option value="Tech Lead / Especialista">Tech Lead / Especialista (Governança & Arquitetura)</option>
+                    </select>
+                  </div>
+
+                  <div class="form-group" style="margin-bottom: 1rem;">
+                    <label for="perf-promotion-justification" style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 0.35rem;">Justificativa / Parecer da Liderança</label>
+                    <textarea id="perf-promotion-justification" rows="3" class="custom-input" style="width: 100%; resize: vertical;" placeholder="Ex: Promoção aprovada no comitê de Q1 2026 com base no volume expressivo de demandas de alta complexidade entregues com excelência..."></textarea>
+                  </div>
+
+                  <div class="form-group" style="margin-bottom: 1.25rem;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; color: var(--text-secondary); cursor: pointer;">
+                      <input type="checkbox" id="perf-check-notify" checked style="cursor: pointer;">
+                      <span>Registrar histórico de promoção e notificar workspace</span>
+                    </label>
+                  </div>
+
+                  <div style="padding: 0.85rem; border-radius: var(--radius-sm); background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); margin-bottom: 1.25rem; font-size: 0.78rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
+                    <span>🛡️</span>
+                    <span>A alteração será refletida em todas as visões do sistema, relatórios de carga horária e permissões.</span>
+                  </div>
+
+                  <button type="submit" class="btn btn-primary btn-block btn-glow" id="btn-submit-promote" style="padding: 0.85rem; font-size: 0.95rem; font-weight: 700;">
+                    <span>🎖️ Efetivar Promoção Agora</span>
+                  </button>
+                </form>
+              </div>
+
+              <div id="perf-last-promotion-info" style="margin-top: 1.25rem; padding-top: 0.75rem; border-top: 1px solid var(--border-subtle); font-size: 0.78rem; color: var(--text-muted); text-align: center;">
+                Histórico: Última avaliação registrada neste ciclo.
+              </div>
+            </div>
+
+          </div>
+
+          <!-- TABELA: HISTÓRICO DE DEMANDAS REALIZADAS PELO DESENVOLVEDOR -->
+          <div class="glass-panel content-card mt-4" style="padding: 1.5rem;">
+            <div class="card-title-row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+              <div>
+                <h3 style="font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                  <span>📋</span> Histórico de Demandas Concluídas & Complexidade
+                </h3>
+                <p class="text-muted" style="margin: 0.2rem 0 0 0; font-size: 0.85rem;">Todas as tarefas realizadas por este desenvolvedor com detalhamento técnico.</p>
+              </div>
+              <span id="perf-tasks-table-count" class="badge-role-current" style="background: rgba(255,255,255,0.05); color: var(--text-secondary);">0 tarefas</span>
+            </div>
+
+            <div class="table-responsive mt-3">
+              <table class="alm-table" id="perf-tasks-table">
+                <thead>
+                  <tr>
+                    <th>Demanda / Identificador</th>
+                    <th>Projeto</th>
+                    <th>Complexidade</th>
+                    <th>Prioridade</th>
+                    <th>Horas Apontadas</th>
+                    <th>Ciclo / Status QA</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="perf-tasks-tbody">
+                  <!-- Preenchido via script -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
         </section>
 
       </main>
@@ -1037,6 +1352,14 @@
           <div class="form-group">
             <label for="task-priority">Prioridade *</label>
             <select id="task-priority" class="custom-select">
+              <option value="Alta">🔴 Alta</option>
+              <option value="Média" selected>🟡 Média</option>
+              <option value="Baixa">🟢 Baixa</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="task-complexity">Complexidade *</label>
+            <select id="task-complexity" class="custom-select">
               <option value="Alta">🔴 Alta</option>
               <option value="Média" selected>🟡 Média</option>
               <option value="Baixa">🟢 Baixa</option>

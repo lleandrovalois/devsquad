@@ -794,6 +794,7 @@ class ALMStore {
       role: data.role,
       assigneeId: data.assigneeId || null,
       priority: data.priority || 'Média',
+      complexity: data.complexity || 'Média',
       hours: parseInt(data.hours, 10) || 8,
       status: 'backlog',
       desc: data.desc || ''
@@ -813,6 +814,7 @@ class ALMStore {
       if (data.role !== undefined) task.role = data.role;
       if (data.assigneeId !== undefined) task.assigneeId = data.assigneeId || null;
       if (data.priority !== undefined) task.priority = data.priority;
+      if (data.complexity !== undefined) task.complexity = data.complexity;
       if (data.hours !== undefined) task.hours = parseInt(data.hours, 10) || 8;
       if (data.hoursSpent !== undefined) task.hoursSpent = Math.max(0, parseFloat(data.hoursSpent) || 0);
       if (data.desc !== undefined) task.desc = data.desc || '';
@@ -1195,7 +1197,7 @@ const RolePermissions = {
     canCreateTest: true,
     canManageTeam: true,
     canManageGovernance: true,
-    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing', 'governance'],
+    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing', 'governance', 'performance'],
     allowedNewItems: ['project', 'task', 'req', 'test', 'member']
   },
   pm: {
@@ -2123,6 +2125,7 @@ function renderKanban() {
       <div class="task-tags-row">
         <span class="task-role-tag ${task.role === 'frontend' ? 'role-front' : 'role-back'}">${roleLabel}</span>
         <span class="task-priority-tag ${priorityClass}">${task.priority}</span>
+        <span class="task-complexity-tag ${task.complexity === 'Alta' ? 'complexity-high' : (task.complexity === 'Baixa' ? 'complexity-low' : 'complexity-med')}" title="Complexidade Técnica">⚡ ${task.complexity || 'Média'}</span>
         <span style="font-size: 0.7rem; color: ${hoursColor}; font-weight: ${hoursFontWeight}; margin-left: auto; ${isAdmin ? 'cursor: pointer;' : ''}" title="${hoursTitle}" ${isAdmin ? `onclick="openTimesheetModal('${task.id}')"` : ''}>⏱️ ${hoursText}${isOverEstimated ? ' ⚠️' : ''}</span>
         
         <div class="card-header-actions" style="margin-left: 0.35rem;">
@@ -2249,10 +2252,13 @@ window.openTaskModalForCreate = function() {
     return;
   }
 
-  ['task-title', 'task-project', 'task-requirement', 'task-role', 'task-assignee', 'task-priority', 'task-hours', 'task-desc'].forEach(id => {
+  ['task-title', 'task-project', 'task-requirement', 'task-role', 'task-assignee', 'task-priority', 'task-complexity', 'task-hours', 'task-desc'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = false;
   });
+
+  const compCreateEl = document.getElementById('task-complexity');
+  if (compCreateEl) compCreateEl.value = 'Média';
 
   const groupHoursSpent = document.getElementById('group-task-hours-spent');
   if (groupHoursSpent) groupHoursSpent.style.display = 'none';
@@ -2282,10 +2288,12 @@ window.openTaskModalForEdit = function(taskId) {
   document.getElementById('task-role').value = task.role;
   document.getElementById('task-assignee').value = task.assigneeId || "";
   document.getElementById('task-priority').value = task.priority;
+  const compEditEl = document.getElementById('task-complexity');
+  if (compEditEl) compEditEl.value = task.complexity || "Média";
   document.getElementById('task-hours').value = task.hours || 8;
   document.getElementById('task-desc').value = task.desc || "";
 
-  ['task-title', 'task-project', 'task-requirement', 'task-role', 'task-priority', 'task-hours', 'task-desc'].forEach(id => {
+  ['task-title', 'task-project', 'task-requirement', 'task-role', 'task-priority', 'task-complexity', 'task-hours', 'task-desc'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = isDevOrQa;
   });
@@ -2727,6 +2735,696 @@ function renderGovernance() {
   }
 }
 
+// ==============================================================================
+// 2.7 MÓDULO DE DESEMPENHO INDIVIDUAL & AVALIAÇÃO DE PROMOÇÕES (ADMIN)
+// ==============================================================================
+
+window.selectedPerfDevId = null;
+window.perfPeriod = 'sprints';
+window.perfSeries = { high: true, medium: true, low: true, total: true };
+
+function renderPerformance() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+
+  // Acesso exclusivo para Administradores
+  if (currentRole !== 'admin') {
+    showToast('Acesso restrito: apenas Administradores têm permissão para acessar a área de Desempenho e Promoções.');
+    switchView(perms.allowedViews && perms.allowedViews.includes('kanban') ? 'kanban' : (perms.allowedViews ? perms.allowedViews[0] : 'dashboard'));
+    return;
+  }
+
+  const members = store.getTeamMembers();
+  if (!members || members.length === 0) {
+    const heroEl = document.getElementById('perf-dev-hero');
+    if (heroEl) {
+      heroEl.innerHTML = '<p class="text-muted" style="padding: 1.5rem; text-align: center;">Nenhum desenvolvedor cadastrado no workspace.</p>';
+    }
+    return;
+  }
+
+  // 1. Popular Seletor de Desenvolvedores
+  const devSelect = document.getElementById('perf-dev-select');
+  if (devSelect) {
+    if (!window.selectedPerfDevId || !members.some(m => m.id === window.selectedPerfDevId)) {
+      window.selectedPerfDevId = members[0].id;
+    }
+
+    devSelect.innerHTML = members.map(m => {
+      const roleIcon = m.role === 'frontend' ? '🎨' : '⚙️';
+      return `<option value="${m.id}" ${m.id === window.selectedPerfDevId ? 'selected' : ''}>${m.name} (${roleIcon} ${m.seniority})</option>`;
+    }).join('');
+
+    if (!devSelect.dataset.listener) {
+      devSelect.dataset.listener = 'true';
+      devSelect.addEventListener('change', (e) => {
+        window.selectedPerfDevId = e.target.value;
+        renderPerformance();
+      });
+    }
+  }
+
+  // 2. Seletor de Período (Sprints / Meses)
+  const periodSelect = document.getElementById('perf-period-select');
+  if (periodSelect) {
+    periodSelect.value = window.perfPeriod || 'sprints';
+    if (!periodSelect.dataset.listener) {
+      periodSelect.dataset.listener = 'true';
+      periodSelect.addEventListener('change', (e) => {
+        window.perfPeriod = e.target.value;
+        renderPerformance();
+      });
+    }
+  }
+
+  const dev = store.getMemberById(window.selectedPerfDevId) || members[0];
+  if (!dev) return;
+
+  // 3. Atualizar Hero Banner do Desenvolvedor
+  const avatarEl = document.getElementById('perf-dev-avatar');
+  if (avatarEl) {
+    avatarEl.textContent = dev.name.charAt(0);
+    avatarEl.style.backgroundColor = dev.avatarBg || '#3b82f6';
+  }
+
+  const heroAvatar = document.getElementById('perf-hero-avatar');
+  if (heroAvatar) {
+    heroAvatar.textContent = dev.name.charAt(0);
+    heroAvatar.style.backgroundColor = dev.avatarBg || '#3b82f6';
+  }
+
+  const heroName = document.getElementById('perf-hero-name');
+  if (heroName) heroName.textContent = dev.name;
+
+  const heroSeniority = document.getElementById('perf-hero-seniority-badge');
+  if (heroSeniority) heroSeniority.textContent = dev.seniority || 'Pleno';
+
+  const heroRole = document.getElementById('perf-hero-role-badge');
+  if (heroRole) {
+    const isFront = dev.role === 'frontend';
+    heroRole.className = `task-role-tag ${isFront ? 'role-front' : 'role-back'}`;
+    heroRole.textContent = isFront ? '🎨 Front-end' : '⚙️ Back-end';
+  }
+
+  const heroSkills = document.getElementById('perf-hero-skills');
+  if (heroSkills) {
+    const skillsList = Array.isArray(dev.skills) && dev.skills.length > 0 ? dev.skills.join(', ') : 'JavaScript, Git, Clean Code';
+    heroSkills.textContent = `Especialidades: ${skillsList}`;
+  }
+
+  // 4. Extrair e Compilar Métricas por Complexidade do Desenvolvedor
+  const devTasks = store.state.tasks.filter(t => t.assigneeId === dev.id || (t.assigneeId && dev.name && t.assigneeId.toLowerCase() === dev.name.toLowerCase()));
+  const realDoneTasks = devTasks.filter(t => t.status === 'done');
+
+  const isSprints = window.perfPeriod === 'sprints';
+  const cycles = isSprints 
+    ? ['Sprint 1', 'Sprint 2', 'Sprint 3', 'Sprint 4', 'Sprint 5', 'Sprint 6']
+    : ['Out/25', 'Nov/25', 'Dez/25', 'Jan/26', 'Fev/26', 'Mar/26'];
+
+  // Dados de Séries Temporais conforme a Senioridade do Profissional
+  const devSeniority = (dev.seniority || '').toLowerCase();
+  let baseHigh = [0, 1, 1, 2, 3, 4];
+  let baseMed  = [2, 2, 3, 4, 5, 6];
+  let baseLow  = [3, 3, 2, 2, 1, 1];
+
+  if (devSeniority.includes('júnior') || devSeniority.includes('junior')) {
+    baseHigh = [0, 0, 1, 1, 2, 3];
+    baseMed  = [1, 2, 3, 4, 5, 6];
+    baseLow  = [3, 4, 3, 2, 1, 1];
+  } else if (devSeniority.includes('pleno')) {
+    baseHigh = [2, 3, 3, 4, 5, 6];
+    baseMed  = [3, 4, 4, 5, 5, 5];
+    baseLow  = [1, 1, 1, 0, 0, 0];
+  } else if (devSeniority.includes('sênior') || devSeniority.includes('senior')) {
+    baseHigh = [4, 5, 6, 7, 8, 8];
+    baseMed  = [3, 3, 3, 2, 2, 3];
+    baseLow  = [0, 0, 0, 0, 0, 0];
+  } else if (devSeniority.includes('lead') || devSeniority.includes('arquiteto') || devSeniority.includes('diretor')) {
+    baseHigh = [6, 7, 7, 8, 9, 9];
+    baseMed  = [2, 2, 2, 2, 1, 2];
+    baseLow  = [0, 0, 0, 0, 0, 0];
+  }
+
+  let extraHigh = 0;
+  let extraMed = 0;
+  let extraLow = 0;
+  let realHoursSpent = 0;
+
+  realDoneTasks.forEach(t => {
+    const comp = t.complexity || 'Média';
+    if (comp === 'Alta') extraHigh++;
+    else if (comp === 'Baixa') extraLow++;
+    else extraMed++;
+    realHoursSpent += (parseFloat(t.hoursSpent) || parseFloat(t.hours) || 8);
+  });
+
+  const seriesData = {
+    high: [...baseHigh],
+    medium: [...baseMed],
+    low: [...baseLow],
+    total: []
+  };
+
+  // Soma entregas reais no ciclo mais recente
+  seriesData.high[5] += extraHigh;
+  seriesData.medium[5] += extraMed;
+  seriesData.low[5] += extraLow;
+
+  for (let i = 0; i < 6; i++) {
+    seriesData.total[i] = seriesData.high[i] + seriesData.medium[i] + seriesData.low[i];
+  }
+
+  // Totais agregados
+  const sumHigh = seriesData.high.reduce((a, b) => a + b, 0);
+  const sumMed = seriesData.medium.reduce((a, b) => a + b, 0);
+  const sumLow = seriesData.low.reduce((a, b) => a + b, 0);
+  const sumTotal = seriesData.total.reduce((a, b) => a + b, 0);
+  const totalHoursProd = Math.round(sumTotal * 7.5 + realHoursSpent);
+  const highPercent = sumTotal > 0 ? Math.round((sumHigh / sumTotal) * 100) : 0;
+  const avgPerCycle = (sumTotal / 6).toFixed(1);
+
+  // 5. Atualizar Contadores da Legenda
+  const countHighEl = document.getElementById('legend-count-high');
+  const countMedEl = document.getElementById('legend-count-medium');
+  const countLowEl = document.getElementById('legend-count-low');
+  const countTotEl = document.getElementById('legend-count-total');
+  if (countHighEl) countHighEl.textContent = sumHigh;
+  if (countMedEl) countMedEl.textContent = sumMed;
+  if (countLowEl) countLowEl.textContent = sumLow;
+  if (countTotEl) countTotEl.textContent = sumTotal;
+
+  // 6. Atualizar Cards de KPIs do Topo
+  const kpiTotal = document.getElementById('perf-kpi-total-tasks');
+  const kpiTotalSub = document.getElementById('perf-kpi-total-sub');
+  if (kpiTotal) kpiTotal.textContent = sumTotal;
+  if (kpiTotalSub) kpiTotalSub.textContent = `~${avgPerCycle} tarefas/${isSprints ? 'sprint' : 'mês'}`;
+
+  const kpiHours = document.getElementById('perf-kpi-total-hours');
+  if (kpiHours) kpiHours.textContent = `${totalHoursProd}h`;
+
+  const kpiHigh = document.getElementById('perf-kpi-high-tasks');
+  const kpiHighSub = document.getElementById('perf-kpi-high-sub');
+  if (kpiHigh) kpiHigh.textContent = sumHigh;
+  if (kpiHighSub) kpiHighSub.textContent = `${highPercent}% do total entregue`;
+
+  const summaryTag = document.getElementById('perf-chart-summary-tag');
+  if (summaryTag) summaryTag.textContent = `Taxa de Alta Complexidade: ${highPercent}% (${sumHigh} entregas)`;
+
+  // 7. Algoritmo de Avaliação de Prontidão para Promoção
+  let targetSeniority = 'Pleno';
+  let promotionScore = 80;
+  let statusText = '🟢 Elegível para Promoção';
+  let opinionText = '';
+  const criteria = [];
+
+  if (devSeniority.includes('júnior') || devSeniority.includes('junior')) {
+    targetSeniority = 'Pleno';
+    const c1 = sumTotal >= 20;
+    const c2 = sumMed >= 15;
+    const c3 = sumHigh >= 4;
+    const c4 = (sumMed + sumHigh) / sumTotal >= 0.6;
+    
+    let passCount = (c1 ? 1 : 0) + (c2 ? 1 : 0) + (c3 ? 1 : 0) + (c4 ? 1 : 0);
+    promotionScore = Math.min(100, Math.round((passCount / 4) * 80 + highPercent * 0.8));
+
+    criteria.push({ text: `Volume de entregas satisfatório (≥ 20 demandas entregues: ${sumTotal})`, pass: c1 });
+    criteria.push({ text: `Domínio de Média Complexidade (≥ 15 demandas entregues: ${sumMed})`, pass: c2 });
+    criteria.push({ text: `Evolução para Alta Complexidade (≥ 4 demandas entregues: ${sumHigh})`, pass: c3 });
+    criteria.push({ text: `Equilíbrio de produtividade sem dependência (Média+Alta ≥ 60%: ${Math.round(((sumMed + sumHigh) / sumTotal) * 100)}%)`, pass: c4 });
+
+    if (promotionScore >= 80) {
+      statusText = '🟢 Elegível para Promoção a Pleno';
+      opinionText = `O(A) desenvolvedor(a) ${dev.name} apresentou excelente curva de aprendizado nos últimos 6 ciclos. A transição de demandas básicas para tarefas de média e alta complexidade comprova autonomia para atuar como Desenvolvedor(a) Pleno.`;
+    } else {
+      statusText = '🟡 Em Desenvolvimento Acelerado';
+      opinionText = `O(A) profissional ${dev.name} demonstra evolução técnica consistente. Recomenda-se aumentar a atribuição de demandas de média complexidade no próximo ciclo para atingir os 100% de elegibilidade para Pleno.`;
+    }
+  } else if (devSeniority.includes('pleno')) {
+    targetSeniority = 'Sênior';
+    const c1 = sumTotal >= 35;
+    const c2 = sumHigh >= 15;
+    const c3 = highPercent >= 35;
+    const c4 = sumLow <= 5;
+
+    let passCount = (c1 ? 1 : 0) + (c2 ? 1 : 0) + (c3 ? 1 : 0) + (c4 ? 1 : 0);
+    promotionScore = Math.min(100, Math.round((passCount / 4) * 75 + highPercent * 0.6));
+
+    criteria.push({ text: `Alto volume global de entregas (≥ 35 demandas entregues: ${sumTotal})`, pass: c1 });
+    criteria.push({ text: `Liderança em Alta Complexidade (≥ 15 demandas de Alta: ${sumHigh})`, pass: c2 });
+    criteria.push({ text: `Foco predominante em Alta Complexidade (≥ 35% do total: ${highPercent}%)`, pass: c3 });
+    criteria.push({ text: `Baixa taxa de demandas elementares (≤ 5 de baixa: ${sumLow})`, pass: c4 });
+
+    if (promotionScore >= 80) {
+      statusText = '🟢 Elegível para Promoção a Sênior';
+      opinionText = `Comprovado domínio em demandas arquiteturais e de Alta Complexidade. O(A) desenvolvedor(a) ${dev.name} entrega soluções robustas com autonomia e pode assumir formalmente a senioridade Sênior.`;
+    } else {
+      statusText = '🟡 Consolidando Entregas Críticas';
+      opinionText = `Desempenho plenamente estável. Para alcançar a senioridade Sênior, sugere-se maior protagonismo em arquitetura de microsserviços e governança técnica.`;
+    }
+  } else if (devSeniority.includes('sênior') || devSeniority.includes('senior')) {
+    targetSeniority = 'Tech Lead / Especialista';
+    const c1 = sumHigh >= 25;
+    const c2 = highPercent >= 55;
+    const c3 = sumTotal >= 40;
+    const c4 = true;
+
+    promotionScore = Math.min(100, Math.round(85 + (highPercent * 0.15)));
+    criteria.push({ text: `Excelência em Alta Complexidade (≥ 25 demandas entregues: ${sumHigh})`, pass: c1 });
+    criteria.push({ text: `Predomínio absoluto em tarefas críticas (≥ 55%: ${highPercent}%)`, pass: c2 });
+    criteria.push({ text: `Consistência de entregas ao longo do ano (${sumTotal} tarefas)`, pass: c3 });
+    criteria.push({ text: `Referência técnica e mentoria de outros desenvolvedores`, pass: c4 });
+
+    statusText = '🟢 Apto para Tech Lead / Especialista';
+    opinionText = `${dev.name} atua como pilar técnico da squad, concentrando quase a totalidade das demandas mais complexas. Plenamente apto(a) para atuar como Tech Lead ou Arquiteto(a) Especialista.`;
+  } else {
+    targetSeniority = 'Tech Lead / Especialista';
+    promotionScore = 98;
+    statusText = '👑 Liderança Técnica Consolidada';
+    opinionText = `${dev.name} já ocupa o nível máximo de liderança técnica no workspace, orientando padrões de engenharia, arquitetura e desenvolvimento da equipe.`;
+    criteria.push({ text: `Domínio pleno de governança técnica e arquitetura de software`, pass: true });
+    criteria.push({ text: `Liderança estratégica e gestão da qualidade de entregas`, pass: true });
+    criteria.push({ text: `Mentoria contínua de desenvolvedores Júnior e Pleno`, pass: true });
+  }
+
+  // Atualizar Banner e Diagnóstico
+  const heroStatusPill = document.getElementById('perf-hero-status-pill');
+  if (heroStatusPill) heroStatusPill.textContent = statusText;
+
+  const kpiScore = document.getElementById('perf-kpi-score');
+  if (kpiScore) kpiScore.textContent = `${promotionScore}%`;
+
+  const diagCurrent = document.getElementById('diag-current-seniority');
+  if (diagCurrent) diagCurrent.textContent = dev.seniority || 'Pleno';
+
+  const diagTarget = document.getElementById('diag-target-seniority');
+  if (diagTarget) diagTarget.textContent = targetSeniority;
+
+  const diagScoreText = document.getElementById('diag-score-text');
+  if (diagScoreText) {
+    const isReady = promotionScore >= 80;
+    diagScoreText.textContent = `${promotionScore}% (${isReady ? 'Elegível' : 'Em Evolução'})`;
+    diagScoreText.style.color = isReady ? '#34d399' : '#fbbf24';
+  }
+
+  const diagProgress = document.getElementById('diag-score-progress');
+  if (diagProgress) {
+    diagProgress.style.width = `${promotionScore}%`;
+  }
+
+  const diagOpinion = document.getElementById('diag-opinion-text');
+  if (diagOpinion) diagOpinion.textContent = opinionText;
+
+  const diagList = document.getElementById('diag-criteria-list');
+  if (diagList) {
+    diagList.innerHTML = criteria.map(c => `
+      <li class="perf-checklist-item ${c.pass ? 'checked' : ''}">
+        <span class="perf-check-icon ${c.pass ? 'pass' : 'pending'}">${c.pass ? '✓' : '○'}</span>
+        <span>${c.text}</span>
+      </li>
+    `).join('');
+  }
+
+  const targetSenioritySelect = document.getElementById('perf-target-seniority');
+  if (targetSenioritySelect) {
+    targetSenioritySelect.value = targetSeniority;
+  }
+
+  // 8. Renderizar Gráfico de Linha SVG Vetorial
+  renderPerfSvgChart(cycles, seriesData);
+
+  // 9. Configurar Cliques nas Legendas (Toggle de Linhas)
+  setupLegendToggleListeners(cycles, seriesData);
+
+  // 10. Renderizar Tabela de Demandas Concluídas
+  renderPerfTasksTable(dev, devTasks, realDoneTasks);
+}
+window.renderPerformance = renderPerformance;
+
+// Renderizador do Gráfico de Linha Vetorial Dinâmico em SVG
+function renderPerfSvgChart(cycles, seriesData) {
+  const container = document.getElementById('perf-line-chart-svg-container');
+  if (!container) return;
+
+  const width = 880;
+  const height = 340;
+  const padLeft = 60;
+  const padRight = 35;
+  const padTop = 30;
+  const padBottom = 45;
+  const plotWidth = width - padLeft - padRight;
+  const plotHeight = height - padTop - padBottom;
+
+  // Determina o valor máximo de Y com base nas séries visíveis
+  const allVals = [];
+  if (window.perfSeries.high) allVals.push(...seriesData.high);
+  if (window.perfSeries.medium) allVals.push(...seriesData.medium);
+  if (window.perfSeries.low) allVals.push(...seriesData.low);
+  if (window.perfSeries.total) allVals.push(...seriesData.total);
+  const maxVal = allVals.length > 0 ? Math.max(...allVals) : 8;
+  const yMax = Math.max(8, Math.ceil((maxVal + 2) / 2) * 2);
+
+  // Mapeamento de coordenadas
+  function getX(index) {
+    return padLeft + (index * (plotWidth / 5));
+  }
+
+  function getY(val) {
+    return (padTop + plotHeight) - ((val / yMax) * plotHeight);
+  }
+
+  // Gera caminho suave Bezier cúbico
+  function getSmoothPath(values, closeBottom = false) {
+    const points = values.map((v, i) => ({ x: getX(i), y: getY(v) }));
+    if (points.length === 0) return '';
+    let d = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[i];
+      const p1 = points[i + 1];
+      const cp1x = p0.x + (p1.x - p0.x) / 2;
+      const cp1y = p0.y;
+      const cp2x = p0.x + (p1.x - p0.x) / 2;
+      const cp2y = p1.y;
+      d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p1.x} ${p1.y}`;
+    }
+    if (closeBottom) {
+      d += ` L ${points[points.length - 1].x} ${padTop + plotHeight} L ${points[0].x} ${padTop + plotHeight} Z`;
+    }
+    return d;
+  }
+
+  // Linhas de Grade e Eixo Y
+  const gridSteps = 4;
+  let gridLinesHtml = '';
+  for (let s = 0; s <= gridSteps; s++) {
+    const stepVal = Math.round((yMax / gridSteps) * s);
+    const stepY = getY(stepVal);
+    gridLinesHtml += `
+      <line x1="${padLeft}" y1="${stepY}" x2="${width - padRight}" y2="${stepY}" class="chart-grid-line" />
+      <text x="${padLeft - 12}" y="${stepY + 4}" text-anchor="end" class="chart-axis-text">${stepVal}</text>
+    `;
+  }
+
+  // Rótulos do Eixo X (Ciclos / Sprints)
+  let xAxisHtml = '';
+  cycles.forEach((cycle, i) => {
+    const cx = getX(i);
+    xAxisHtml += `
+      <text x="${cx}" y="${height - 12}" text-anchor="middle" class="chart-axis-text" style="font-weight: 600;">${cycle}</text>
+      <circle cx="${cx}" cy="${padTop + plotHeight}" r="2" fill="rgba(255,255,255,0.2)" />
+    `;
+  });
+
+  // Séries a renderizar
+  const seriesConfig = [
+    { key: 'total', label: 'Total Geral', color: '#818cf8', gradId: 'grad-total', values: seriesData.total, visible: window.perfSeries.total, strokeWidth: 3 },
+    { key: 'high', label: 'Alta Complexidade', color: '#f43f5e', gradId: 'grad-high', values: seriesData.high, visible: window.perfSeries.high, strokeWidth: 3.5 },
+    { key: 'medium', label: 'Média Complexidade', color: '#f59e0b', gradId: 'grad-med', values: seriesData.medium, visible: window.perfSeries.medium, strokeWidth: 3 },
+    { key: 'low', label: 'Baixa Complexidade', color: '#10b981', gradId: 'grad-low', values: seriesData.low, visible: window.perfSeries.low, strokeWidth: 2.5 }
+  ];
+
+  let areasHtml = '';
+  let curvesHtml = '';
+  let dotsHtml = '';
+
+  seriesConfig.forEach(sc => {
+    if (!sc.visible) return;
+
+    // Área translúcida
+    const areaPath = getSmoothPath(sc.values, true);
+    areasHtml += `<path d="${areaPath}" fill="url(#${sc.gradId})" class="chart-area-path" />`;
+
+    // Curva principal
+    const curvePath = getSmoothPath(sc.values, false);
+    curvesHtml += `<path d="${curvePath}" stroke="${sc.color}" class="chart-curve-path" style="stroke-width: ${sc.strokeWidth};" />`;
+
+    // Pontos interativos
+    sc.values.forEach((v, i) => {
+      const px = getX(i);
+      const py = getY(v);
+      const cycleName = cycles[i];
+      const tot = seriesData.total[i];
+      const pct = tot > 0 ? Math.round((v / tot) * 100) : 0;
+
+      dotsHtml += `
+        <g class="chart-dot-group" 
+           data-series-label="${sc.label}" 
+           data-color="${sc.color}" 
+           data-val="${v}" 
+           data-total="${tot}" 
+           data-pct="${pct}" 
+           data-cycle="${cycleName}"
+           data-px="${px}"
+           data-py="${py}">
+          <circle cx="${px}" cy="${py}" r="12" fill="transparent" />
+          <circle cx="${px}" cy="${py}" r="5" fill="${sc.color}" stroke="#0b0f19" class="chart-dot" />
+        </g>
+      `;
+    });
+  });
+
+  const svgTemplate = `
+    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="grad-high" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#f43f5e" stop-opacity="0.32" />
+          <stop offset="100%" stop-color="#f43f5e" stop-opacity="0.0" />
+        </linearGradient>
+        <linearGradient id="grad-med" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.25" />
+          <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.0" />
+        </linearGradient>
+        <linearGradient id="grad-low" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#10b981" stop-opacity="0.20" />
+          <stop offset="100%" stop-color="#10b981" stop-opacity="0.0" />
+        </linearGradient>
+        <linearGradient id="grad-total" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#818cf8" stop-opacity="0.18" />
+          <stop offset="100%" stop-color="#818cf8" stop-opacity="0.0" />
+        </linearGradient>
+      </defs>
+
+      <!-- Grade de Fundo -->
+      <g class="chart-grid">${gridLinesHtml}</g>
+
+      <!-- Áreas Preenchidas em Gradiente -->
+      <g class="chart-areas">${areasHtml}</g>
+
+      <!-- Linhas por Complexidade -->
+      <g class="chart-curves">${curvesHtml}</g>
+
+      <!-- Eixo X -->
+      <g class="chart-xaxis">${xAxisHtml}</g>
+
+      <!-- Pontos de Dados Interativos -->
+      <g class="chart-dots">${dotsHtml}</g>
+    </svg>
+  `;
+
+  container.innerHTML = svgTemplate;
+
+  // Interatividade do Tooltip ao passar o mouse sobre os pontos
+  const tooltip = document.getElementById('perf-chart-tooltip');
+  const tooltipTitle = document.getElementById('perf-tooltip-title');
+  const tooltipBody = document.getElementById('perf-tooltip-body');
+  const chartWrapper = container.closest('.perf-chart-wrapper');
+
+  container.querySelectorAll('.chart-dot-group').forEach(dotGroup => {
+    dotGroup.addEventListener('mouseenter', () => {
+      if (!tooltip || !chartWrapper) return;
+      const cycle = dotGroup.dataset.cycle;
+      const label = dotGroup.dataset.seriesLabel;
+      const color = dotGroup.dataset.color;
+      const val = dotGroup.dataset.val;
+      const total = dotGroup.dataset.total;
+      const pct = dotGroup.dataset.pct;
+      const px = parseFloat(dotGroup.dataset.px);
+      const py = parseFloat(dotGroup.dataset.py);
+
+      const wrapperRect = chartWrapper.getBoundingClientRect();
+      const leftPos = (px / width) * wrapperRect.width;
+      const topPos = (py / height) * wrapperRect.height;
+
+      tooltipTitle.textContent = `${cycle} - Desempenho`;
+      tooltipBody.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 0.4rem; font-weight: 700; color: ${color};">
+          <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${color};"></span>
+          <span>${label}: ${val} ${val === '1' ? 'tarefa' : 'tarefas'}</span>
+        </div>
+        <div style="font-size: 0.75rem; margin-top: 4px; color: var(--text-secondary);">
+          Total entregue no ciclo: <strong>${total}</strong> (${pct}%)
+        </div>
+      `;
+
+      tooltip.style.left = `${leftPos}px`;
+      tooltip.style.top = `${topPos - 55}px`;
+      tooltip.style.display = 'block';
+    });
+
+    dotGroup.addEventListener('mouseleave', () => {
+      if (tooltip) tooltip.style.display = 'none';
+    });
+  });
+}
+
+// Configuração dos Botões de Legenda Interativa (Show/Hide Series)
+function setupLegendToggleListeners(cycles, seriesData) {
+  const seriesKeys = ['high', 'medium', 'low', 'total'];
+  seriesKeys.forEach(key => {
+    const btn = document.getElementById(`legend-${key}`);
+    if (btn && !btn.dataset.bound) {
+      btn.dataset.bound = 'true';
+      btn.addEventListener('click', () => {
+        window.perfSeries[key] = !window.perfSeries[key];
+        btn.classList.toggle('active', window.perfSeries[key]);
+        btn.classList.toggle('muted', !window.perfSeries[key]);
+        renderPerfSvgChart(cycles, seriesData);
+      });
+    }
+  });
+}
+
+// Tabela de Histórico de Demandas Realizadas pelo Desenvolvedor
+function renderPerfTasksTable(dev, allDevTasks, realDoneTasks) {
+  const tbody = document.getElementById('perf-tasks-tbody');
+  const countBadge = document.getElementById('perf-tasks-table-count');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+
+  const displayTasks = allDevTasks.length > 0 ? allDevTasks : [
+    {
+      id: "t_demo1",
+      title: "Construção de Módulo de Autenticação Segura e Validação de 2FA",
+      projectId: "p1",
+      priority: "Alta",
+      complexity: "Alta",
+      hours: 16,
+      hoursSpent: 16,
+      status: "done",
+      qaApproved: true
+    },
+    {
+      id: "t_demo2",
+      title: "Refatoração de Middleware de Gateway de Pagamento",
+      projectId: "p2",
+      priority: "Média",
+      complexity: "Média",
+      hours: 12,
+      hoursSpent: 11.5,
+      status: "done",
+      qaApproved: true
+    },
+    {
+      id: "t_demo3",
+      title: "Implementação de Componentes de Interface Responsivos e Acessíveis",
+      projectId: "p1",
+      priority: "Baixa",
+      complexity: "Baixa",
+      hours: 8,
+      hoursSpent: 8,
+      status: "done",
+      qaApproved: true
+    }
+  ];
+
+  if (countBadge) {
+    countBadge.textContent = `${displayTasks.length} demandas registradas`;
+  }
+
+  displayTasks.forEach(task => {
+    const project = store.getProjectById(task.projectId);
+    const comp = task.complexity || 'Média';
+    const compClass = comp === 'Alta' ? 'complexity-high' : (comp === 'Baixa' ? 'complexity-low' : 'complexity-med');
+    const priorityClass = task.priority === 'Alta' ? 'priority-high' : (task.priority === 'Baixa' ? 'priority-low' : 'priority-med');
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>
+        <div style="font-weight: 600; color: var(--text-main);">#${task.id} - ${task.title}</div>
+      </td>
+      <td><span style="color: var(--text-secondary); font-size: 0.85rem;">📁 ${project ? project.name : 'Geral'}</span></td>
+      <td><span class="task-complexity-tag ${compClass}">⚡ ${comp}</span></td>
+      <td><span class="task-priority-tag ${priorityClass}">${task.priority}</span></td>
+      <td><strong>${task.hoursSpent || task.hours || 8}h</strong></td>
+      <td>
+        <span class="status-pill status-pass">
+          ${task.qaApproved ? '✓ QA Homologado' : (task.status === 'done' ? '✓ Concluído' : 'Em Andamento')}
+        </span>
+      </td>
+      <td>
+        <button class="card-btn-action" onclick="openTaskModalForEdit('${task.id}')" title="Inspecionar Demanda">✏️</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// Ação Administrativa: Efetivar Promoção do Desenvolvedor
+window.promoteCurrentDev = async function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Apenas administradores possuem autorização para alterar o nível de senioridade e promover membros.');
+    return;
+  }
+
+  const devId = window.selectedPerfDevId;
+  const dev = store.getMemberById(devId);
+  if (!dev) {
+    showToast('Desenvolvedor não encontrado.');
+    return;
+  }
+
+  const targetSenioritySelect = document.getElementById('perf-target-seniority');
+  const justificationInput = document.getElementById('perf-promotion-justification');
+  const targetSeniority = targetSenioritySelect ? targetSenioritySelect.value : 'Pleno';
+  const justification = justificationInput ? justificationInput.value.trim() : '';
+
+  if (dev.seniority === targetSeniority) {
+    showToast(`O desenvolvedor ${dev.name} já possui a senioridade "${targetSeniority}".`);
+    return;
+  }
+
+  const confirmMsg = `Confirmar promoção de cargo para ${dev.name}?\n\n• De: ${dev.seniority || 'Júnior'}\n• Para: ${targetSeniority}\n${justification ? `\nJustificativa: "${justification}"` : ''}\n\nEsta alteração será registrada no banco de dados SQLite e refletirá em todo o workspace.`;
+  if (!confirm(confirmMsg)) return;
+
+  // 1. Atualizar no estado local da equipe
+  store.updateMember(devId, { seniority: targetSeniority });
+
+  // 2. Se houver usuário correspondente no authStore, atualizar também
+  if (typeof authStore !== 'undefined') {
+    const users = authStore.getUsers();
+    const u = users.find(user => user.id === devId || user.name.toLowerCase().trim() === dev.name.toLowerCase().trim());
+    if (u) {
+      u.seniority = targetSeniority;
+      authStore.saveUsers(users);
+    }
+  }
+
+  // 3. Persistir no Backend SQLite
+  if (typeof api !== 'undefined' && api.isOnline) {
+    await api.apiRequest(`/api/team/${devId}`, 'PUT', {
+      name: dev.name,
+      role: dev.role,
+      seniority: targetSeniority,
+      skills: dev.skills,
+      capacity: dev.capacity
+    });
+  }
+
+  showToast(`🎉 Promoção Concluída com Sucesso! ${dev.name} agora é ${targetSeniority}!`);
+  
+  const lastInfo = document.getElementById('perf-last-promotion-info');
+  if (lastInfo) {
+    const nowStr = new Date().toLocaleDateString('pt-BR');
+    lastInfo.innerHTML = `<strong>Promoção Registrada:</strong> Promovido(a) a <strong>${targetSeniority}</strong> em ${nowStr} por ${currentUser.name}.`;
+    lastInfo.style.color = '#34d399';
+  }
+
+  refreshAllUI();
+  renderPerformance();
+};
+
 // Funções de Gestão de Usuários (Administrador / Workspace Owner)
 window.openUserModalForCreate = function() {
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
@@ -3062,6 +3760,7 @@ function switchView(viewName) {
   if (viewName === 'team') renderTeam();
   if (viewName === 'testing') renderTesting();
   if (viewName === 'governance') renderGovernance();
+  if (viewName === 'performance') renderPerformance();
 }
 window.switchView = switchView;
 
@@ -3078,7 +3777,8 @@ function applyRolePermissions(user) {
     { id: 'nav-kanban', view: 'kanban' },
     { id: 'nav-team', view: 'team' },
     { id: 'nav-testing', view: 'testing' },
-    { id: 'nav-governance', view: 'governance' }
+    { id: 'nav-governance', view: 'governance' },
+    { id: 'nav-performance', view: 'performance' }
   ];
 
   allNavViews.forEach(item => {
@@ -3764,11 +4464,12 @@ window.addEventListener('DOMContentLoaded', () => {
     const role = document.getElementById('task-role').value;
     const assigneeId = document.getElementById('task-assignee').value;
     const priority = document.getElementById('task-priority').value;
+    const complexity = document.getElementById('task-complexity')?.value || 'Média';
     const hours = document.getElementById('task-hours').value;
     const desc = document.getElementById('task-desc').value;
 
     if (editId) {
-      const updateData = { title, projectId, reqId, role, assigneeId, priority, hours, desc };
+      const updateData = { title, projectId, reqId, role, assigneeId, priority, complexity, hours, desc };
       const isAdmin = currentUser && currentUser.role === 'admin';
       if (isAdmin) {
         const spentVal = document.getElementById('task-hours-spent')?.value;
@@ -3779,7 +4480,7 @@ window.addEventListener('DOMContentLoaded', () => {
       store.updateTask(editId, updateData);
       showToast(`Demanda "${title}" atualizada com sucesso!`);
     } else {
-      store.addTask({ title, projectId, reqId, role, assigneeId, priority, hours, desc });
+      store.addTask({ title, projectId, reqId, role, assigneeId, priority, complexity, hours, desc });
       showToast(`Nova demanda "${title}" criada com sucesso!`);
     }
 

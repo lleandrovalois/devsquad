@@ -87,6 +87,7 @@ db.exec(`
     role TEXT,
     assignee_id TEXT,
     priority TEXT,
+    complexity TEXT DEFAULT 'Média',
     hours REAL DEFAULT 8,
     hours_spent REAL DEFAULT 0,
     status TEXT DEFAULT 'backlog',
@@ -126,6 +127,11 @@ db.exec(`
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
   );
 `);
+
+// Migração segura para adicionar complexity em bases já existentes
+try {
+  db.exec("ALTER TABLE tasks ADD COLUMN complexity TEXT DEFAULT 'Média'");
+} catch (e) {}
 
 // ==============================================================================
 // 2. Migração Inicial de Dados (Seed Data em PT-BR)
@@ -365,6 +371,7 @@ function getFullTasks() {
       role: t.role,
       assigneeId: t.assignee_id,
       priority: t.priority,
+      complexity: t.complexity || 'Média',
       hours: t.hours,
       hoursSpent: t.hours_spent,
       status: t.status,
@@ -805,9 +812,9 @@ const server = http.createServer(async (req, res) => {
         const t = await parseJsonBody(req);
         const id = t.id || 't_' + Date.now();
         db.prepare(`
-          INSERT INTO tasks (id, title, project_id, req_id, role, assignee_id, priority, hours, hours_spent, status, desc, impediment, qa_approved)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, null, 0)
-        `).run(id, t.title, t.projectId || null, t.reqId || null, t.role || 'backend', t.assigneeId || null, t.priority || 'Média', parseFloat(t.hours) || 8, t.status || 'backlog', t.desc || '');
+          INSERT INTO tasks (id, title, project_id, req_id, role, assignee_id, priority, complexity, hours, hours_spent, status, desc, impediment, qa_approved)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, null, 0)
+        `).run(id, t.title, t.projectId || null, t.reqId || null, t.role || 'backend', t.assigneeId || null, t.priority || 'Média', t.complexity || 'Média', parseFloat(t.hours) || 8, t.status || 'backlog', t.desc || '');
         return sendJson(res, 201, { id, ...t });
       }
     }
@@ -912,6 +919,7 @@ const server = http.createServer(async (req, res) => {
           const newRole = t.role !== undefined ? t.role : existing.role;
           const newAssignee = t.assigneeId !== undefined ? (t.assigneeId || null) : existing.assignee_id;
           const newPriority = t.priority !== undefined ? t.priority : existing.priority;
+          const newComplexity = t.complexity !== undefined ? t.complexity : (existing.complexity || 'Média');
           const newHours = t.hours !== undefined ? parseFloat(t.hours) : existing.hours;
           
           let newHoursSpent = existing.hours_spent || 0;
@@ -936,9 +944,9 @@ const server = http.createServer(async (req, res) => {
           const newDesc = t.desc !== undefined ? t.desc : existing.desc;
           db.prepare(`
             UPDATE tasks
-            SET title = ?, project_id = ?, req_id = ?, role = ?, assignee_id = ?, priority = ?, hours = ?, hours_spent = ?, desc = ?
+            SET title = ?, project_id = ?, req_id = ?, role = ?, assignee_id = ?, priority = ?, complexity = ?, hours = ?, hours_spent = ?, desc = ?
             WHERE id = ?
-          `).run(newTitle, newProj, newReq, newRole, newAssignee, newPriority, newHours, newHoursSpent, newDesc, taskId);
+          `).run(newTitle, newProj, newReq, newRole, newAssignee, newPriority, newComplexity, newHours, newHoursSpent, newDesc, taskId);
           return sendJson(res, 200, { success: true, id: taskId, ...t, hoursSpent: newHoursSpent });
         }
         return sendJson(res, 404, { success: false, message: 'Demanda não encontrada.' });

@@ -2642,4 +2642,205 @@ html, body {
   color: #fb7185;
 }
 
+/* ==========================================================================
+   MÓDULO: DESEMPENHO INDIVIDUAL & AVALIAÇÃO DE PROMOÇÕES (ADMIN)
+   ========================================================================== */
+
+/* Badges de Complexidade Técnica de Demandas */
+.task-complexity-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.complexity-high {
+  background: rgba(244, 63, 94, 0.15);
+  color: #f43f5e;
+  border: 1px solid rgba(244, 63, 94, 0.35);
+}
+
+.complexity-med {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.complexity-low {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+/* Legenda Interativa do Gráfico com Chips e Switches */
+.perf-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-full);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.perf-legend-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+  border-color: var(--border-medium);
+}
+
+.perf-legend-chip.active {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: var(--text-main);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.perf-legend-chip.muted {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.legend-color-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.legend-counter {
+  font-size: 0.72rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* Gráfico de Linha Vetorial SVG */
+.perf-chart-wrapper {
+  position: relative;
+  width: 100%;
+  min-height: 330px;
+  background: radial-gradient(circle at 50% 30%, rgba(99, 102, 241, 0.04) 0%, transparent 70%);
+  border-radius: var(--radius-md);
+}
+
+#perf-line-chart-svg-container svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chart-grid-line {
+  stroke: rgba(255, 255, 255, 0.07);
+  stroke-dasharray: 4 4;
+  stroke-width: 1;
+}
+
+.chart-axis-text {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-main);
+}
+
+.chart-curve-path {
+  fill: none;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: opacity 0.3s ease, stroke-width 0.2s ease;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.3));
+}
+
+.chart-area-path {
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.chart-dot-group {
+  cursor: pointer;
+}
+
+.chart-dot {
+  stroke-width: 2.5;
+  transition: r 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), stroke-width 0.2s ease;
+}
+
+.chart-dot-group:hover .chart-dot {
+  r: 7.5;
+  stroke-width: 3.5;
+  filter: drop-shadow(0 0 10px currentColor);
+}
+
+/* Tooltip Interativo do Gráfico */
+.perf-tooltip {
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  will-change: transform, left, top;
+}
+
+.perf-tooltip-content {
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px rgba(99, 102, 241, 0.2);
+}
+
+/* Grid de Promoção & Diagnóstico */
+.perf-promotion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 1.25rem;
+}
+
+.perf-checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  color: var(--text-secondary);
+}
+
+.perf-checklist-item.checked {
+  color: var(--text-main);
+}
+
+.perf-check-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.perf-check-icon.pass {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.perf-check-icon.pending {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+
 
