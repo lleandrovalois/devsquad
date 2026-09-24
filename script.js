@@ -12,313 +12,13 @@
 
 const STORAGE_KEY = 'devsquad_pro_state_v3';
 
-// Dados Iniciais Ricos de Exemplo (Seed Data em PT-BR)
+// Dados Iniciais Limpos (Apenas entidades cadastradas pelo usuário)
 const initialSeedData = {
-  projects: [
-    {
-      id: "p1",
-      code: "ECOMM",
-      name: "SuperApp E-Commerce",
-      desc: "Plataforma integrada de vendas e pagamentos omnichannel para web e mobile.",
-      color: "#3b82f6",
-      status: "Ativo",
-      deadline: "2026-12-15"
-    },
-    {
-      id: "p2",
-      code: "APIGW",
-      name: "API Gateway & Microsserviços",
-      desc: "Camada de roteamento de alto desempenho, autenticação centralizada e controle de taxa de requisições.",
-      color: "#10b981",
-      status: "Ativo",
-      deadline: "2026-11-30"
-    },
-    {
-      id: "p3",
-      code: "ANALYTICS",
-      name: "Portal de Relatórios & Analytics",
-      desc: "Painel gerencial com indicadores estratégicos em tempo real e exportações personalizadas.",
-      color: "#8b5cf6",
-      status: "Em Planejamento",
-      deadline: "2027-01-20"
-    }
-  ],
-  teamMembers: [
-    // Desenvolvedores Back-end
-    { id: "m1", name: "Carlos Valois", role: "backend", seniority: "Líder Técnico", skills: ["Go", "Node.js", "Redis", "Kafka", "PostgreSQL"], capacity: 40, avatarBg: "#059669" },
-    { id: "m2", name: "Rodrigo Silva", role: "backend", seniority: "Sênior", skills: ["Python", "FastAPI", "Docker", "AWS", "SQLAlchemy"], capacity: 40, avatarBg: "#047857" },
-    { id: "m3", name: "Mariana Costa", role: "backend", seniority: "Pleno", skills: ["Java", "Spring Boot", "RabbitMQ", "MongoDB"], capacity: 40, avatarBg: "#0f766e" },
-    // Desenvolvedores Front-end
-    { id: "m4", name: "Lucas Mendes", role: "frontend", seniority: "Sênior", skills: ["React", "TypeScript", "Next.js", "TailwindCSS", "Jest"], capacity: 40, avatarBg: "#0284c7" },
-    { id: "m5", name: "Beatriz Rocha", role: "frontend", seniority: "Pleno", skills: ["Vue 3", "Vite", "Pinia", "CSS Moderno", "Cypress"], capacity: 40, avatarBg: "#0369a1" },
-    { id: "m6", name: "Gabriel Souza", role: "frontend", seniority: "Júnior", skills: ["HTML5", "CSS3", "JavaScript", "React", "Figma"], capacity: 40, avatarBg: "#0e7490" }
-  ],
-  requirements: [
-    {
-      id: "req1",
-      code: "RF-01",
-      title: "Autenticação Segura com Segundo Fator (2FA)",
-      projectId: "p1",
-      type: "functional",
-      moscow: "Must",
-      userStory: "Como cliente do e-commerce, quero poder fazer login com e-mail/senha e código de segundo fator (2FA), para manter meus dados e pagamentos protegidos contra acessos indevidos.",
-      bdd: "Dado que o cliente insere credenciais válidas e o código OTP de 6 dígitos\nQuando clica no botão de confirmação\nEntão o sistema autentica com sucesso, emite o token JWT com validade de 24 horas e redireciona para a área logada"
-    },
-    {
-      id: "req2",
-      code: "RF-02",
-      title: "Checkout Transparente com Pagamento Pix Instantâneo",
-      projectId: "p1",
-      type: "functional",
-      moscow: "Must",
-      userStory: "Como comprador, quero pagar minhas compras via Pix através de QR Code dinâmico com confirmação automática, para que meu pedido seja aprovado imediatamente.",
-      bdd: "Dado que o comprador seleciona a opção de pagamento Pix na finalização do pedido\nQuando confirma o pedido\nEntão o sistema gera o QR Code dinâmico e a chave copia-e-cola com expiração de 15 minutos e ouvinte de webhook ativo"
-    },
-    {
-      id: "req3",
-      code: "RNF-01",
-      title: "Latência de Resposta do Gateway Inferior a 80ms no P99",
-      projectId: "p2",
-      type: "non-functional",
-      moscow: "Must",
-      userStory: "Como arquiteto de software, quero que o Gateway processe as requisições com sobrecarga mínima, para assegurar alta performance aos microsserviços.",
-      bdd: "Dado que o Gateway recebe 5.000 requisições simultâneas por segundo\nQuando valida o cabeçalho de autenticação e repassa ao serviço de destino\nEntão o tempo de trânsito adicionado pelo Gateway não ultrapassa 80ms no percentil 99"
-    },
-    {
-      id: "req4",
-      code: "RF-03",
-      title: "Controle de Taxa de Requisições (Rate Limiting) por Cliente",
-      projectId: "p2",
-      type: "functional",
-      moscow: "Should",
-      userStory: "Como engenheiro de segurança, quero limitar o volume de chamadas por cliente, para proteger a infraestrutura contra abusos e ataques de negação de serviço.",
-      bdd: "Dado que um cliente atingiu o limite de 100 requisições em 60 segundos\nQuando tenta efetuar uma nova requisição\nEntão o Gateway bloqueia a chamada retornando HTTP 429 Demasiadas Requisições com cabeçalho de tempo para nova tentativa"
-    },
-    {
-      id: "req5",
-      code: "RF-04",
-      title: "Exportação de Relatórios Gerenciais em PDF e Planilha Excel",
-      projectId: "p3",
-      type: "functional",
-      moscow: "Should",
-      userStory: "Como gestor de operações, quero exportar relatórios consolidados em PDF e planilhas em Excel, para compartilhar os resultados mensais com a diretoria.",
-      bdd: "Dado que o gestor aplicou filtros de período e departamento no relatório\nQuando clica em 'Exportar Planilha Excel'\nEntão o sistema processa a consulta de forma assíncrona e disponibiliza o download do arquivo .xlsx formatado em menos de 5 segundos"
-    },
-    {
-      id: "req6",
-      code: "RNF-02",
-      title: "Conformidade Total de Acessibilidade Web (WCAG 2.1 Nível AA)",
-      projectId: "p3",
-      type: "non-functional",
-      moscow: "Could",
-      userStory: "Como usuário que utiliza leitores de tela ou navegação apenas por teclado, quero navegar pelos relatórios e gráficos sem obstáculos visuais ou motores.",
-      bdd: "Dado que um usuário navega pelo painel usando apenas a tecla Tab e leitor de tela\nQuando interage com tabelas, filtros e gráficos\nEntão todos os controles possuem rótulos descritivos, contraste de cores superior a 4.5:1 e indicador visual de foco nítido"
-    }
-  ],
-  tasks: [
-    {
-      id: "t1",
-      title: "Endpoint de Autenticação JWT e Validação de OTP 2FA",
-      projectId: "p1",
-      reqId: "req1",
-      role: "backend",
-      assigneeId: "m2",
-      priority: "Alta",
-      hours: 16,
-      status: "dev",
-      desc: "Desenvolver endpoints seguros em FastAPI com hash de senha Argon2 e emissão de JWT assimétrico."
-    },
-    {
-      id: "t2",
-      title: "Tela de Login Responsiva com Diálogo de Verificação 2FA",
-      projectId: "p1",
-      reqId: "req1",
-      role: "frontend",
-      assigneeId: "m4",
-      priority: "Alta",
-      hours: 14,
-      status: "dev",
-      desc: "Implementar formulário de login com React/Next.js, validação com Zod e modal com 6 campos automáticos para código OTP."
-    },
-    {
-      id: "t3",
-      title: "Serviço de Cobrança Pix e Webhook de Confirmação Bancária",
-      projectId: "p1",
-      reqId: "req2",
-      role: "backend",
-      assigneeId: "m3",
-      priority: "Alta",
-      hours: 18,
-      status: "qa",
-      desc: "Integrar API bancária para emissão de Pix dinâmico e listener de webhook com validação HMAC de assinatura."
-    },
-    {
-      id: "t4",
-      title: "Componente de QR Code Pix com Contador e Copiar Chave",
-      projectId: "p1",
-      reqId: "req2",
-      role: "frontend",
-      assigneeId: "m5",
-      priority: "Média",
-      hours: 10,
-      status: "done",
-      desc: "Criar componente Vue com renderização de SVG de QR Code, botão de cópia com aviso visual e cronômetro de 15 minutos."
-    },
-    {
-      id: "t5",
-      title: "Middleware de Rate Limiting com Algoritmo Token Bucket em Redis",
-      projectId: "p2",
-      reqId: "req4",
-      role: "backend",
-      assigneeId: "m1",
-      priority: "Alta",
-      hours: 24,
-      status: "dev",
-      desc: "Implementar middleware de gateway em Go com conexão ao Redis Cluster para controle de requisições por API Key."
-    },
-    {
-      id: "t6",
-      title: "Painel de Configuração de Políticas de Tráfego e Limites",
-      projectId: "p2",
-      reqId: "req4",
-      role: "frontend",
-      assigneeId: "m6",
-      priority: "Média",
-      hours: 16,
-      status: "spec",
-      desc: "Construir tela de gerenciamento de cotas de APIs com formulários dinâmicos e validação em tempo real."
-    },
-    {
-      id: "t7",
-      title: "Pipeline de Benchmark e Testes de Carga com k6",
-      projectId: "p2",
-      reqId: "req3",
-      role: "backend",
-      assigneeId: "m1",
-      priority: "Média",
-      hours: 16,
-      status: "backlog",
-      desc: "Criar suíte de testes de estresse em k6 e painéis no Grafana para auditar métricas de latência P95 e P99."
-    },
-    {
-      id: "t8",
-      title: "Processador Assíncrono para Geração de Planilhas e Relatórios PDF",
-      projectId: "p3",
-      reqId: "req5",
-      role: "backend",
-      assigneeId: "m2",
-      priority: "Média",
-      hours: 14,
-      status: "backlog",
-      desc: "Estruturar fila em RabbitMQ com processador em segundo plano para compilação de dados e upload para bucket com URL assinada."
-    },
-    {
-      id: "t9",
-      title: "Tabela Interativa de Indicadores com Filtros e Exportação",
-      projectId: "p3",
-      reqId: "req5",
-      role: "frontend",
-      assigneeId: "m4",
-      priority: "Alta",
-      hours: 18,
-      status: "qa",
-      desc: "Criar tabela de alta densidade com paginação, ordenação multidimensional e gatilho para download de relatórios."
-    },
-    {
-      id: "t10",
-      title: "Auditoria e Ajustes de Acessibilidade (ARIA & Teclado)",
-      projectId: "p3",
-      reqId: "req6",
-      role: "frontend",
-      assigneeId: "m5",
-      priority: "Baixa",
-      hours: 12,
-      status: "dev",
-      desc: "Revisar estrutura de tags semânticas, navegação por teclado e compatibilidade com leitores de tela."
-    }
-  ],
-  testCases: [
-    {
-      id: "tc1",
-      title: "Validação de Geração e Assinatura de Token JWT",
-      type: "API de Back-end",
-      reqId: "req1",
-      taskId: "t1",
-      status: "pass",
-      steps: "1. Enviar requisição POST /auth/login com credenciais corretas\n2. Inspecionar o token JWT retornado no payload\n3. Validar a assinatura com a chave pública",
-      expected: "Código HTTP 200 com token JWT válido, claims corretas e expiração em 24h"
-    },
-    {
-      id: "tc2",
-      title: "Bloqueio Temporário após 5 Tentativas Inválidas de Login",
-      type: "API de Back-end",
-      reqId: "req1",
-      taskId: "t1",
-      status: "pass",
-      steps: "1. Disparar 5 requisições consecutivas com senhas erradas\n2. Realizar a 6ª tentativa de login",
-      expected: "Código HTTP 423 Bloqueado com mensagem de suspensão temporária por 15 minutos"
-    },
-    {
-      id: "tc3",
-      title: "Preenchimento Automático dos 6 Dígitos de OTP no Front-end",
-      type: "Interface de Front-end",
-      reqId: "req1",
-      taskId: "t2",
-      status: "pass",
-      steps: "1. Acessar o modal de confirmação 2FA\n2. Colar o código '123456' no primeiro campo\n3. Verificar se todos os campos são preenchidos e o formulário submetido",
-      expected: "Distribuição instantânea dos 6 dígitos nos campos e foco automático no botão de confirmação"
-    },
-    {
-      id: "tc4",
-      title: "Recebimento e Processamento Idempotente de Webhook Pix",
-      type: "Integração",
-      reqId: "req2",
-      taskId: "t3",
-      status: "pending",
-      steps: "1. Simular notificação de Pix pago com assinatura HMAC\n2. Enviar a mesma notificação duas vezes seguidas",
-      expected: "A primeira requisição marca o pedido como PAGO; a segunda requisição identifica duplicidade e responde com sucesso sem creditar novamente"
-    },
-    {
-      id: "tc5",
-      title: "Renderização do QR Code e Ação de Copiar Código Pix",
-      type: "Interface de Front-end",
-      reqId: "req2",
-      taskId: "t4",
-      status: "pass",
-      steps: "1. Navegar até a tela de finalização de pagamento\n2. Clicar no botão 'Copiar Chave Pix'",
-      expected: "Chave copiada para a área de transferência e exibição do aviso 'Código copiado com sucesso!'"
-    },
-    {
-      id: "tc6",
-      title: "Disparo de HTTP 429 quando Limite de Requisições for Ultrapassado",
-      type: "API de Back-end",
-      reqId: "req4",
-      taskId: "t5",
-      status: "pass",
-      steps: "1. Enviar 101 requisições em 60 segundos com a mesma chave de API",
-      expected: "A 101ª requisição retorna HTTP 429 Demasiadas Requisições com cabeçalho Retry-After"
-    },
-    {
-      id: "tc7",
-      title: "Download e Validação de Estrutura da Planilha Excel Exportada",
-      type: "Homologação / Aceite",
-      reqId: "req5",
-      taskId: "t9",
-      status: "pending",
-      steps: "1. Aplicar filtros na tabela de relatórios\n2. Clicar no botão 'Exportar para Excel'\n3. Abrir o arquivo gerado",
-      expected: "Arquivo .xlsx válido com formatação monetária correta, cabeçalhos de colunas e dados consistentes"
-    },
-    {
-      id: "tc8",
-      title: "Auditoria Automatizada de Contraste e Foco de Acessibilidade",
-      type: "Interface de Front-end",
-      reqId: "req6",
-      taskId: "t10",
-      status: "fail",
-      steps: "1. Executar auditoria de acessibilidade axe-core na página de relatórios",
-      expected: "Nenhuma violação de contraste encontrada e todos os botões com foco visível no teclado"
-    }
-  ]
+  projects: [],
+  teamMembers: [],
+  requirements: [],
+  tasks: [],
+  testCases: []
 };
 
 // ==============================================================================
@@ -441,10 +141,32 @@ class ALMStore {
     }
     if (!state) state = JSON.parse(JSON.stringify(initialSeedData));
 
-    // Deduplicação defensiva de membros ao carregar estado local
+    // Limpeza de IDs mockados legados para garantir que fiquem no sistema somente dados reais cadastrados
+    const mockIds = new Set([
+      'p1', 'p2', 'p3',
+      'req1', 'req2', 'req3', 'req4', 'req5', 'req6',
+      't1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9', 't10',
+      'tc1', 'tc2', 'tc3', 'tc4', 'tc5', 'tc6', 'tc7', 'tc8',
+      'm1', 'm2', 'm3', 'm4', 'm5', 'm6',
+      't_demo1', 't_demo2', 't_demo3'
+    ]);
+
+    if (Array.isArray(state.projects)) {
+      state.projects = state.projects.filter(p => !mockIds.has(p.id));
+    }
+    if (Array.isArray(state.requirements)) {
+      state.requirements = state.requirements.filter(r => !mockIds.has(r.id));
+    }
+    if (Array.isArray(state.tasks)) {
+      state.tasks = state.tasks.filter(t => !mockIds.has(t.id));
+    }
+    if (Array.isArray(state.testCases)) {
+      state.testCases = state.testCases.filter(tc => !mockIds.has(tc.id));
+    }
     if (Array.isArray(state.teamMembers)) {
       const seen = new Set();
       state.teamMembers = state.teamMembers.filter(m => {
+        if (mockIds.has(m.id)) return false;
         const key = (m.name || '').trim().toLowerCase();
         if (!key || seen.has(key)) return false;
         seen.add(key);
@@ -1113,7 +835,7 @@ window.store = store;
 const defaultAuthUsers = [
   {
     id: "u_admin",
-    name: "Carlos Valois",
+    name: "Carlos Valois (Admin)",
     email: "admin@devsquad.com",
     password: "admin123",
     role: "admin",
@@ -1121,54 +843,6 @@ const defaultAuthUsers = [
     seniority: "Workspace Owner / Diretor",
     skills: ["Arquitetura", "Governança", "DevOps", "Segurança", "Go"],
     avatarBg: "#f59e0b",
-    createdAt: "2026-01-01T00:00:00.000Z"
-  },
-  {
-    id: "u_gestor",
-    name: "Fernanda Lima",
-    email: "gestor@devsquad.com",
-    password: "pm123",
-    role: "pm",
-    devRole: null,
-    seniority: "Gerente de Projetos (PM / Scrum Master)",
-    skills: ["Scrum", "Kanban", "Gestão de Escopo", "Métricas Ágeis", "Planejamento"],
-    avatarBg: "#8b5cf6",
-    createdAt: "2026-01-01T00:00:00.000Z"
-  },
-  {
-    id: "u_carlos",
-    name: "Carlos Valois",
-    email: "carlos@devsquad.com",
-    password: "dev123",
-    role: "dev",
-    devRole: "backend",
-    seniority: "Líder Técnico Back-end",
-    skills: ["Go", "Node.js", "Redis", "Kafka", "PostgreSQL"],
-    avatarBg: "#059669",
-    createdAt: "2026-01-01T00:00:00.000Z"
-  },
-  {
-    id: "u_lucas",
-    name: "Lucas Mendes",
-    email: "lucas@devsquad.com",
-    password: "dev123",
-    role: "dev",
-    devRole: "frontend",
-    seniority: "Desenvolvedor Front-end Sênior",
-    skills: ["React", "TypeScript", "Next.js", "TailwindCSS", "Jest"],
-    avatarBg: "#0284c7",
-    createdAt: "2026-01-01T00:00:00.000Z"
-  },
-  {
-    id: "u_qa",
-    name: "Juliana Paiva",
-    email: "qa@devsquad.com",
-    password: "qa123",
-    role: "qa",
-    devRole: null,
-    seniority: "QA Lead / Homologadora",
-    skills: ["Testes Automatizados", "Cypress", "Postman", "BDD", "Jest"],
-    avatarBg: "#ec4899",
     createdAt: "2026-01-01T00:00:00.000Z"
   }
 ];
@@ -1285,25 +959,21 @@ class UserAuthStore {
   initUsers() {
     try {
       const stored = localStorage.getItem(this.usersKey);
-      if (!stored) {
-        localStorage.setItem(this.usersKey, JSON.stringify(defaultAuthUsers));
+      let users = [];
+      if (stored) {
+        users = JSON.parse(stored);
+      }
+      if (!Array.isArray(users) || users.length === 0) {
+        users = JSON.parse(JSON.stringify(defaultAuthUsers));
       } else {
-        const parsed = JSON.parse(stored);
-        if (!Array.isArray(parsed) || parsed.length === 0) {
-          localStorage.setItem(this.usersKey, JSON.stringify(defaultAuthUsers));
-        } else {
-          let updated = false;
-          defaultAuthUsers.forEach(defUser => {
-            if (!parsed.some(u => u.email.toLowerCase() === defUser.email.toLowerCase())) {
-              parsed.push(defUser);
-              updated = true;
-            }
-          });
-          if (updated) {
-            localStorage.setItem(this.usersKey, JSON.stringify(parsed));
-          }
+        // Remover contas de demonstração que não foram cadastradas pelo usuário
+        const mockEmails = new Set(['gestor@devsquad.com', 'lucas@devsquad.com', 'qa@devsquad.com']);
+        users = users.filter(u => !mockEmails.has(u.email.toLowerCase()));
+        if (!users.some(u => u.email.toLowerCase() === 'admin@devsquad.com')) {
+          users.unshift(defaultAuthUsers[0]);
         }
       }
+      localStorage.setItem(this.usersKey, JSON.stringify(users));
     } catch (e) {
       console.error("Erro ao inicializar usuários no localStorage:", e);
     }
@@ -2842,65 +2512,45 @@ function renderPerformance() {
     ? ['Sprint 1', 'Sprint 2', 'Sprint 3', 'Sprint 4', 'Sprint 5', 'Sprint 6']
     : ['Out/25', 'Nov/25', 'Dez/25', 'Jan/26', 'Fev/26', 'Mar/26'];
 
-  // Dados de Séries Temporais conforme a Senioridade do Profissional
-  const devSeniority = (dev.seniority || '').toLowerCase();
-  let baseHigh = [0, 1, 1, 2, 3, 4];
-  let baseMed  = [2, 2, 3, 4, 5, 6];
-  let baseLow  = [3, 3, 2, 2, 1, 1];
-
-  if (devSeniority.includes('júnior') || devSeniority.includes('junior')) {
-    baseHigh = [0, 0, 1, 1, 2, 3];
-    baseMed  = [1, 2, 3, 4, 5, 6];
-    baseLow  = [3, 4, 3, 2, 1, 1];
-  } else if (devSeniority.includes('pleno')) {
-    baseHigh = [2, 3, 3, 4, 5, 6];
-    baseMed  = [3, 4, 4, 5, 5, 5];
-    baseLow  = [1, 1, 1, 0, 0, 0];
-  } else if (devSeniority.includes('sênior') || devSeniority.includes('senior')) {
-    baseHigh = [4, 5, 6, 7, 8, 8];
-    baseMed  = [3, 3, 3, 2, 2, 3];
-    baseLow  = [0, 0, 0, 0, 0, 0];
-  } else if (devSeniority.includes('lead') || devSeniority.includes('arquiteto') || devSeniority.includes('diretor')) {
-    baseHigh = [6, 7, 7, 8, 9, 9];
-    baseMed  = [2, 2, 2, 2, 1, 2];
-    baseLow  = [0, 0, 0, 0, 0, 0];
-  }
-
-  let extraHigh = 0;
-  let extraMed = 0;
-  let extraLow = 0;
-  let realHoursSpent = 0;
-
-  realDoneTasks.forEach(t => {
-    const comp = t.complexity || 'Média';
-    if (comp === 'Alta') extraHigh++;
-    else if (comp === 'Baixa') extraLow++;
-    else extraMed++;
-    realHoursSpent += (parseFloat(t.hoursSpent) || parseFloat(t.hours) || 8);
-  });
-
+  // 4.1 Dados de Séries Temporais calculados ESTRITAMENTE a partir das demandas reais concluídas
   const seriesData = {
-    high: [...baseHigh],
-    medium: [...baseMed],
-    low: [...baseLow],
-    total: []
+    high: [0, 0, 0, 0, 0, 0],
+    medium: [0, 0, 0, 0, 0, 0],
+    low: [0, 0, 0, 0, 0, 0],
+    total: [0, 0, 0, 0, 0, 0]
   };
 
-  // Soma entregas reais no ciclo mais recente
-  seriesData.high[5] += extraHigh;
-  seriesData.medium[5] += extraMed;
-  seriesData.low[5] += extraLow;
+  realDoneTasks.forEach((t, idx) => {
+    const comp = t.complexity || 'Média';
+    let cycleIdx = 5;
+    if (t.qaDate) {
+      try {
+        const d = new Date(t.qaDate);
+        if (!isNaN(d.getTime())) {
+          cycleIdx = Math.max(0, Math.min(5, d.getMonth() % 6));
+        }
+      } catch (e) {}
+    } else if (realDoneTasks.length > 1) {
+      cycleIdx = Math.max(0, Math.min(5, 5 - (realDoneTasks.length - 1 - idx)));
+    }
+
+    if (comp === 'Alta') seriesData.high[cycleIdx]++;
+    else if (comp === 'Baixa') seriesData.low[cycleIdx]++;
+    else seriesData.medium[cycleIdx]++;
+  });
 
   for (let i = 0; i < 6; i++) {
     seriesData.total[i] = seriesData.high[i] + seriesData.medium[i] + seriesData.low[i];
   }
 
-  // Totais agregados
+  // Totais agregados calculados EXCLUSIVAMENTE a partir das demandas reais
   const sumHigh = seriesData.high.reduce((a, b) => a + b, 0);
   const sumMed = seriesData.medium.reduce((a, b) => a + b, 0);
   const sumLow = seriesData.low.reduce((a, b) => a + b, 0);
-  const sumTotal = seriesData.total.reduce((a, b) => a + b, 0);
-  const totalHoursProd = Math.round(sumTotal * 7.5 + realHoursSpent);
+  const sumTotal = realDoneTasks.length;
+  
+  // Total de horas produtivas reais apontadas nas tarefas do desenvolvedor
+  const totalHoursProd = Math.round(devTasks.reduce((acc, t) => acc + (parseFloat(t.hoursSpent) || 0), 0));
   const highPercent = sumTotal > 0 ? Math.round((sumHigh / sumTotal) * 100) : 0;
   const avgPerCycle = (sumTotal / 6).toFixed(1);
 
@@ -2931,80 +2581,94 @@ function renderPerformance() {
   const summaryTag = document.getElementById('perf-chart-summary-tag');
   if (summaryTag) summaryTag.textContent = `Taxa de Alta Complexidade: ${highPercent}% (${sumHigh} entregas)`;
 
-  // 7. Algoritmo de Avaliação de Prontidão para Promoção
+  // 7. Algoritmo de Avaliação de Prontidão para Promoção Baseado em Dados Reais
+  const devSeniority = (dev.seniority || '').toLowerCase();
   let targetSeniority = 'Pleno';
-  let promotionScore = 80;
-  let statusText = '🟢 Elegível para Promoção';
+  let promotionScore = 0;
+  let statusText = '⚪ Sem Entregas no Período';
   let opinionText = '';
   const criteria = [];
 
-  if (devSeniority.includes('júnior') || devSeniority.includes('junior')) {
+  if (sumTotal === 0) {
+    if (devSeniority.includes('júnior') || devSeniority.includes('junior')) targetSeniority = 'Pleno';
+    else if (devSeniority.includes('pleno')) targetSeniority = 'Sênior';
+    else targetSeniority = 'Tech Lead / Especialista';
+
+    promotionScore = 0;
+    statusText = '⚪ Aguardando Conclusão de Demandas';
+    opinionText = `O(A) desenvolvedor(a) ${dev.name} possui ${devTasks.length} demanda(s) atribuída(s), porém nenhuma com status 'Concluído' ainda. A avaliação de promoção será calculada automaticamente conforme as entregas forem homologadas.`;
+
+    criteria.push({ text: `Volume de entregas satisfatório (≥ 1 demanda entregue: 0)`, pass: false });
+    criteria.push({ text: `Domínio técnico em média/alta complexidade: 0`, pass: false });
+    criteria.push({ text: `Alocação dentro da capacidade máxima semanal`, pass: !store.calculateDevWorkload(dev.id).isOverloaded });
+    criteria.push({ text: `Horas produtivas apontadas no projeto (${totalHoursProd}h registradas)`, pass: totalHoursProd > 0 });
+  } else if (devSeniority.includes('júnior') || devSeniority.includes('junior')) {
     targetSeniority = 'Pleno';
-    const c1 = sumTotal >= 20;
-    const c2 = sumMed >= 15;
-    const c3 = sumHigh >= 4;
-    const c4 = (sumMed + sumHigh) / sumTotal >= 0.6;
-    
+    const c1 = sumTotal >= 1;
+    const c2 = sumMed >= 1 || sumHigh >= 1;
+    const c3 = sumHigh >= 1;
+    const c4 = sumTotal > 0 && ((sumMed + sumHigh) / sumTotal) >= 0.5;
+
     let passCount = (c1 ? 1 : 0) + (c2 ? 1 : 0) + (c3 ? 1 : 0) + (c4 ? 1 : 0);
-    promotionScore = Math.min(100, Math.round((passCount / 4) * 80 + highPercent * 0.8));
+    promotionScore = Math.min(100, Math.round((passCount / 4) * 80 + highPercent * 0.2));
 
-    criteria.push({ text: `Volume de entregas satisfatório (≥ 20 demandas entregues: ${sumTotal})`, pass: c1 });
-    criteria.push({ text: `Domínio de Média Complexidade (≥ 15 demandas entregues: ${sumMed})`, pass: c2 });
-    criteria.push({ text: `Evolução para Alta Complexidade (≥ 4 demandas entregues: ${sumHigh})`, pass: c3 });
-    criteria.push({ text: `Equilíbrio de produtividade sem dependência (Média+Alta ≥ 60%: ${Math.round(((sumMed + sumHigh) / sumTotal) * 100)}%)`, pass: c4 });
+    criteria.push({ text: `Volume de entregas satisfatório (${sumTotal} demanda(s) concluída(s))`, pass: c1 });
+    criteria.push({ text: `Domínio de Média Complexidade (${sumMed} entregue(s))`, pass: c2 });
+    criteria.push({ text: `Evolução para Alta Complexidade (${sumHigh} entregue(s))`, pass: c3 });
+    criteria.push({ text: `Autonomia produtiva (Média+Alta ≥ 50%: ${Math.round(((sumMed + sumHigh) / sumTotal) * 100)}%)`, pass: c4 });
 
-    if (promotionScore >= 80) {
+    if (promotionScore >= 75) {
       statusText = '🟢 Elegível para Promoção a Pleno';
-      opinionText = `O(A) desenvolvedor(a) ${dev.name} apresentou excelente curva de aprendizado nos últimos 6 ciclos. A transição de demandas básicas para tarefas de média e alta complexidade comprova autonomia para atuar como Desenvolvedor(a) Pleno.`;
+      opinionText = `O(A) desenvolvedor(a) ${dev.name} atingiu os critérios de autonomia com entregas consistentes no sistema. Apto(a) para atuar como Desenvolvedor(a) Pleno.`;
     } else {
-      statusText = '🟡 Em Desenvolvimento Acelerado';
-      opinionText = `O(A) profissional ${dev.name} demonstra evolução técnica consistente. Recomenda-se aumentar a atribuição de demandas de média complexidade no próximo ciclo para atingir os 100% de elegibilidade para Pleno.`;
+      statusText = '🟡 Em Desenvolvimento Técnico';
+      opinionText = `O(A) profissional ${dev.name} demonstra evolução técnica. Recomenda-se dar continuidade às demandas em andamento para consolidar os critérios de promoção para Pleno.`;
     }
   } else if (devSeniority.includes('pleno')) {
     targetSeniority = 'Sênior';
-    const c1 = sumTotal >= 35;
-    const c2 = sumHigh >= 15;
-    const c3 = highPercent >= 35;
-    const c4 = sumLow <= 5;
+    const c1 = sumTotal >= 2;
+    const c2 = sumHigh >= 1;
+    const c3 = highPercent >= 25;
+    const c4 = !store.calculateDevWorkload(dev.id).isOverloaded;
 
     let passCount = (c1 ? 1 : 0) + (c2 ? 1 : 0) + (c3 ? 1 : 0) + (c4 ? 1 : 0);
-    promotionScore = Math.min(100, Math.round((passCount / 4) * 75 + highPercent * 0.6));
+    promotionScore = Math.min(100, Math.round((passCount / 4) * 75 + highPercent * 0.25));
 
-    criteria.push({ text: `Alto volume global de entregas (≥ 35 demandas entregues: ${sumTotal})`, pass: c1 });
-    criteria.push({ text: `Liderança em Alta Complexidade (≥ 15 demandas de Alta: ${sumHigh})`, pass: c2 });
-    criteria.push({ text: `Foco predominante em Alta Complexidade (≥ 35% do total: ${highPercent}%)`, pass: c3 });
-    criteria.push({ text: `Baixa taxa de demandas elementares (≤ 5 de baixa: ${sumLow})`, pass: c4 });
+    criteria.push({ text: `Consistência de entregas (${sumTotal} demanda(s) entregue(s))`, pass: c1 });
+    criteria.push({ text: `Capacidade em Alta Complexidade (${sumHigh} demanda(s) de Alta)`, pass: c2 });
+    criteria.push({ text: `Foco predominante em Alta Complexidade (${highPercent}% do total)`, pass: c3 });
+    criteria.push({ text: `Equilíbrio de carga horária sem sobrecarga excessiva`, pass: c4 });
 
-    if (promotionScore >= 80) {
+    if (promotionScore >= 75) {
       statusText = '🟢 Elegível para Promoção a Sênior';
-      opinionText = `Comprovado domínio em demandas arquiteturais e de Alta Complexidade. O(A) desenvolvedor(a) ${dev.name} entrega soluções robustas com autonomia e pode assumir formalmente a senioridade Sênior.`;
+      opinionText = `Comprovado domínio em demandas arquiteturais e de Alta Complexidade no projeto. O(A) desenvolvedor(a) ${dev.name} entrega soluções robustas e pode assumir formalmente a senioridade Sênior.`;
     } else {
       statusText = '🟡 Consolidando Entregas Críticas';
-      opinionText = `Desempenho plenamente estável. Para alcançar a senioridade Sênior, sugere-se maior protagonismo em arquitetura de microsserviços e governança técnica.`;
+      opinionText = `Desempenho estável no workspace. Para alcançar a senioridade Sênior, sugere-se avançar na conclusão das demandas de Alta Complexidade.`;
     }
   } else if (devSeniority.includes('sênior') || devSeniority.includes('senior')) {
     targetSeniority = 'Tech Lead / Especialista';
-    const c1 = sumHigh >= 25;
-    const c2 = highPercent >= 55;
-    const c3 = sumTotal >= 40;
+    const c1 = sumHigh >= 1;
+    const c2 = highPercent >= 40;
+    const c3 = sumTotal >= 2;
     const c4 = true;
 
-    promotionScore = Math.min(100, Math.round(85 + (highPercent * 0.15)));
-    criteria.push({ text: `Excelência em Alta Complexidade (≥ 25 demandas entregues: ${sumHigh})`, pass: c1 });
-    criteria.push({ text: `Predomínio absoluto em tarefas críticas (≥ 55%: ${highPercent}%)`, pass: c2 });
-    criteria.push({ text: `Consistência de entregas ao longo do ano (${sumTotal} tarefas)`, pass: c3 });
+    promotionScore = Math.min(100, Math.round(75 + (highPercent * 0.25)));
+    criteria.push({ text: `Liderança em Alta Complexidade (${sumHigh} demanda(s) entregue(s))`, pass: c1 });
+    criteria.push({ text: `Predomínio em tarefas críticas (${highPercent}% de alta complexidade)`, pass: c2 });
+    criteria.push({ text: `Volume de entregas concluídas (${sumTotal} tarefas no total)`, pass: c3 });
     criteria.push({ text: `Referência técnica e mentoria de outros desenvolvedores`, pass: c4 });
 
     statusText = '🟢 Apto para Tech Lead / Especialista';
-    opinionText = `${dev.name} atua como pilar técnico da squad, concentrando quase a totalidade das demandas mais complexas. Plenamente apto(a) para atuar como Tech Lead ou Arquiteto(a) Especialista.`;
+    opinionText = `${dev.name} atua como pilar técnico da squad, concentrando demandas de alta complexidade. Plenamente apto(a) para atuar como Tech Lead ou Arquiteto(a) Especialista.`;
   } else {
     targetSeniority = 'Tech Lead / Especialista';
-    promotionScore = 98;
+    promotionScore = sumTotal > 0 ? 98 : 85;
     statusText = '👑 Liderança Técnica Consolidada';
-    opinionText = `${dev.name} já ocupa o nível máximo de liderança técnica no workspace, orientando padrões de engenharia, arquitetura e desenvolvimento da equipe.`;
+    opinionText = `${dev.name} já ocupa o nível de liderança técnica no workspace, orientando padrões de engenharia, arquitetura e desenvolvimento da equipe.`;
     criteria.push({ text: `Domínio pleno de governança técnica e arquitetura de software`, pass: true });
     criteria.push({ text: `Liderança estratégica e gestão da qualidade de entregas`, pass: true });
-    criteria.push({ text: `Mentoria contínua de desenvolvedores Júnior e Pleno`, pass: true });
+    criteria.push({ text: `Mentoria contínua de desenvolvedores`, pass: true });
   }
 
   // Atualizar Banner e Diagnóstico
@@ -3292,44 +2956,22 @@ function renderPerfTasksTable(dev, allDevTasks, realDoneTasks) {
 
   tbody.innerHTML = '';
 
-  const displayTasks = allDevTasks.length > 0 ? allDevTasks : [
-    {
-      id: "t_demo1",
-      title: "Construção de Módulo de Autenticação Segura e Validação de 2FA",
-      projectId: "p1",
-      priority: "Alta",
-      complexity: "Alta",
-      hours: 16,
-      hoursSpent: 16,
-      status: "done",
-      qaApproved: true
-    },
-    {
-      id: "t_demo2",
-      title: "Refatoração de Middleware de Gateway de Pagamento",
-      projectId: "p2",
-      priority: "Média",
-      complexity: "Média",
-      hours: 12,
-      hoursSpent: 11.5,
-      status: "done",
-      qaApproved: true
-    },
-    {
-      id: "t_demo3",
-      title: "Implementação de Componentes de Interface Responsivos e Acessíveis",
-      projectId: "p1",
-      priority: "Baixa",
-      complexity: "Baixa",
-      hours: 8,
-      hoursSpent: 8,
-      status: "done",
-      qaApproved: true
-    }
-  ];
+  const displayTasks = allDevTasks;
 
   if (countBadge) {
-    countBadge.textContent = `${displayTasks.length} demandas registradas`;
+    countBadge.textContent = `${displayTasks.length} ${displayTasks.length === 1 ? 'demanda registrada' : 'demandas registradas'}`;
+  }
+
+  if (displayTasks.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2.5rem 1rem;">
+          <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">📋</div>
+          Nenhuma demanda atribuída a este desenvolvedor ainda.
+        </td>
+      </tr>
+    `;
+    return;
   }
 
   displayTasks.forEach(task => {

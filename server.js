@@ -134,80 +134,24 @@ try {
 } catch (e) {}
 
 // ==============================================================================
-// 2. Migração Inicial de Dados (Seed Data em PT-BR)
+// 2. Inicialização Segura do Banco (Apenas conta de Administrador se vazio)
 // ==============================================================================
 function seedDatabaseIfEmpty() {
   const usersCount = db.prepare('SELECT count(*) as count FROM users').get().count;
   if (usersCount === 0) {
-    console.log('🌱 Populando contas padrão de usuários no SQLite...');
+    console.log('🌱 Criando conta raiz de Administrador no SQLite...');
     const insertUser = db.prepare(`
       INSERT INTO users (id, name, email, password, role, dev_role, seniority, skills, avatar_bg, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const defaultUsers = [
-      { id: "u_admin", name: "Carlos Valois (Admin)", email: "admin@devsquad.com", password: "admin123", role: "admin", dev_role: null, seniority: "Workspace Owner / Diretor", skills: JSON.stringify(["Arquitetura", "Governança", "DevOps", "Segurança", "Go"]), avatar_bg: "#f59e0b", created_at: "2026-01-01T00:00:00.000Z" },
-      { id: "u_gestor", name: "Fernanda Lima", email: "gestor@devsquad.com", password: "pm123", role: "pm", dev_role: null, seniority: "Gerente de Projetos (PM / Scrum Master)", skills: JSON.stringify(["Scrum", "Kanban", "Gestão de Escopo", "Métricas Ágeis", "Planejamento"]), avatar_bg: "#8b5cf6", created_at: "2026-01-01T00:00:00.000Z" },
-      { id: "u_carlos", name: "Carlos Valois", email: "carlos@devsquad.com", password: "dev123", role: "dev", dev_role: "backend", seniority: "Líder Técnico Back-end", skills: JSON.stringify(["Go", "Node.js", "Redis", "Kafka", "PostgreSQL"]), avatar_bg: "#059669", created_at: "2026-01-01T00:00:00.000Z" },
-      { id: "u_lucas", name: "Lucas Mendes", email: "lucas@devsquad.com", password: "dev123", role: "dev", dev_role: "frontend", seniority: "Desenvolvedor Front-end Sênior", skills: JSON.stringify(["React", "TypeScript", "Next.js", "TailwindCSS", "Jest"]), avatar_bg: "#0284c7", created_at: "2026-01-01T00:00:00.000Z" },
-      { id: "u_qa", name: "Juliana Paiva", email: "qa@devsquad.com", password: "qa123", role: "qa", dev_role: null, seniority: "QA Lead / Homologadora", skills: JSON.stringify(["Testes Automatizados", "Cypress", "Postman", "BDD", "Jest"]), avatar_bg: "#ec4899", created_at: "2026-01-01T00:00:00.000Z" }
+      { id: "u_admin", name: "Carlos Valois (Admin)", email: "admin@devsquad.com", password: "admin123", role: "admin", dev_role: null, seniority: "Workspace Owner / Diretor", skills: JSON.stringify(["Arquitetura", "Governança", "DevOps", "Segurança", "Go"]), avatar_bg: "#f59e0b", created_at: "2026-01-01T00:00:00.000Z" }
     ];
 
     defaultUsers.forEach(u => {
       insertUser.run(u.id, u.name, u.email, u.password, u.role, u.dev_role, u.seniority, u.skills, u.avatar_bg, u.created_at);
     });
-  }
-
-  const projectsCount = db.prepare('SELECT count(*) as count FROM projects').get().count;
-  if (projectsCount === 0) {
-    console.log('🌱 Populando projetos, equipe, requisitos e demandas de exemplo...');
-    
-    // Projetos
-    const insertProj = db.prepare('INSERT INTO projects (id, code, name, desc, color, status, deadline, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-    insertProj.run("p1", "ECOMM", "SuperApp E-Commerce", "Plataforma integrada de vendas e pagamentos omnichannel para web e mobile.", "#3b82f6", "Ativo", "2026-12-15", "2026-01-01T00:00:00.000Z");
-    insertProj.run("p2", "APIGW", "API Gateway & Microsserviços", "Camada de roteamento de alto desempenho, autenticação centralizada e controle de taxa de requisições.", "#10b981", "Ativo", "2026-11-30", "2026-01-01T00:00:00.000Z");
-    insertProj.run("p3", "ANALYTICS", "Portal de Relatórios & Analytics", "Painel gerencial com indicadores estratégicos em tempo real e exportações personalizadas.", "#8b5cf6", "Em Planejamento", "2027-01-20", "2026-01-01T00:00:00.000Z");
-
-    // Equipe
-    const insertMember = db.prepare('INSERT INTO team_members (id, name, role, seniority, skills, capacity, avatar_bg) VALUES (?, ?, ?, ?, ?, ?, ?)');
-    insertMember.run("m1", "Carlos Valois", "backend", "Líder Técnico", JSON.stringify(["Go", "Node.js", "Redis", "Kafka", "PostgreSQL"]), 40, "#059669");
-    insertMember.run("m2", "Rodrigo Silva", "backend", "Sênior", JSON.stringify(["Python", "FastAPI", "Docker", "AWS", "SQLAlchemy"]), 40, "#047857");
-    insertMember.run("m3", "Mariana Costa", "backend", "Pleno", JSON.stringify(["Java", "Spring Boot", "RabbitMQ", "MongoDB"]), 40, "#0f766e");
-    insertMember.run("m4", "Lucas Mendes", "frontend", "Sênior", JSON.stringify(["React", "TypeScript", "Next.js", "TailwindCSS", "Jest"]), 40, "#0284c7");
-    insertMember.run("m5", "Beatriz Rocha", "frontend", "Pleno", JSON.stringify(["Vue 3", "Vite", "Pinia", "CSS Moderno", "Cypress"]), 40, "#0369a1");
-    insertMember.run("m6", "Gabriel Souza", "frontend", "Júnior", JSON.stringify(["HTML5", "CSS3", "JavaScript", "React", "Figma"]), 40, "#0e7490");
-
-    // Requisitos
-    const insertReq = db.prepare('INSERT INTO requirements (id, code, title, project_id, type, moscow, user_story, bdd, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    insertReq.run("req1", "RF-01", "Autenticação Segura com Segundo Fator (2FA)", "p1", "functional", "Must", "Como cliente do e-commerce, quero poder fazer login com e-mail/senha e código de segundo fator (2FA), para manter meus dados e pagamentos protegidos contra acessos indevidos.", "Dado que o cliente insere credenciais válidas e o código OTP de 6 dígitos\nQuando clica no botão de confirmação\nEntão o sistema autentica com sucesso, emite o token JWT com validade de 24 horas e redireciona para a área logada", "2026-01-01T00:00:00.000Z");
-    insertReq.run("req2", "RF-02", "Checkout Transparente com Pagamento Pix Instantâneo", "p1", "functional", "Must", "Como comprador, quero pagar minhas compras via Pix através de QR Code dinâmico com confirmação automática, para que meu pedido seja aprovado imediatamente.", "Dado que o comprador seleciona a opção de pagamento Pix na finalização do pedido\nQuando confirma o pedido\nEntão o sistema gera o QR Code dinâmico e a chave copia-e-cola com expiração de 15 minutos e ouvinte de webhook ativo", "2026-01-01T00:00:00.000Z");
-    insertReq.run("req3", "RNF-01", "Latência de Resposta do Gateway Inferior a 80ms no P99", "p2", "non-functional", "Must", "Como arquiteto de software, quero que o Gateway processe as requisições com sobrecarga mínima, para assegurar alta performance aos microsserviços.", "Dado que o Gateway recebe 5.000 requisições simultâneas por segundo\nQuando valida o cabeçalho de autenticação e repassa ao serviço de destino\nEntão o tempo de trânsito adicionado pelo Gateway não ultrapassa 80ms no percentil 99", "2026-01-01T00:00:00.000Z");
-    insertReq.run("req4", "RF-03", "Controle de Taxa de Requisições (Rate Limiting) por Cliente", "p2", "functional", "Should", "Como engenheiro de segurança, quero limitar o volume de chamadas por cliente, para proteger a infraestrutura contra abusos e ataques de negação de serviço.", "Dado que um cliente atingiu o limite de 100 requisições em 60 segundos\nQuando tenta efetuar uma nova requisição\nEntão o Gateway bloqueia a chamada retornando HTTP 429 Demasiadas Requisições com cabeçalho de tempo para nova tentativa", "2026-01-01T00:00:00.000Z");
-    insertReq.run("req5", "RF-04", "Exportação de Relatórios Gerenciais em PDF e Planilha Excel", "p3", "functional", "Should", "Como gestor de operações, quero exportar relatórios consolidados em PDF e planilhas em Excel, para compartilhar os resultados mensais com a diretoria.", "Dado que o gestor aplicou filtros de período e departamento no relatório\nQuando clica em 'Exportar Planilha Excel'\nEntão o sistema processa a consulta de forma assíncrona e disponibiliza o download do arquivo .xlsx formatado em menos de 5 segundos", "2026-01-01T00:00:00.000Z");
-    insertReq.run("req6", "RNF-02", "Conformidade Total de Acessibilidade Web (WCAG 2.1 Nível AA)", "p3", "non-functional", "Could", "Como usuário que utiliza leitores de tela ou navegação apenas por teclado, quero navegar pelos relatórios e gráficos sem obstáculos visuais ou motores.", "Dado que um usuário navega pelo painel usando apenas a tecla Tab e leitor de tela\nQuando interage com tabelas, filtros e gráficos\nEntão todos os controles possuem rótulos descritivos, contraste de cores superior a 4.5:1 e indicador visual de foco nítido", "2026-01-01T00:00:00.000Z");
-
-    // Demandas (Tarefas)
-    const insertTask = db.prepare(`
-      INSERT INTO tasks (id, title, project_id, req_id, role, assignee_id, priority, hours, hours_spent, status, desc, impediment, qa_approved, qa_notes, qa_reviewer, qa_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    insertTask.run("t1", "Endpoint de Autenticação JWT e Validação de OTP 2FA", "p1", "req1", "backend", "m2", "Alta", 16, 0, "dev", "Desenvolver endpoints seguros em FastAPI com hash de senha Argon2 e emissão de JWT assimétrico.", null, 0, null, null, null);
-    insertTask.run("t2", "Tela de Login Responsiva com Diálogo de Verificação 2FA", "p1", "req1", "frontend", "m4", "Alta", 14, 0, "dev", "Implementar formulário de login com React/Next.js, validação com Zod e modal com 6 campos automáticos para código OTP.", null, 0, null, null, null);
-    insertTask.run("t3", "Serviço de Cobrança Pix e Webhook de Confirmação Bancária", "p1", "req2", "backend", "m3", "Alta", 18, 0, "qa", "Integrar API bancária para emissão de Pix dinâmico e listener de webhook com validação HMAC de assinatura.", null, 0, null, null, null);
-    insertTask.run("t4", "Componente de QR Code Pix com Contador e Copiar Chave", "p1", "req2", "frontend", "m5", "Média", 10, 0, "done", "Criar componente Vue com renderização de SVG de QR Code, botão de cópia com aviso visual e cronômetro de 15 minutos.", null, 1, "Homologado em produção", "Juliana Paiva", "2026-01-10T10:00:00.000Z");
-    insertTask.run("t5", "Middleware de Rate Limiting com Algoritmo Token Bucket em Redis", "p2", "req4", "backend", "m1", "Alta", 24, 0, "dev", "Implementar middleware de gateway em Go com conexão ao Redis Cluster para controle de requisições por API Key.", null, 0, null, null, null);
-    insertTask.run("t6", "Painel de Configuração de Políticas de Tráfego e Limites", "p2", "req4", "frontend", "m6", "Média", 16, 0, "spec", "Construir tela de gerenciamento de cotas de APIs com formulários dinâmicos e validação em tempo real.", null, 0, null, null, null);
-    insertTask.run("t7", "Pipeline de Benchmark e Testes de Carga com k6", "p2", "req3", "backend", "m1", "Média", 16, 0, "backlog", "Criar suíte de testes de estresse em k6 e painéis no Grafana para auditar métricas de latência P95 e P99.", null, 0, null, null, null);
-    insertTask.run("t8", "Processador Assíncrono para Geração de Planilhas e Relatórios PDF", "p3", "req5", "backend", "m2", "Média", 14, 0, "backlog", "Estruturar fila em RabbitMQ com processador em segundo plano para compilação de dados e upload para bucket com URL assinada.", null, 0, null, null, null);
-    insertTask.run("t9", "Tabela Interativa de Indicadores com Filtros e Exportação", "p3", "req5", "frontend", "m4", "Alta", 18, 0, "qa", "Criar tabela de alta densidade com paginação, ordenação multidimensional e gatilho para download de relatórios.", null, 0, null, null, null);
-    insertTask.run("t10", "Auditoria e Ajustes de Acessibilidade (ARIA & Teclado)", "p3", "req6", "frontend", "m5", "Baixa", 12, 0, "dev", "Revisar estrutura de tags semânticas, navegação por teclado e compatibilidade com leitores de tela.", null, 0, null, null, null);
-
-    // Casos de Testes QA
-    const insertTest = db.prepare('INSERT INTO test_cases (id, title, type, req_id, task_id, status, steps, expected) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-    insertTest.run("tc1", "Validação de Geração e Assinatura de Token JWT", "API de Back-end", "req1", "t1", "pass", "1. Enviar requisição POST /auth/login com credenciais corretas\n2. Inspecionar o token JWT retornado no payload\n3. Validar a assinatura com a chave pública", "Código HTTP 200 com token JWT válido, claims corretas e expiração em 24h");
-    insertTest.run("tc2", "Tentativa de Autenticação com Código 2FA Expirado", "Segurança", "req1", "t1", "pass", "1. Gerar OTP de 2FA\n2. Aguardar 300 segundos para expiração\n3. Submeter formulário com código expirado", "Sistema rejeita com HTTP 401 e mensagem 'Código de verificação expirado'");
-    insertTest.run("tc3", "Simulação de Resposta do Webhook Pix com Assinatura Inválida", "Integração", "req2", "t3", "fail", "1. Disparar payload simulado de confirmação de pagamento Pix\n2. Fornecer assinatura HMAC corrompida no cabeçalho", "O endpoint deve rejeitar com HTTP 403 e registrar tentativa suspeita no log de segurança");
-    insertTest.run("tc4", "Teste de Carga de Rate Limiting com k6 (120 req/min)", "Performance", "req4", "t5", "pass", "1. Configurar cliente com cota de 100 req/min\n2. Executar k6 com 120 requisições sequenciais", "As primeiras 100 requisições retornam HTTP 200; as 20 excedentes recebem HTTP 429");
   }
 
   console.log('✅ Banco de dados SQLite verificado e pronto para operações!');
@@ -745,7 +689,7 @@ const server = http.createServer(async (req, res) => {
           UPDATE projects
           SET name = ?, code = ?, desc = ?, color = ?, status = ?, deadline = ?
           WHERE id = ?
-        `).run(p.name, p.code, p.desc, p.color, p.status, p.deadline, projId);
+        `).run(p.name || '', p.code || '', p.desc || '', p.color || '#3b82f6', p.status || 'Ativo', p.deadline || '', projId);
         return sendJson(res, 200, { id: projId, ...p });
       }
       if (method === 'DELETE') {
@@ -790,7 +734,7 @@ const server = http.createServer(async (req, res) => {
           UPDATE requirements
           SET code = ?, title = ?, project_id = ?, type = ?, moscow = ?, user_story = ?, bdd = ?
           WHERE id = ?
-        `).run(r.code, r.title, r.projectId || null, r.type, r.moscow, r.userStory, r.bdd, reqId);
+        `).run(r.code || 'RF', r.title || '', r.projectId || null, r.type || 'functional', r.moscow || 'Must', r.userStory || '', r.bdd || '', reqId);
         return sendJson(res, 200, { id: reqId, ...r });
       }
       if (method === 'DELETE') {
@@ -1079,7 +1023,7 @@ const server = http.createServer(async (req, res) => {
           UPDATE test_cases
           SET title = ?, type = ?, req_id = ?, steps = ?, expected = ?
           WHERE id = ?
-        `).run(tc.title, tc.type, tc.reqId || null, tc.steps, tc.expected, testId);
+        `).run(tc.title || '', tc.type || 'Geral', tc.reqId || null, tc.steps || '', tc.expected || '', testId);
         return sendJson(res, 200, { id: testId, ...tc });
       }
 
