@@ -4,7 +4,7 @@
   "description": "DevSquad ALM - Plataforma Integrada de Gestão de Requisitos, Equipe Dev (Front & Back), Demandas Multi-Projetos e Camada de Testes/QA",
   "main": "index.html",
   "scripts": {
-    "start": "python -m http.server 3000"
+    "start": ".\\.tools\\node\\node.exe --no-warnings --experimental-sqlite server.js"
   },
   "keywords": [
     "antigravity",

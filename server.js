@@ -771,7 +771,11 @@ const server = http.createServer(async (req, res) => {
       // Mover status do Kanban
       if (action === 'move' && method === 'PUT') {
         const { status } = await parseJsonBody(req);
-        db.prepare('UPDATE tasks SET status = ? WHERE id = ?').run(status, taskId);
+        if (status === 'done') {
+          db.prepare('UPDATE tasks SET status = ?, qa_date = COALESCE(qa_date, ?) WHERE id = ?').run(status, new Date().toISOString(), taskId);
+        } else {
+          db.prepare('UPDATE tasks SET status = ? WHERE id = ?').run(status, taskId);
+        }
         return sendJson(res, 200, { success: true, id: taskId, status });
       }
 

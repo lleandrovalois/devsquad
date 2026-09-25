@@ -596,6 +596,9 @@ class ALMStore {
     const task = this.getTaskById(taskId);
     if (task) {
       task.status = targetStatus;
+      if (targetStatus === 'done' && !task.qaDate) {
+        task.qaDate = new Date().toISOString();
+      }
       this.saveState();
       api.apiRequest(`/api/tasks/${taskId}/move`, 'PUT', { status: targetStatus });
       return true;
@@ -889,13 +892,13 @@ const RolePermissions = {
     canAssignTask: true,
     canEditTaskHoursSpent: false,
     canLogTime: true,
-    canValidateQA: false,
-    canRunTests: false,
-    canCreateTest: false,
+    canValidateQA: true,
+    canRunTests: true,
+    canCreateTest: true,
     canManageTeam: true,
     canManageGovernance: false,
     allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing'],
-    allowedNewItems: ['project', 'task', 'req', 'member']
+    allowedNewItems: ['project', 'task', 'req', 'test', 'member']
   },
   dev: {
     label: "💻 Membro Executor (Desenvolvedor)",
@@ -914,13 +917,13 @@ const RolePermissions = {
     canEditSelf: true,
     canEditTaskHoursSpent: false,
     canLogTime: true,
-    canValidateQA: false,
-    canRunTests: false,
-    canCreateTest: false,
+    canValidateQA: true,
+    canRunTests: true,
+    canCreateTest: true,
     canManageTeam: false,
     canManageGovernance: false,
-    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban'],
-    allowedNewItems: []
+    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing'],
+    allowedNewItems: ['test']
   },
   qa: {
     label: "🧪 Revisor / Validador (QA / Tech Lead)",
@@ -944,7 +947,7 @@ const RolePermissions = {
     canCreateTest: true,
     canManageTeam: false,
     canManageGovernance: false,
-    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'testing'],
+    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing'],
     allowedNewItems: ['test']
   }
 };
@@ -1720,6 +1723,14 @@ function renderKanban() {
 
   const counts = { backlog: 0, spec: 0, dev: 0, qa: 0, done: 0 };
 
+  const colNames = {
+    backlog: 'A Fazer (Backlog)',
+    spec: 'Em Especificação',
+    dev: 'Em Desenvolvimento',
+    qa: 'Em Testes / Validação',
+    done: 'Concluído'
+  };
+
   tasks.forEach(task => {
     const colStatus = task.status || 'backlog';
     counts[colStatus] = (counts[colStatus] || 0) + 1;
@@ -1755,7 +1766,7 @@ function renderKanban() {
       badgesHtml += `<div class="task-impediment-badge" title="${task.impediment}">⚠️ ${task.impediment}</div>`;
     }
     if (task.qaApproved) {
-      badgesHtml += `<div class="task-qa-approved-badge" title="Aprovado por ${task.qaReviewer || 'QA'}">✓ QA Aprovado</div>`;
+      badgesHtml += `<div class="task-qa-approved-badge" ${perms.canValidateQA ? `onclick="openQAModal('${task.id}')" style="cursor: pointer;"` : ''} title="Aprovado por ${task.qaReviewer || 'QA'}. ${perms.canValidateQA ? 'Clique para revisar/alterar validação.' : ''}">✓ QA Aprovado</div>`;
     }
 
     // Botões operacionais contextuais
@@ -1763,7 +1774,7 @@ function renderKanban() {
     if (perms.canLogTime) {
       opBtnsHtml += `<button class="task-timesheet-btn" onclick="openTimesheetModal('${task.id}')" title="Apontar Horas Gastas e Impedimentos">⏱️ Apontar</button>`;
     }
-    if (colStatus === 'qa' && perms.canValidateQA) {
+    if (colStatus === 'qa' && perms.canValidateQA && !task.qaApproved) {
       opBtnsHtml += `<button class="task-qa-btn" onclick="openQAModal('${task.id}')" title="Validação Formal de QA">🧪 Validar QA</button>`;
     }
 
@@ -1791,40 +1802,53 @@ function renderKanban() {
       ? `👑 Admin: ${task.hoursSpent || 0}h apontadas / ${task.hours || 8}h estimadas. Clique para alterar o saldo de horas.` 
       : (isOverEstimated ? `⚠️ Horas apontadas (${task.hoursSpent}h) excederam a estimativa (${task.hours || 8}h)!` : 'Horas gastas / estimadas');
 
+    const hasControls = opBtnsHtml || prevCol || nextCol;
+    const controlsRowHtml = hasControls ? `
+      <div class="task-controls-row">
+        <div class="task-ops-group">
+          ${opBtnsHtml}
+        </div>
+        <div class="task-actions-btn-group">
+          ${prevCol ? `<button class="task-move-btn" onclick="moveTaskAction('${task.id}', '${prevCol}')" title="Mover para: ${colNames[prevCol]}">◀</button>` : ''}
+          ${nextCol ? `<button class="task-move-btn" onclick="moveTaskAction('${task.id}', '${nextCol}')" title="Mover para: ${colNames[nextCol]}">▶</button>` : ''}
+        </div>
+      </div>
+    ` : '';
+
     card.innerHTML = `
       <div class="task-tags-row">
-        <span class="task-role-tag ${task.role === 'frontend' ? 'role-front' : 'role-back'}">${roleLabel}</span>
-        <span class="task-priority-tag ${priorityClass}">${task.priority}</span>
-        <span class="task-complexity-tag ${task.complexity === 'Alta' ? 'complexity-high' : (task.complexity === 'Baixa' ? 'complexity-low' : 'complexity-med')}" title="Complexidade Técnica">⚡ ${task.complexity || 'Média'}</span>
-        <span style="font-size: 0.7rem; color: ${hoursColor}; font-weight: ${hoursFontWeight}; margin-left: auto; ${isAdmin ? 'cursor: pointer;' : ''}" title="${hoursTitle}" ${isAdmin ? `onclick="openTimesheetModal('${task.id}')"` : ''}>⏱️ ${hoursText}${isOverEstimated ? ' ⚠️' : ''}</span>
-        
-        <div class="card-header-actions" style="margin-left: 0.35rem;">
-          <button class="card-btn-action" onclick="openTaskModalForEdit('${task.id}')" title="${perms.canCreateTask ? 'Editar Demanda' : 'Ver Detalhes'}">${perms.canCreateTask ? '✏️' : '👁️'}</button>
-          ${perms.canDeleteTask ? `<button class="card-btn-action btn-del" onclick="confirmDeleteTask('${task.id}', '${task.title}')" title="Excluir Demanda">🗑️</button>` : ''}
+        <div class="task-tags-left">
+          <span class="task-role-tag ${task.role === 'frontend' ? 'role-front' : 'role-back'}">${roleLabel}</span>
+          <span class="task-priority-tag ${priorityClass}">${task.priority}</span>
+          <span class="task-complexity-tag ${task.complexity === 'Alta' ? 'complexity-high' : (task.complexity === 'Baixa' ? 'complexity-low' : 'complexity-med')}" title="Complexidade Técnica">⚡ ${task.complexity || 'Média'}</span>
+        </div>
+        <div class="task-tags-right">
+          <span class="task-hours-badge" style="color: ${hoursColor}; font-weight: ${hoursFontWeight}; ${isAdmin ? 'cursor: pointer;' : ''}" title="${hoursTitle}" ${isAdmin ? `onclick="openTimesheetModal('${task.id}')"` : ''}>⏱️ ${hoursText}${isOverEstimated ? ' ⚠️' : ''}</span>
+          <div class="card-header-actions">
+            <button class="card-btn-action" onclick="openTaskModalForEdit('${task.id}')" title="${perms.canCreateTask ? 'Editar Demanda' : 'Ver Detalhes'}">${perms.canCreateTask ? '✏️' : '👁️'}</button>
+            ${perms.canDeleteTask ? `<button class="card-btn-action btn-del" onclick="confirmDeleteTask('${task.id}', '${task.title}')" title="Excluir Demanda">🗑️</button>` : ''}
+          </div>
         </div>
       </div>
 
       <div class="task-title">${task.title}</div>
       <div class="task-project-name">📁 ${project ? project.name : 'Geral'}</div>
 
-      ${badgesHtml}
+      ${badgesHtml ? `<div class="task-badges-row">${badgesHtml}</div>` : ''}
 
-      <div class="task-footer-row">
-        <div class="task-assignee-wrap" title="${assignee ? assignee.name : 'Sem responsável'}">
-          <div class="task-avatar-mini" style="background: ${assignee ? assignee.avatarBg : '#64748b'}; color: #fff;">
-            ${assignee ? assignee.name.charAt(0) : '?'}
+      <div class="task-card-footer">
+        <div class="task-assignee-row">
+          <div class="task-assignee-wrap" title="${assignee ? assignee.name : 'Sem responsável'}">
+            <div class="task-avatar-mini" style="background: ${assignee ? assignee.avatarBg : '#64748b'}; color: #fff;">
+              ${assignee ? assignee.name.charAt(0) : '?'}
+            </div>
+            <span class="task-assignee-name">${assignee ? assignee.name.split(' ')[0] : 'Livre'}</span>
           </div>
-          <span style="color: var(--text-secondary);">${assignee ? assignee.name.split(' ')[0] : 'Livre'}</span>
-        </div>
-        ${assignBtnHtml}
-
-        <div style="display: flex; align-items: center; gap: 0.35rem; margin-left: auto;">
-          ${opBtnsHtml}
-          <div class="task-actions-btn-group">
-            ${prevCol ? `<button class="task-move-btn" onclick="moveTaskAction('${task.id}', '${prevCol}')" title="Mover para coluna anterior">◀</button>` : ''}
-            ${nextCol ? `<button class="task-move-btn" onclick="moveTaskAction('${task.id}', '${nextCol}')" title="Mover para próxima coluna">▶</button>` : ''}
+          <div class="task-assign-action">
+            ${assignBtnHtml}
           </div>
         </div>
+        ${controlsRowHtml}
       </div>
     `;
 
@@ -2507,10 +2531,63 @@ function renderPerformance() {
   const devTasks = store.state.tasks.filter(t => t.assigneeId === dev.id || (t.assigneeId && dev.name && t.assigneeId.toLowerCase() === dev.name.toLowerCase()));
   const realDoneTasks = devTasks.filter(t => t.status === 'done');
 
+  // Helper para identificar a data de conclusão/execução da tarefa
+  function getTaskCompletionDate(t) {
+    if (t.qaDate) {
+      const d = new Date(t.qaDate);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (Array.isArray(t.timesheet) && t.timesheet.length > 0) {
+      let latestTime = 0;
+      for (const ts of t.timesheet) {
+        const d = new Date(ts.date || ts.timestamp);
+        if (!isNaN(d.getTime()) && d.getTime() > latestTime) {
+          latestTime = d.getTime();
+        }
+      }
+      if (latestTime > 0) return new Date(latestTime);
+    }
+    if (t.id) {
+      const digits = String(t.id).replace(/\D/g, '');
+      if (digits.length >= 12) {
+        const epoch = parseInt(digits, 10);
+        if (!isNaN(epoch) && epoch > 1500000000000 && epoch < 2500000000000) {
+          return new Date(epoch);
+        }
+      }
+    }
+    return null;
+  }
+
   const isSprints = window.perfPeriod === 'sprints';
-  const cycles = isSprints 
-    ? ['Sprint 1', 'Sprint 2', 'Sprint 3', 'Sprint 4', 'Sprint 5', 'Sprint 6']
-    : ['Out/25', 'Nov/25', 'Dez/25', 'Jan/26', 'Fev/26', 'Mar/26'];
+  const now = new Date();
+  let cycles = [];
+  let monthBuckets = [];
+
+  if (isSprints) {
+    cycles = ['Sprint 1', 'Sprint 2', 'Sprint 3', 'Sprint 4', 'Sprint 5', 'Sprint 6'];
+  } else {
+    // Modo "Últimos 6 Meses": calcula dinamicamente os 6 meses retroativos a partir da data atual
+    const shortMonthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0 a 11
+
+    monthBuckets = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(currentYear, currentMonth - i, 1);
+      const m = d.getMonth();
+      const y = d.getFullYear();
+      const yShort = String(y).slice(-2);
+      monthBuckets.push({
+        year: y,
+        month: m,
+        label: `${shortMonthNames[m]}/${yShort}`,
+        startTime: new Date(y, m, 1, 0, 0, 0, 0).getTime(),
+        endTime: new Date(y, m + 1, 0, 23, 59, 59, 999).getTime()
+      });
+    }
+    cycles = monthBuckets.map(b => b.label);
+  }
 
   // 4.1 Dados de Séries Temporais calculados ESTRITAMENTE a partir das demandas reais concluídas
   const seriesData = {
@@ -2522,21 +2599,50 @@ function renderPerformance() {
 
   realDoneTasks.forEach((t, idx) => {
     const comp = t.complexity || 'Média';
-    let cycleIdx = 5;
-    if (t.qaDate) {
-      try {
-        const d = new Date(t.qaDate);
-        if (!isNaN(d.getTime())) {
-          cycleIdx = Math.max(0, Math.min(5, d.getMonth() % 6));
+    let cycleIdx = -1;
+    const taskDate = getTaskCompletionDate(t);
+
+    if (isSprints) {
+      if (taskDate) {
+        const daysAgo = Math.floor((now.getTime() - taskDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysAgo < 0) {
+          cycleIdx = 5; // Sprint atual
+        } else {
+          const sprintDiff = Math.floor(daysAgo / 14);
+          if (sprintDiff >= 0 && sprintDiff < 6) {
+            cycleIdx = 5 - sprintDiff;
+          }
         }
-      } catch (e) {}
-    } else if (realDoneTasks.length > 1) {
-      cycleIdx = Math.max(0, Math.min(5, 5 - (realDoneTasks.length - 1 - idx)));
+      }
+      if (cycleIdx === -1) {
+        if (realDoneTasks.length > 1) {
+          cycleIdx = Math.max(0, Math.min(5, 5 - (realDoneTasks.length - 1 - idx)));
+        } else {
+          cycleIdx = 5;
+        }
+      }
+    } else {
+      if (taskDate) {
+        const tTime = taskDate.getTime();
+        for (let b = 0; b < 6; b++) {
+          if (tTime >= monthBuckets[b].startTime && tTime <= monthBuckets[b].endTime) {
+            cycleIdx = b;
+            break;
+          }
+        }
+        if (cycleIdx === -1 && tTime > monthBuckets[5].endTime) {
+          cycleIdx = 5;
+        }
+      } else {
+        cycleIdx = 5;
+      }
     }
 
-    if (comp === 'Alta') seriesData.high[cycleIdx]++;
-    else if (comp === 'Baixa') seriesData.low[cycleIdx]++;
-    else seriesData.medium[cycleIdx]++;
+    if (cycleIdx >= 0 && cycleIdx <= 5) {
+      if (comp === 'Alta') seriesData.high[cycleIdx]++;
+      else if (comp === 'Baixa') seriesData.low[cycleIdx]++;
+      else seriesData.medium[cycleIdx]++;
+    }
   });
 
   for (let i = 0; i < 6; i++) {
@@ -2547,7 +2653,8 @@ function renderPerformance() {
   const sumHigh = seriesData.high.reduce((a, b) => a + b, 0);
   const sumMed = seriesData.medium.reduce((a, b) => a + b, 0);
   const sumLow = seriesData.low.reduce((a, b) => a + b, 0);
-  const sumTotal = realDoneTasks.length;
+  const sumPeriodTotal = sumHigh + sumMed + sumLow;
+  const sumTotal = isSprints ? realDoneTasks.length : sumPeriodTotal;
   
   // Total de horas produtivas reais apontadas nas tarefas do desenvolvedor
   const totalHoursProd = Math.round(devTasks.reduce((acc, t) => acc + (parseFloat(t.hoursSpent) || 0), 0));
@@ -2933,6 +3040,9 @@ function renderPerfSvgChart(cycles, seriesData) {
 
 // Configuração dos Botões de Legenda Interativa (Show/Hide Series)
 function setupLegendToggleListeners(cycles, seriesData) {
+  window.perfCurrentCycles = cycles;
+  window.perfCurrentSeriesData = seriesData;
+
   const seriesKeys = ['high', 'medium', 'low', 'total'];
   seriesKeys.forEach(key => {
     const btn = document.getElementById(`legend-${key}`);
@@ -2942,7 +3052,7 @@ function setupLegendToggleListeners(cycles, seriesData) {
         window.perfSeries[key] = !window.perfSeries[key];
         btn.classList.toggle('active', window.perfSeries[key]);
         btn.classList.toggle('muted', !window.perfSeries[key]);
-        renderPerfSvgChart(cycles, seriesData);
+        renderPerfSvgChart(window.perfCurrentCycles, window.perfCurrentSeriesData);
       });
     }
   });
@@ -2990,7 +3100,7 @@ function renderPerfTasksTable(dev, allDevTasks, realDoneTasks) {
       <td><span class="task-priority-tag ${priorityClass}">${task.priority}</span></td>
       <td><strong>${task.hoursSpent || task.hours || 8}h</strong></td>
       <td>
-        <span class="status-pill status-pass">
+        <span class="status-pill ${task.status === 'done' || task.qaApproved ? 'status-pass' : 'status-pending'}">
           ${task.qaApproved ? '✓ QA Homologado' : (task.status === 'done' ? '✓ Concluído' : 'Em Andamento')}
         </span>
       </td>
