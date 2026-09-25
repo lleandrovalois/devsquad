@@ -18,7 +18,8 @@ const initialSeedData = {
   teamMembers: [],
   requirements: [],
   tasks: [],
-  testCases: []
+  testCases: [],
+  goals: []
 };
 
 // ==============================================================================
@@ -86,6 +87,7 @@ class DevSquadAPI {
         if (u) {
           headers['x-user-id'] = u.id;
           headers['x-user-role'] = u.role;
+          headers['x-user-name'] = encodeURIComponent(u.name || 'Usuário');
         }
       }
       const options = {
@@ -200,6 +202,8 @@ class ALMStore {
       }
       if (Array.isArray(data.tasks)) this.state.tasks = data.tasks;
       if (Array.isArray(data.testCases)) this.state.testCases = data.testCases;
+      if (Array.isArray(data.goals)) this.state.goals = data.goals;
+      if (Array.isArray(data.auditLogs)) this.auditLogs = data.auditLogs;
       this.saveState();
 
       if (Array.isArray(data.users) && typeof authStore !== 'undefined') {
@@ -214,6 +218,24 @@ class ALMStore {
       }
       refreshAllUI();
     }
+  }
+
+  async fetchAuditLogs(filters = {}) {
+    let url = '/api/audit-logs';
+    const params = new URLSearchParams();
+    if (filters.entityType && filters.entityType !== 'all') params.append('entityType', filters.entityType);
+    if (filters.entityId) params.append('entityId', filters.entityId);
+    if (filters.limit) params.append('limit', filters.limit);
+    const qs = params.toString();
+    if (qs) url += `?${qs}`;
+    const logs = await api.apiRequest(url);
+    if (Array.isArray(logs)) {
+      if (!filters.entityId) {
+        this.auditLogs = logs;
+      }
+      return logs;
+    }
+    return [];
   }
 
   // --- CRUD: PROJETOS ---
@@ -519,7 +541,12 @@ class ALMStore {
       complexity: data.complexity || 'Média',
       hours: parseInt(data.hours, 10) || 8,
       status: 'backlog',
-      desc: data.desc || ''
+      desc: data.desc || '',
+      devNotes: data.devNotes || '',
+      qaNotes: data.qaNotes || '',
+      qaReviewer: data.qaReviewer || null,
+      qaDate: data.qaDate || null,
+      qaApproved: data.qaApproved ? 1 : 0
     };
     this.state.tasks.push(newTask);
     this.saveState();
@@ -540,6 +567,11 @@ class ALMStore {
       if (data.hours !== undefined) task.hours = parseInt(data.hours, 10) || 8;
       if (data.hoursSpent !== undefined) task.hoursSpent = Math.max(0, parseFloat(data.hoursSpent) || 0);
       if (data.desc !== undefined) task.desc = data.desc || '';
+      if (data.devNotes !== undefined) task.devNotes = data.devNotes || '';
+      if (data.qaNotes !== undefined) task.qaNotes = data.qaNotes || '';
+      if (data.qaReviewer !== undefined) task.qaReviewer = data.qaReviewer || null;
+      if (data.qaDate !== undefined) task.qaDate = data.qaDate || null;
+      if (data.qaApproved !== undefined) task.qaApproved = data.qaApproved ? 1 : 0;
       this.saveState();
       api.apiRequest(`/api/tasks/${id}`, 'PUT', data);
       return true;
@@ -825,6 +857,82 @@ class ALMStore {
       reqCoverageRate: reqCoverageRate
     };
   }
+
+  // --- GESTÃO DE METAS DE PROMOÇÃO (GOALS) ---
+  getGoals() {
+    return Array.isArray(this.state.goals) ? this.state.goals : [];
+  }
+
+  getGoalById(id) {
+    return (this.state.goals || []).find(g => g.id === id);
+  }
+
+  async addGoal(data) {
+    const newGoal = {
+      id: data.id || 'goal_' + Date.now(),
+      title: data.title,
+      description: data.description || '',
+      targetSeniority: data.targetSeniority || 'Pleno',
+      category: data.category || 'complexity',
+      metricKey: data.metricKey || 'high_tasks',
+      targetValue: parseFloat(data.targetValue) || 0,
+      targetUnit: data.targetUnit || 'demandas',
+      weight: parseInt(data.weight, 10) || 2,
+      isActive: data.isActive !== false,
+      createdAt: new Date().toISOString()
+    };
+    this.state.goals = this.state.goals || [];
+    this.state.goals.push(newGoal);
+    this.saveState();
+    if (typeof api !== 'undefined') {
+      await api.apiRequest('/api/goals', 'POST', newGoal);
+    }
+    return newGoal;
+  }
+
+  async updateGoal(id, data) {
+    const goal = this.getGoalById(id);
+    if (!goal) return false;
+    if (data.title !== undefined) goal.title = data.title;
+    if (data.description !== undefined) goal.description = data.description;
+    if (data.targetSeniority !== undefined) goal.targetSeniority = data.targetSeniority;
+    if (data.category !== undefined) goal.category = data.category;
+    if (data.metricKey !== undefined) goal.metricKey = data.metricKey;
+    if (data.targetValue !== undefined) goal.targetValue = parseFloat(data.targetValue) || 0;
+    if (data.targetUnit !== undefined) goal.targetUnit = data.targetUnit;
+    if (data.weight !== undefined) goal.weight = parseInt(data.weight, 10) || 2;
+    if (data.isActive !== undefined) goal.isActive = !!data.isActive;
+    this.saveState();
+    if (typeof api !== 'undefined') {
+      await api.apiRequest(`/api/goals/${id}`, 'PUT', data);
+    }
+    return true;
+  }
+
+  async deleteGoal(id) {
+    const idx = (this.state.goals || []).findIndex(g => g.id === id);
+    if (idx !== -1) {
+      this.state.goals.splice(idx, 1);
+      this.saveState();
+      if (typeof api !== 'undefined') {
+        await api.apiRequest(`/api/goals/${id}`, 'DELETE');
+      }
+      return true;
+    }
+    return false;
+  }
+
+  async resetDefaultGoals() {
+    if (typeof api !== 'undefined') {
+      const res = await api.apiRequest('/api/goals/reset-defaults', 'POST');
+      if (Array.isArray(res)) {
+        this.state.goals = res;
+        this.saveState();
+        return res;
+      }
+    }
+    return this.state.goals;
+  }
 }
 
 // Instância Global do Store
@@ -874,7 +982,8 @@ const RolePermissions = {
     canCreateTest: true,
     canManageTeam: true,
     canManageGovernance: true,
-    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing', 'governance', 'performance'],
+    canManageGoals: true,
+    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing', 'governance', 'performance', 'goals', 'audit'],
     allowedNewItems: ['project', 'task', 'req', 'test', 'member']
   },
   pm: {
@@ -1760,13 +1869,21 @@ function renderKanban() {
     const prevCol = getAdjacentColumn(colStatus, -1);
     const nextCol = getAdjacentColumn(colStatus, 1);
 
-    // Badges operacionais de RBAC (Impedimento / QA Aprovado)
+    // Badges operacionais de RBAC (Impedimento / QA Aprovado / Notas Dev / Notas QA)
     let badgesHtml = '';
     if (task.impediment) {
       badgesHtml += `<div class="task-impediment-badge" title="${task.impediment}">⚠️ ${task.impediment}</div>`;
     }
     if (task.qaApproved) {
       badgesHtml += `<div class="task-qa-approved-badge" ${perms.canValidateQA ? `onclick="openQAModal('${task.id}')" style="cursor: pointer;"` : ''} title="Aprovado por ${task.qaReviewer || 'QA'}. ${perms.canValidateQA ? 'Clique para revisar/alterar validação.' : ''}">✓ QA Aprovado</div>`;
+    }
+    if (task.devNotes && task.devNotes.trim()) {
+      const devExcerpt = task.devNotes.replace(/"/g, '&quot;').substring(0, 100);
+      badgesHtml += `<div class="task-notes-badge" onclick="openTaskModalForEdit('${task.id}')" style="cursor: pointer;" title="Notas do Desenvolvedor: ${devExcerpt}">💻 Notas Dev</div>`;
+    }
+    if (task.qaNotes && task.qaNotes.trim() && !task.qaApproved) {
+      const qaExcerpt = task.qaNotes.replace(/"/g, '&quot;').substring(0, 100);
+      badgesHtml += `<div class="task-qa-notes-badge" onclick="openTaskModalForEdit('${task.id}')" style="cursor: pointer;" title="Notas de QA: ${qaExcerpt}">🔍 Notas QA</div>`;
     }
 
     // Botões operacionais contextuais
@@ -1938,6 +2055,131 @@ window.unassignTask = function(taskId) {
   showToast(`Demanda desatribuída com sucesso.`);
 };
 
+// ==============================================================================
+// GESTÃO DE ABAS & HISTÓRICO NO MODAL DE DEMANDA
+// ==============================================================================
+
+window.switchTaskModalTab = function(tabName) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const isAdmin = currentUser && currentUser.role === 'admin';
+
+  if (tabName === 'history' && !isAdmin) {
+    showToast('Acesso restrito: apenas o Administrador do Sistema pode visualizar a auditoria.');
+    return;
+  }
+
+  const btnForm = document.getElementById('tab-btn-task-form');
+  const btnHist = document.getElementById('tab-btn-task-history');
+  const paneForm = document.getElementById('pane-task-form');
+  const paneHist = document.getElementById('pane-task-history');
+
+  if (tabName === 'history') {
+    btnForm?.classList.remove('active');
+    btnHist?.classList.add('active');
+    if (paneForm) paneForm.style.display = 'none';
+    if (paneHist) paneHist.style.display = 'block';
+  } else {
+    btnHist?.classList.remove('active');
+    btnForm?.classList.add('active');
+    if (paneHist) paneHist.style.display = 'none';
+    if (paneForm) paneForm.style.display = 'block';
+  }
+};
+
+window.reloadCurrentTaskHistory = async function() {
+  const taskId = document.getElementById('task-id-edit')?.value;
+  if (taskId) {
+    await loadTaskAuditTimeline(taskId);
+  }
+};
+
+async function loadTaskAuditTimeline(taskId) {
+  const container = document.getElementById('task-audit-timeline');
+  const countBadge = document.getElementById('task-history-count');
+  if (!container) return;
+
+  container.innerHTML = '<div style="text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.85rem;">⏳ Carregando histórico da demanda...</div>';
+
+  try {
+    const logs = await store.fetchAuditLogs({ entityType: 'task', entityId: taskId });
+    if (countBadge) countBadge.textContent = logs.length;
+
+    if (!logs || logs.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
+          <div style="font-size: 2rem; margin-bottom: 0.5rem;">📜</div>
+          <div style="font-weight: 600; font-size: 0.9rem;">Nenhum evento registrado ainda</div>
+          <div style="font-size: 0.78rem;">Alterações nesta demanda serão automaticamente registradas na trilha de auditoria.</div>
+        </div>
+      `;
+      return;
+    }
+
+    const actionIcons = {
+      CREATE: '✨',
+      UPDATE: '✏️',
+      STATUS_CHANGE: '🔄',
+      QA_VALIDATE: '🧪',
+      TIMESHEET_POINT: '⏱️',
+      HOURS_ADJUST: '👑',
+      ASSIGN: '👤',
+      DELETE: '🗑️'
+    };
+
+    const actionBadges = {
+      CREATE: 'audit-tag-create',
+      UPDATE: 'audit-tag-update',
+      STATUS_CHANGE: 'audit-tag-status',
+      QA_VALIDATE: 'audit-tag-qa',
+      TIMESHEET_POINT: 'audit-tag-timesheet',
+      HOURS_ADJUST: 'audit-tag-hours',
+      ASSIGN: 'audit-tag-assign',
+      DELETE: 'audit-tag-delete'
+    };
+
+    let html = '';
+    logs.forEach(log => {
+      const icon = actionIcons[log.action] || '📌';
+      const badgeClass = actionBadges[log.action] || 'audit-tag-update';
+      const dateFormatted = new Date(log.createdAt).toLocaleString('pt-BR', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      });
+      const hasDiff = log.prevState || log.newState;
+
+      html += `
+        <div class="audit-timeline-item">
+          <div class="audit-timeline-badge" style="background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #c7d2fe;">
+            ${icon}
+          </div>
+          <div class="audit-timeline-card">
+            <div class="audit-timeline-meta">
+              <div class="audit-timeline-actor">
+                <span>👤 ${escapeHtml(log.actorName || 'Sistema')}</span>
+                <span class="user-role-badge ${getRoleBadgeClass(log.actorRole)}">${getRoleLabel(log.actorRole)}</span>
+                <span class="audit-action-tag ${badgeClass}">${log.action}</span>
+              </div>
+              <div class="audit-timeline-time">${dateFormatted}</div>
+            </div>
+            <div class="audit-timeline-details">${escapeHtml(log.details || 'Evento registrado.')}</div>
+            ${hasDiff ? `
+              <div style="margin-top: 0.4rem;">
+                <button type="button" class="audit-diff-btn" onclick="openAuditDiffModal('${log.id}')">
+                  🔍 Ver Diferença de Estado
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<div style="color: #f43f5e; text-align: center; padding: 1rem;">Erro ao carregar histórico: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
 window.openTaskModalForCreate = function() {
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
   const isDevOrQa = currentUser && (currentUser.role === 'dev' || currentUser.role === 'qa');
@@ -1946,10 +2188,35 @@ window.openTaskModalForCreate = function() {
     return;
   }
 
+  switchTaskModalTab('form');
+  const tabHistoryBtn = document.getElementById('tab-btn-task-history');
+  if (tabHistoryBtn) tabHistoryBtn.style.display = 'none';
+
   ['task-title', 'task-project', 'task-requirement', 'task-role', 'task-assignee', 'task-priority', 'task-complexity', 'task-hours', 'task-desc'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = false;
   });
+
+  const devNotesInput = document.getElementById('task-dev-notes');
+  if (devNotesInput) {
+    devNotesInput.value = "";
+    devNotesInput.disabled = false;
+  }
+
+  const qaNotesInput = document.getElementById('task-qa-notes');
+  if (qaNotesInput) {
+    qaNotesInput.value = "";
+    qaNotesInput.disabled = false;
+  }
+
+  const qaPill = document.getElementById('task-qa-status-pill');
+  if (qaPill) {
+    qaPill.className = 'badge-qa-pill pending';
+    qaPill.textContent = '🟡 Pendente';
+  }
+
+  const qaMeta = document.getElementById('task-qa-reviewer-meta');
+  if (qaMeta) qaMeta.textContent = '';
 
   const compCreateEl = document.getElementById('task-complexity');
   if (compCreateEl) compCreateEl.value = 'Média';
@@ -1973,7 +2240,12 @@ window.openTaskModalForEdit = function(taskId) {
 
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
   const isDevOrQa = currentUser && (currentUser.role === 'dev' || currentUser.role === 'qa');
+  const isDev = currentUser && currentUser.role === 'dev';
   const isAdmin = currentUser && currentUser.role === 'admin';
+
+  switchTaskModalTab('form');
+  const tabHistoryBtn = document.getElementById('tab-btn-task-history');
+  if (tabHistoryBtn) tabHistoryBtn.style.display = isAdmin ? 'inline-flex' : 'none';
 
   document.getElementById('task-id-edit').value = task.id;
   document.getElementById('task-title').value = task.title;
@@ -1991,6 +2263,46 @@ window.openTaskModalForEdit = function(taskId) {
     const el = document.getElementById(id);
     if (el) el.disabled = isDevOrQa;
   });
+
+  // Campo de Notas do Desenvolvedor (Dev Notes)
+  const devNotesInput = document.getElementById('task-dev-notes');
+  if (devNotesInput) {
+    devNotesInput.value = task.devNotes || "";
+    // O dev, QA, PM ou admin sempre podem registrar ou editar notas do dev
+    devNotesInput.disabled = false;
+  }
+
+  // Campo de Notas & Validação de QA
+  const qaNotesInput = document.getElementById('task-qa-notes');
+  if (qaNotesInput) {
+    qaNotesInput.value = task.qaNotes || "";
+    // Desenvolvedores visualizam as notas de QA em modo leitura para integridade técnica
+    qaNotesInput.disabled = isDev;
+  }
+
+  const qaPill = document.getElementById('task-qa-status-pill');
+  if (qaPill) {
+    if (task.qaApproved) {
+      qaPill.className = 'badge-qa-pill approved';
+      qaPill.textContent = '✓ Aprovado';
+    } else if (task.impediment && task.impediment.includes('Bloqueio QA')) {
+      qaPill.className = 'badge-qa-pill rejected';
+      qaPill.textContent = '⚠️ Bloqueado';
+    } else {
+      qaPill.className = 'badge-qa-pill pending';
+      qaPill.textContent = '🟡 Pendente';
+    }
+  }
+
+  const qaMeta = document.getElementById('task-qa-reviewer-meta');
+  if (qaMeta) {
+    if (task.qaReviewer) {
+      const qd = task.qaDate ? new Date(task.qaDate).toLocaleDateString('pt-BR') : '';
+      qaMeta.textContent = `Revisado por ${task.qaReviewer}${qd ? ` em ${qd}` : ''}`;
+    } else {
+      qaMeta.textContent = 'Aguardando validação formal de QA';
+    }
+  }
 
   // Campo de Horas Apontadas (Apenas Admin pode editar)
   const groupHoursSpent = document.getElementById('group-task-hours-spent');
@@ -2018,7 +2330,7 @@ window.openTaskModalForEdit = function(taskId) {
     document.getElementById('modal-task-title').textContent = "📄 Detalhes da Demanda";
     const assigneeSelect = document.getElementById('task-assignee');
     if (assigneeSelect) assigneeSelect.disabled = false;
-    document.getElementById('btn-save-task').textContent = "Salvar Atribuição";
+    document.getElementById('btn-save-task').textContent = isDev ? "Salvar Notas & Atribuição" : "Salvar Validação & Notas";
     document.getElementById('btn-save-task').style.display = 'inline-flex';
   } else {
     document.getElementById('modal-task-title').textContent = "✏️ Editar Demanda";
@@ -2026,6 +2338,11 @@ window.openTaskModalForEdit = function(taskId) {
     if (assigneeSelect) assigneeSelect.disabled = false;
     document.getElementById('btn-save-task').textContent = "Atualizar Demanda";
     document.getElementById('btn-save-task').style.display = 'inline-flex';
+  }
+
+  // Carregar histórico de auditoria desta demanda (apenas para Admin)
+  if (isAdmin) {
+    loadTaskAuditTimeline(task.id);
   }
 
   openModal('modal-task');
@@ -2688,19 +3005,121 @@ function renderPerformance() {
   const summaryTag = document.getElementById('perf-chart-summary-tag');
   if (summaryTag) summaryTag.textContent = `Taxa de Alta Complexidade: ${highPercent}% (${sumHigh} entregas)`;
 
-  // 7. Algoritmo de Avaliação de Prontidão para Promoção Baseado em Dados Reais
+  // 7. Algoritmo de Avaliação de Prontidão para Promoção Baseado em Metas Reais do Gestor
   const devSeniority = (dev.seniority || '').toLowerCase();
   let targetSeniority = 'Pleno';
+  if (devSeniority.includes('júnior') || devSeniority.includes('junior')) {
+    targetSeniority = 'Pleno';
+  } else if (devSeniority.includes('pleno')) {
+    targetSeniority = 'Sênior';
+  } else if (devSeniority.includes('sênior') || devSeniority.includes('senior')) {
+    targetSeniority = 'Tech Lead';
+  } else {
+    targetSeniority = 'Tech Lead';
+  }
+
   let promotionScore = 0;
   let statusText = '⚪ Sem Entregas no Período';
   let opinionText = '';
   const criteria = [];
 
-  if (sumTotal === 0) {
-    if (devSeniority.includes('júnior') || devSeniority.includes('junior')) targetSeniority = 'Pleno';
-    else if (devSeniority.includes('pleno')) targetSeniority = 'Sênior';
-    else targetSeniority = 'Tech Lead / Especialista';
+  // Métricas complementares para cruzamento com as metas do gestor
+  const qaApprovedTasks = devTasks.filter(t => t.status === 'done' && (t.qaApproved === 1 || t.qaApproved === true)).length;
+  const qaPassRate = sumTotal > 0 ? Math.round((qaApprovedTasks / sumTotal) * 100) : 0;
 
+  let totalEstHours = 0;
+  let totalSpentHours = 0;
+  devTasks.forEach(t => {
+    if (t.status === 'done') {
+      totalEstHours += (parseFloat(t.hours) || 8);
+      totalSpentHours += (parseFloat(t.hoursSpent) || 0);
+    }
+  });
+  const hoursVariance = totalEstHours > 0 ? Math.round(Math.abs(totalSpentHours - totalEstHours) / totalEstHours * 100) : 0;
+
+  // Busca as metas ativas configuradas pelo gestor para a senioridade alvo
+  const allConfiguredGoals = typeof store.getGoals === 'function' ? store.getGoals() : [];
+  const activeDevGoals = allConfiguredGoals.filter(g => g.isActive && (g.targetSeniority === targetSeniority || g.targetSeniority === 'Todos'));
+
+  if (activeDevGoals.length > 0) {
+    let totalWeight = 0;
+    let earnedScore = 0;
+
+    activeDevGoals.forEach(goal => {
+      const w = parseInt(goal.weight, 10) || 2;
+      totalWeight += w;
+      let actual = 0;
+      let pass = false;
+      let detailText = '';
+
+      switch (goal.metricKey) {
+        case 'high_tasks':
+          actual = sumHigh;
+          pass = actual >= goal.targetValue;
+          detailText = `${actual}/${goal.targetValue} ${goal.targetUnit || 'demandas'}`;
+          break;
+        case 'med_tasks':
+          actual = sumMed;
+          pass = actual >= goal.targetValue;
+          detailText = `${actual}/${goal.targetValue} ${goal.targetUnit || 'demandas'}`;
+          break;
+        case 'total_tasks':
+          actual = sumTotal;
+          pass = actual >= goal.targetValue;
+          detailText = `${actual}/${goal.targetValue} ${goal.targetUnit || 'demandas'}`;
+          break;
+        case 'high_percent':
+          actual = highPercent;
+          pass = actual >= goal.targetValue;
+          detailText = `${actual}% (mín. ${goal.targetValue}%)`;
+          break;
+        case 'qa_rate':
+          actual = qaPassRate;
+          pass = actual >= goal.targetValue;
+          detailText = `${actual}% (mín. ${goal.targetValue}%)`;
+          break;
+        case 'hours_variance':
+          actual = hoursVariance;
+          pass = actual <= goal.targetValue;
+          detailText = `Desvio: ${actual}% (limite: ${goal.targetValue}%)`;
+          break;
+        case 'custom':
+        default:
+          actual = !store.calculateDevWorkload(dev.id).isOverloaded && sumTotal > 0 ? 100 : 50;
+          pass = actual >= (goal.targetValue || 70);
+          detailText = pass ? 'Conforme diretriz' : 'Pendente de validação';
+          break;
+      }
+
+      let progressRatio = 0;
+      if (goal.metricKey === 'hours_variance') {
+        progressRatio = pass ? 1 : Math.max(0, 1 - ((actual - goal.targetValue) / (goal.targetValue || 1)));
+      } else {
+        progressRatio = pass ? 1 : Math.min(1, Math.max(0, (actual / (goal.targetValue || 1))));
+      }
+
+      earnedScore += progressRatio * w;
+      criteria.push({
+        text: `${goal.title} [${detailText}]`,
+        pass: pass,
+        weight: w
+      });
+    });
+
+    promotionScore = totalWeight > 0 ? Math.min(100, Math.round((earnedScore / totalWeight) * 100)) : 0;
+    const isReady = promotionScore >= 80;
+
+    if (sumTotal === 0) {
+      statusText = '⚪ Aguardando Conclusão de Demandas';
+      opinionText = `O(A) desenvolvedor(a) ${dev.name} possui ${devTasks.length} demanda(s) atribuída(s), porém nenhuma com status 'Concluído' ainda. A avaliação de promoção será calculada automaticamente conforme as entregas forem homologadas.`;
+    } else if (isReady) {
+      statusText = `🟢 Elegível para Promoção a ${targetSeniority}`;
+      opinionText = `O(A) profissional ${dev.name} atingiu ${criteria.filter(c => c.pass).length} de ${criteria.length} metas ativas configuradas pelo gestor (Score de Prontidão: ${promotionScore}%). Cumpre os requisitos para a transição de carreira para ${targetSeniority}.`;
+    } else {
+      statusText = `🟡 Em Evolução Técnica para ${targetSeniority}`;
+      opinionText = `O(A) profissional ${dev.name} atingiu ${criteria.filter(c => c.pass).length} de ${criteria.length} metas ativas (Score de Prontidão: ${promotionScore}%). Recomenda-se focar nas métricas pendentes do checklist acima para consolidar a promoção para ${targetSeniority}.`;
+    }
+  } else if (sumTotal === 0) {
     promotionScore = 0;
     statusText = '⚪ Aguardando Conclusão de Demandas';
     opinionText = `O(A) desenvolvedor(a) ${dev.name} possui ${devTasks.length} demanda(s) atribuída(s), porém nenhuma com status 'Concluído' ainda. A avaliação de promoção será calculada automaticamente conforme as entregas forem homologadas.`;
@@ -3460,6 +3879,861 @@ function showToast(message) {
   }, 3500);
 }
 
+// ==============================================================================
+// 4.2 Trilha de Auditoria & Conformidade (Audit Logs Engine)
+// ==============================================================================
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getRoleLabel(role) {
+  const map = {
+    admin: 'Admin',
+    pm: 'PM / Scrum',
+    dev: 'Dev',
+    qa: 'QA / Lead'
+  };
+  return map[role] || role || 'Usuário';
+}
+
+function getRoleBadgeClass(role) {
+  const map = {
+    admin: 'tag-admin',
+    pm: 'tag-pm',
+    dev: 'tag-back',
+    qa: 'tag-qa'
+  };
+  return map[role] || 'tag-back';
+}
+
+window.refreshAuditLogsUI = async function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Acesso restrito: apenas o Administrador do Sistema tem acesso aos registros de auditoria.');
+    return;
+  }
+
+  const tbody = document.getElementById('audit-logs-tbody');
+  if (tbody) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-muted);">⏳ Carregando registros de auditoria do banco de dados...</td></tr>';
+  }
+
+  const logs = await store.fetchAuditLogs({ limit: 300 });
+  
+  // Atualizar cards de métricas
+  const totalEl = document.getElementById('audit-stat-total');
+  const tasksEl = document.getElementById('audit-stat-tasks');
+  const qaEl = document.getElementById('audit-stat-qa');
+  const timesheetEl = document.getElementById('audit-stat-timesheet');
+  const counterNav = document.getElementById('counter-nav-audit');
+
+  if (totalEl) totalEl.textContent = logs.length;
+  if (tasksEl) tasksEl.textContent = logs.filter(l => l.entityType === 'task').length;
+  if (qaEl) qaEl.textContent = logs.filter(l => l.action === 'QA_VALIDATE').length;
+  if (timesheetEl) timesheetEl.textContent = logs.filter(l => l.action === 'TIMESHEET_POINT' || l.action === 'HOURS_ADJUST').length;
+  if (counterNav) counterNav.textContent = logs.length;
+
+  renderAuditTable();
+};
+
+function getFilteredAuditLogs() {
+  const entityFilter = document.getElementById('audit-filter-entity')?.value || 'all';
+  const actionFilter = document.getElementById('audit-filter-action')?.value || 'all';
+  const search = (document.getElementById('audit-search-input')?.value || '').trim().toLowerCase();
+
+  let logs = store.auditLogs || [];
+
+  if (entityFilter !== 'all') {
+    logs = logs.filter(l => l.entityType === entityFilter);
+  }
+
+  if (actionFilter !== 'all') {
+    logs = logs.filter(l => l.action === actionFilter);
+  }
+
+  if (search) {
+    logs = logs.filter(l => {
+      const actor = (l.actorName || '').toLowerCase();
+      const entity = (l.entityTitle || '').toLowerCase();
+      const details = (l.details || '').toLowerCase();
+      const action = (l.action || '').toLowerCase();
+      return actor.includes(search) || entity.includes(search) || details.includes(search) || action.includes(search);
+    });
+  }
+
+  return logs;
+}
+
+window.renderAuditTable = function() {
+  const tbody = document.getElementById('audit-logs-tbody');
+  if (!tbody) return;
+
+  const logs = getFilteredAuditLogs();
+
+  if (logs.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+          <div style="font-size: 2rem; margin-bottom: 0.5rem;">📜</div>
+          <div style="font-weight: 600; font-size: 0.95rem;">Nenhum registro de auditoria encontrado</div>
+          <div style="font-size: 0.8rem; margin-top: 4px;">Tente ajustar os filtros ou a busca textual acima.</div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  const actionBadges = {
+    CREATE: 'audit-tag-create',
+    UPDATE: 'audit-tag-update',
+    STATUS_CHANGE: 'audit-tag-status',
+    QA_VALIDATE: 'audit-tag-qa',
+    TIMESHEET_POINT: 'audit-tag-timesheet',
+    HOURS_ADJUST: 'audit-tag-hours',
+    ASSIGN: 'audit-tag-assign',
+    DELETE: 'audit-tag-delete',
+    AUTH_LOGIN: 'audit-tag-auth',
+    AUTH_REGISTER: 'audit-tag-auth'
+  };
+
+  const entityIcons = {
+    task: '🚀',
+    project: '📁',
+    requirement: '📋',
+    test: '🧪',
+    team: '👥',
+    auth: '🔐'
+  };
+
+  let rowsHtml = '';
+  logs.forEach(log => {
+    const d = new Date(log.createdAt);
+    const dateFormatted = d.toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    const badgeClass = actionBadges[log.action] || 'audit-tag-update';
+    const entityIcon = entityIcons[log.entityType] || '📌';
+    const hasDiff = log.prevState || log.newState;
+
+    rowsHtml += `
+      <tr>
+        <td style="font-size: 0.8rem; color: var(--text-muted); font-family: 'Fira Code', monospace; white-space: nowrap;">
+          ${dateFormatted}
+        </td>
+        <td>
+          <div class="audit-actor-chip">
+            <span>👤 ${escapeHtml(log.actorName || 'Sistema')}</span>
+            <span class="user-role-badge ${getRoleBadgeClass(log.actorRole)}">${getRoleLabel(log.actorRole)}</span>
+          </div>
+        </td>
+        <td>
+          <div class="audit-entity-chip" title="ID: ${escapeHtml(log.entityId || '')}">
+            <span>${entityIcon}</span>
+            <span style="font-weight: 600; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              ${escapeHtml(log.entityTitle || log.entityId || log.entityType)}
+            </span>
+          </div>
+        </td>
+        <td>
+          <span class="audit-action-tag ${badgeClass}">${escapeHtml(log.action)}</span>
+        </td>
+        <td style="color: var(--text-secondary); line-height: 1.45;">
+          ${escapeHtml(log.details || '-')}
+        </td>
+        <td style="text-align: center;">
+          ${hasDiff ? `
+            <button type="button" class="audit-diff-btn" onclick="openAuditDiffModal('${log.id}')" title="Ver Diferença de Estado (Antes vs Depois)">
+              🔍 Diff
+            </button>
+          ` : '<span style="color: var(--text-muted); font-size: 0.75rem;">-</span>'}
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = rowsHtml;
+};
+
+window.openAuditDiffModal = function(logId) {
+  const log = (store.auditLogs || []).find(l => l.id === logId);
+  if (!log) return;
+
+  const metaEl = document.getElementById('audit-diff-meta');
+  const prevEl = document.getElementById('audit-diff-prev');
+  const nextEl = document.getElementById('audit-diff-next');
+
+  if (metaEl) {
+    const d = new Date(log.createdAt).toLocaleString('pt-BR');
+    metaEl.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+        <div>
+          <span style="font-weight: 700; color: var(--text-main); font-size: 0.95rem;">${escapeHtml(log.entityTitle || log.entityId)}</span>
+          <span class="audit-entity-chip" style="margin-left: 6px;">${escapeHtml(log.entityType)}</span>
+        </div>
+        <div style="font-size: 0.78rem; color: var(--text-muted); font-family: 'Fira Code', monospace;">${d}</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 0.35rem;">
+        <span class="audit-action-tag audit-tag-update">${escapeHtml(log.action)}</span>
+        <span style="font-size: 0.82rem; color: var(--text-secondary);">Executado por <strong>${escapeHtml(log.actorName || 'Sistema')}</strong> (${getRoleLabel(log.actorRole)})</span>
+      </div>
+      <div style="font-size: 0.84rem; color: var(--text-main); line-height: 1.4;">${escapeHtml(log.details || '')}</div>
+    `;
+  }
+
+  if (prevEl) {
+    let prevText = 'Nenhum estado anterior registrado.';
+    if (log.prevState) {
+      try {
+        const obj = typeof log.prevState === 'string' ? JSON.parse(log.prevState) : log.prevState;
+        prevText = JSON.stringify(obj, null, 2);
+      } catch (e) {
+        prevText = String(log.prevState);
+      }
+    }
+    prevEl.textContent = prevText;
+  }
+
+  if (nextEl) {
+    let nextText = 'Nenhum novo estado registrado.';
+    if (log.newState) {
+      try {
+        const obj = typeof log.newState === 'string' ? JSON.parse(log.newState) : log.newState;
+        nextText = JSON.stringify(obj, null, 2);
+      } catch (e) {
+        nextText = String(log.newState);
+      }
+    }
+    nextEl.textContent = nextText;
+  }
+
+  openModal('modal-audit-diff');
+};
+
+// ==============================================================================
+// 4.3 Exportação de Relatórios de Auditoria (XLSX, PDF e CSV) - Exclusivo Admin
+// ==============================================================================
+
+window.exportAuditLogsXLSX = function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Acesso restrito: apenas o Administrador do Sistema pode exportar a trilha de auditoria.');
+    return;
+  }
+
+  if (typeof XLSX === 'undefined') {
+    showToast('Aviso: Biblioteca XLSX não carregada no navegador.');
+    return;
+  }
+
+  const logs = getFilteredAuditLogs();
+  if (logs.length === 0) {
+    showToast('Nenhum registro de auditoria disponível para exportação.');
+    return;
+  }
+
+  const data = logs.map((l, index) => ({
+    '#': index + 1,
+    'Data / Hora': new Date(l.createdAt).toLocaleString('pt-BR'),
+    'Usuário': l.actorName || 'Sistema',
+    'Papel': getRoleLabel(l.actorRole),
+    'Entidade': (l.entityType || '').toUpperCase(),
+    'ID Entidade': l.entityId || '-',
+    'Título / Referência': l.entityTitle || '-',
+    'Ação': l.action,
+    'Detalhes Operacionais': l.details || '-'
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(data);
+
+  // Largura calculada das colunas
+  worksheet['!cols'] = [
+    { wch: 6 },  // #
+    { wch: 20 }, // Data/Hora
+    { wch: 22 }, // Usuário
+    { wch: 14 }, // Papel
+    { wch: 14 }, // Entidade
+    { wch: 16 }, // ID Entidade
+    { wch: 32 }, // Título
+    { wch: 18 }, // Ação
+    { wch: 55 }  // Detalhes
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Trilha de Auditoria');
+
+  const today = new Date().toISOString().split('T')[0];
+  const filename = `auditoria_devsquad_${today}.xlsx`;
+  XLSX.writeFile(workbook, filename);
+
+  showToast(`Relatório XLSX gerado com sucesso (${logs.length} registros exportados)!`);
+};
+
+window.exportAuditLogsPDF = function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Acesso restrito: apenas o Administrador do Sistema pode exportar a trilha de auditoria.');
+    return;
+  }
+
+  const jsPDFClass = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
+  if (!jsPDFClass) {
+    showToast('Aviso: Biblioteca jsPDF não disponível no navegador.');
+    return;
+  }
+
+  const logs = getFilteredAuditLogs();
+  if (logs.length === 0) {
+    showToast('Nenhum registro de auditoria disponível para exportação.');
+    return;
+  }
+
+  const doc = new jsPDFClass({
+    orientation: 'landscape',
+    unit: 'pt',
+    format: 'a4'
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  // Cabeçalho estilizado Premium
+  doc.setFillColor(15, 23, 42); // slate-900
+  doc.rect(0, 0, pageWidth, 56, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(15);
+  doc.setFont('helvetica', 'bold');
+  doc.text('DEVSQUAD PRO - RELATÓRIO OFICIAL DE AUDITORIA & CONFORMIDADE', 30, 30);
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(148, 163, 184); // slate-400
+  const exportDate = new Date().toLocaleString('pt-BR');
+  doc.text(`Gerado em: ${exportDate} por ${currentUser ? currentUser.name : 'Administrador'} (Admin) | Total: ${logs.length} registros auditados`, 30, 46);
+
+  // Estrutura de dados para o relatório tabular autoTable
+  const head = [['Data / Hora', 'Usuário / Papel', 'Entidade / ID', 'Ação', 'Detalhes Operacionais']];
+  const body = logs.map(l => [
+    new Date(l.createdAt).toLocaleString('pt-BR'),
+    `${l.actorName || 'Sistema'}\n(${getRoleLabel(l.actorRole)})`,
+    `[${(l.entityType || '').toUpperCase()}]\n${l.entityTitle || l.entityId || '-'}`,
+    l.action || '-',
+    l.details || '-'
+  ]);
+
+  if (typeof doc.autoTable === 'function') {
+    doc.autoTable({
+      head: head,
+      body: body,
+      startY: 68,
+      margin: { top: 68, bottom: 35, left: 30, right: 30 },
+      theme: 'grid',
+      styles: {
+        fontSize: 8,
+        cellPadding: 6,
+        textColor: [30, 41, 59],
+        lineColor: [226, 232, 240],
+        lineWidth: 0.5,
+        overflow: 'linebreak',
+        font: 'helvetica'
+      },
+      headStyles: {
+        fillColor: [30, 41, 59],
+        textColor: [248, 250, 252],
+        fontStyle: 'bold',
+        fontSize: 8.5
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252]
+      },
+      columnStyles: {
+        0: { cellWidth: 105 },
+        1: { cellWidth: 120 },
+        2: { cellWidth: 160 },
+        3: { cellWidth: 110 },
+        4: { cellWidth: 'auto' }
+      },
+      didDrawPage: function(data) {
+        // Rodapé de paginação
+        const total = doc.internal.getNumberOfPages();
+        doc.setFontSize(8);
+        doc.setTextColor(148, 163, 184);
+        doc.text('DevSquad ALM Pro - Trilha de Auditoria Imutável do Sistema', 30, pageHeight - 16);
+        doc.text(`Página ${data.pageNumber} de ${total}`, pageWidth - 30, pageHeight - 16, { align: 'right' });
+      }
+    });
+
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Página ${i} de ${totalPages}`, pageWidth - 30, pageHeight - 16, { align: 'right' });
+    }
+  } else {
+    // Fallback texto caso o plugin autoTable não carregue
+    doc.setTextColor(30, 41, 59);
+    doc.setFontSize(9);
+    let y = 80;
+    logs.forEach((l, i) => {
+      if (y > pageHeight - 35) {
+        doc.addPage();
+        y = 40;
+      }
+      const line = `${i + 1}. [${new Date(l.createdAt).toLocaleString('pt-BR')}] ${l.actorName} - ${l.action} - ${l.details || ''}`;
+      doc.text(line.slice(0, 130), 30, y);
+      y += 16;
+    });
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+  doc.save(`auditoria_devsquad_${today}.pdf`);
+  showToast(`Relatório PDF gerado com sucesso (${logs.length} registros)!`);
+};
+
+window.exportAuditLogsCSV = function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Acesso restrito: apenas o Administrador do Sistema pode exportar a trilha de auditoria.');
+    return;
+  }
+
+  const logs = getFilteredAuditLogs();
+  if (logs.length === 0) {
+    showToast('Nenhum registro de auditoria disponível para exportação.');
+    return;
+  }
+
+  let csv = '\uFEFF'; // BOM para Excel UTF-8
+  csv += 'ID;Data e Hora;Autor;Papel;Entidade;ID Entidade;Título;Ação;Detalhes\r\n';
+
+  logs.forEach(l => {
+    const row = [
+      l.id,
+      new Date(l.createdAt).toLocaleString('pt-BR'),
+      l.actorName || 'Sistema',
+      getRoleLabel(l.actorRole),
+      (l.entityType || '').toUpperCase(),
+      l.entityId || '-',
+      (l.entityTitle || '').replace(/;/g, ' '),
+      l.action,
+      (l.details || '').replace(/;/g, ' ').replace(/\n/g, ' ')
+    ];
+    csv += row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';') + '\r\n';
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `auditoria_devsquad_${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showToast(`Trilha de auditoria exportada em CSV com sucesso (${logs.length} registros)!`);
+};
+
+// ==============================================================================
+// 4.3 Gestão de Metas & Métricas de Promoção (Promotion Goals Engine - Admin RBAC)
+// ==============================================================================
+
+window.renderGoals = function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    return;
+  }
+
+  const seniorityFilter = document.getElementById('goals-filter-seniority')?.value || 'all';
+  const categoryFilter = document.getElementById('goals-filter-category')?.value || 'all';
+  const search = (document.getElementById('goals-search-input')?.value || '').trim().toLowerCase();
+
+  const allGoals = typeof store.getGoals === 'function' ? store.getGoals() : [];
+
+  // 1. Atualizar contadores e cards de resumo
+  const totalEl = document.getElementById('goals-stat-total');
+  const plenoEl = document.getElementById('goals-stat-pleno');
+  const seniorEl = document.getElementById('goals-stat-senior');
+  const leadEl = document.getElementById('goals-stat-lead');
+  const navCounter = document.getElementById('counter-nav-goals');
+
+  if (totalEl) totalEl.textContent = allGoals.length;
+  if (plenoEl) plenoEl.textContent = allGoals.filter(g => g.targetSeniority === 'Pleno').length;
+  if (seniorEl) seniorEl.textContent = allGoals.filter(g => g.targetSeniority === 'Sênior').length;
+  if (leadEl) leadEl.textContent = allGoals.filter(g => g.targetSeniority === 'Tech Lead').length;
+  if (navCounter) navCounter.textContent = allGoals.filter(g => g.isActive).length;
+
+  // 2. Filtragem de Metas
+  const filteredGoals = allGoals.filter(goal => {
+    if (seniorityFilter !== 'all' && goal.targetSeniority !== seniorityFilter) return false;
+    if (categoryFilter !== 'all' && goal.category !== categoryFilter) return false;
+    if (search) {
+      const t = (goal.title || '').toLowerCase();
+      const d = (goal.description || '').toLowerCase();
+      const m = (goal.metricKey || '').toLowerCase();
+      const s = (goal.targetSeniority || '').toLowerCase();
+      if (!t.includes(search) && !d.includes(search) && !m.includes(search) && !s.includes(search)) return false;
+    }
+    return true;
+  });
+
+  // 3. Renderizar Grid de Cards
+  const container = document.getElementById('goals-cards-container');
+  if (!container) return;
+
+  if (filteredGoals.length === 0) {
+    container.innerHTML = `
+      <div class="glass-panel" style="padding: 3rem; text-align: center; color: var(--text-muted); grid-column: 1 / -1;">
+        <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">🎯</div>
+        <p style="font-size: 1.1rem; margin-bottom: 0.85rem; color: var(--text-main);">Nenhuma meta de promoção encontrada com os filtros selecionados.</p>
+        <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+          <button class="btn btn-primary btn-sm" onclick="openGoalModalForCreate()">+ Cadastrar Nova Meta</button>
+          <button class="btn btn-secondary btn-sm" onclick="resetDefaultGoalsAction()">🔄 Restaurar Matriz Padrão</button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const categoryLabels = {
+    complexity: '🚀 Complexidade Técnica',
+    volume: '📦 Volume & Entregas',
+    qa: '🧪 Qualidade & QA',
+    hours: '⏱️ Horas & Prazos',
+    skills: '🧠 Habilidades & Mentoria'
+  };
+
+  const metricKeyLabels = {
+    high_tasks: 'Demandas de Alta Complexidade',
+    med_tasks: 'Demandas de Média Complexidade',
+    total_tasks: 'Volume Total de Demandas Concluídas',
+    high_percent: 'Percentual em Alta Complexidade',
+    qa_rate: 'Taxa Mínima de Aprovação em QA',
+    hours_variance: 'Desvio Máximo de Horas Apontadas',
+    custom: 'Critério Qualitativo do Gestor'
+  };
+
+  let html = '';
+  filteredGoals.forEach(goal => {
+    let seniorityClass = 'seniority-pleno';
+    let seniorityIcon = '🌱';
+    let seniorityLabel = 'Requisito Pleno';
+
+    if (goal.targetSeniority === 'Sênior') {
+      seniorityClass = 'seniority-senior';
+      seniorityIcon = '⭐';
+      seniorityLabel = 'Requisito Sênior';
+    } else if (goal.targetSeniority === 'Tech Lead') {
+      seniorityClass = 'seniority-lead';
+      seniorityIcon = '👑';
+      seniorityLabel = 'Requisito Tech Lead';
+    } else if (goal.targetSeniority === 'Todos') {
+      seniorityClass = 'seniority-todos';
+      seniorityIcon = '🌐';
+      seniorityLabel = 'Todos os Níveis';
+    }
+
+    const catLabel = categoryLabels[goal.category] || '🎯 Desempenho';
+    const metricLabel = metricKeyLabels[goal.metricKey] || goal.metricKey;
+    const isInactive = !goal.isActive;
+    const weightVal = parseInt(goal.weight, 10) || 2;
+    const stars = '⭐'.repeat(Math.min(3, Math.max(1, weightVal)));
+    const weightText = `${stars} Peso ${weightVal}x`;
+
+    html += `
+      <div class="goal-card glass-panel ${isInactive ? 'goal-inactive' : ''}" id="goal-card-${goal.id}">
+        <div class="goal-card-header">
+          <div class="goal-header-left">
+            <span class="goal-seniority-badge ${seniorityClass}">
+              ${seniorityIcon} ${seniorityLabel}
+            </span>
+            <span class="goal-category-tag">
+              ${catLabel}
+            </span>
+          </div>
+          <div>
+            ${goal.isActive 
+              ? '<span class="goal-status-pill goal-status-active">● Ativa</span>' 
+              : '<span class="goal-status-pill goal-status-paused">⏸️ Pausada</span>'
+            }
+          </div>
+        </div>
+
+        <div>
+          <h3 class="goal-title-h3">${escapeHtml(goal.title)}</h3>
+          <p class="goal-desc-p" style="margin-top: 0.35rem;">${escapeHtml(goal.description || 'Critério calibrado para avaliação de prontidão de promoção.')}</p>
+        </div>
+
+        <div class="goal-benchmark-box">
+          <div class="goal-benchmark-left">
+            <span class="goal-benchmark-label">${metricLabel}</span>
+            <div class="goal-benchmark-target">
+              ${goal.metricKey === 'hours_variance' ? '≤' : '≥'} ${goal.targetValue}
+              <small>${escapeHtml(goal.targetUnit || 'unidades')}</small>
+            </div>
+          </div>
+          <div class="goal-weight-chip" title="Peso de relevância no Score de Prontidão (%)">
+            ${weightText}
+          </div>
+        </div>
+
+        <div class="goal-card-footer">
+          <button class="btn btn-ghost btn-sm" onclick="toggleGoalActive('${goal.id}')" title="${goal.isActive ? 'Pausar esta meta (não será computada no score)' : 'Ativar esta meta no cálculo de promoção'}">
+            ${goal.isActive ? '⏸️ Pausar' : '▶️ Ativar'}
+          </button>
+          <div class="goal-actions-group">
+            <button class="card-btn-action" onclick="openGoalModalForEdit('${goal.id}')" title="Editar Meta e Parâmetros">
+              ✏️ Editar
+            </button>
+            <button class="card-btn-action btn-del" onclick="confirmDeleteGoal('${goal.id}', '${escapeHtml(goal.title)}')" title="Excluir Meta">
+              🗑️
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+};
+
+window.openGoalModalForCreate = function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Apenas administradores podem cadastrar metas.');
+    return;
+  }
+
+  const editIdInput = document.getElementById('goal-id-edit');
+  const titleEl = document.getElementById('modal-goal-title');
+  const btnSave = document.getElementById('btn-save-goal');
+  const titleInput = document.getElementById('goal-title');
+  const senInput = document.getElementById('goal-target-seniority');
+  const catInput = document.getElementById('goal-category');
+  const keyInput = document.getElementById('goal-metric-key');
+  const valInput = document.getElementById('goal-target-value');
+  const unitInput = document.getElementById('goal-target-unit');
+  const weightInput = document.getElementById('goal-weight');
+  const activeInput = document.getElementById('goal-is-active');
+  const descInput = document.getElementById('goal-description');
+
+  if (editIdInput) editIdInput.value = '';
+  if (titleEl) titleEl.textContent = '🎯 Cadastrar Nova Meta de Promoção';
+  if (btnSave) btnSave.textContent = 'Salvar Meta';
+  if (titleInput) titleInput.value = '';
+  if (senInput) senInput.value = 'Pleno';
+  if (catInput) catInput.value = 'complexity';
+  if (keyInput) keyInput.value = 'high_tasks';
+  if (valInput) valInput.value = '2';
+  if (unitInput) unitInput.value = 'demandas';
+  if (weightInput) weightInput.value = '2';
+  if (activeInput) activeInput.checked = true;
+  if (descInput) descInput.value = '';
+
+  openModal('modal-goal');
+};
+
+window.openGoalModalForEdit = function(goalId) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Apenas administradores podem editar metas.');
+    return;
+  }
+
+  const goal = store.getGoalById(goalId);
+  if (!goal) {
+    showToast('Meta não encontrada.');
+    return;
+  }
+
+  const editIdInput = document.getElementById('goal-id-edit');
+  const titleEl = document.getElementById('modal-goal-title');
+  const btnSave = document.getElementById('btn-save-goal');
+  const titleInput = document.getElementById('goal-title');
+  const senInput = document.getElementById('goal-target-seniority');
+  const catInput = document.getElementById('goal-category');
+  const keyInput = document.getElementById('goal-metric-key');
+  const valInput = document.getElementById('goal-target-value');
+  const unitInput = document.getElementById('goal-target-unit');
+  const weightInput = document.getElementById('goal-weight');
+  const activeInput = document.getElementById('goal-is-active');
+  const descInput = document.getElementById('goal-description');
+
+  if (editIdInput) editIdInput.value = goal.id;
+  if (titleEl) titleEl.textContent = '✏️ Editar Meta de Promoção';
+  if (btnSave) btnSave.textContent = 'Atualizar Meta';
+  if (titleInput) titleInput.value = goal.title || '';
+  if (senInput) senInput.value = goal.targetSeniority || 'Pleno';
+  if (catInput) catInput.value = goal.category || 'complexity';
+  if (keyInput) keyInput.value = goal.metricKey || 'high_tasks';
+  if (valInput) valInput.value = goal.targetValue !== undefined ? goal.targetValue : 1;
+  if (unitInput) unitInput.value = goal.targetUnit || 'demandas';
+  if (weightInput) weightInput.value = String(goal.weight || 2);
+  if (activeInput) activeInput.checked = goal.isActive !== false;
+  if (descInput) descInput.value = goal.description || '';
+
+  openModal('modal-goal');
+};
+
+window.handleGoalMetricKeyChange = function() {
+  const key = document.getElementById('goal-metric-key')?.value;
+  const catEl = document.getElementById('goal-category');
+  const unitEl = document.getElementById('goal-target-unit');
+  const valEl = document.getElementById('goal-target-value');
+  if (!key) return;
+
+  if (key === 'high_tasks') {
+    if (catEl) catEl.value = 'complexity';
+    if (unitEl) unitEl.value = 'demandas';
+    if (valEl && !valEl.value) valEl.value = '2';
+  } else if (key === 'med_tasks') {
+    if (catEl) catEl.value = 'complexity';
+    if (unitEl) unitEl.value = 'demandas';
+    if (valEl && !valEl.value) valEl.value = '3';
+  } else if (key === 'total_tasks') {
+    if (catEl) catEl.value = 'volume';
+    if (unitEl) unitEl.value = 'demandas';
+    if (valEl && !valEl.value) valEl.value = '4';
+  } else if (key === 'high_percent') {
+    if (catEl) catEl.value = 'complexity';
+    if (unitEl) unitEl.value = '%';
+    if (valEl && !valEl.value) valEl.value = '30';
+  } else if (key === 'qa_rate') {
+    if (catEl) catEl.value = 'qa';
+    if (unitEl) unitEl.value = '%';
+    if (valEl && !valEl.value) valEl.value = '85';
+  } else if (key === 'hours_variance') {
+    if (catEl) catEl.value = 'hours';
+    if (unitEl) unitEl.value = '%';
+    if (valEl && !valEl.value) valEl.value = '15';
+  } else if (key === 'custom') {
+    if (catEl) catEl.value = 'skills';
+    if (unitEl) unitEl.value = 'pts';
+    if (valEl && !valEl.value) valEl.value = '100';
+  }
+};
+
+window.saveGoalModal = async function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Apenas administradores podem gerenciar metas de promoção.');
+    return;
+  }
+
+  const editId = document.getElementById('goal-id-edit')?.value;
+  const title = (document.getElementById('goal-title')?.value || '').trim();
+  const targetSeniority = document.getElementById('goal-target-seniority')?.value || 'Pleno';
+  const category = document.getElementById('goal-category')?.value || 'complexity';
+  const metricKey = document.getElementById('goal-metric-key')?.value || 'high_tasks';
+  const targetValue = parseFloat(document.getElementById('goal-target-value')?.value) || 0;
+  const targetUnit = (document.getElementById('goal-target-unit')?.value || 'demandas').trim();
+  const weight = parseInt(document.getElementById('goal-weight')?.value, 10) || 2;
+  const isActive = document.getElementById('goal-is-active')?.checked ? 1 : 0;
+  const description = (document.getElementById('goal-description')?.value || '').trim();
+
+  if (!title) {
+    showToast('Por favor, informe o título da meta.');
+    return;
+  }
+
+  const payload = {
+    title,
+    targetSeniority,
+    category,
+    metricKey,
+    targetValue,
+    targetUnit,
+    weight,
+    isActive,
+    description
+  };
+
+  if (editId) {
+    await store.updateGoal(editId, payload);
+    showToast(`Meta "${title}" atualizada com sucesso!`);
+  } else {
+    await store.addGoal(payload);
+    showToast(`Meta "${title}" cadastrada com sucesso!`);
+  }
+
+  closeModal('modal-goal');
+  renderGoals();
+  updateSidebarCounters();
+
+  const currentDev = store.getMemberById(store.selectedDevId) || store.getTeamMembers()[0];
+  if (currentDev && typeof renderPerformance === 'function') {
+    renderPerformance();
+  }
+};
+
+window.toggleGoalActive = async function(goalId) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Apenas administradores podem pausar/ativar metas.');
+    return;
+  }
+
+  const goal = store.getGoalById(goalId);
+  if (!goal) return;
+
+  const newActive = !goal.isActive;
+  await store.updateGoal(goalId, { isActive: newActive });
+  showToast(`Meta "${goal.title}" ${newActive ? 'ativada' : 'pausada'} com sucesso.`);
+  renderGoals();
+  updateSidebarCounters();
+
+  if (typeof renderPerformance === 'function') {
+    renderPerformance();
+  }
+};
+
+window.confirmDeleteGoal = async function(goalId, title) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Apenas administradores podem excluir metas.');
+    return;
+  }
+
+  if (confirm(`Tem certeza que deseja excluir a meta "${title}"?\n\nEsta alteração impactará imediatamente os cálculos de promoção dos desenvolvedores.`)) {
+    await store.deleteGoal(goalId);
+    showToast(`Meta "${title}" excluída com sucesso.`);
+    renderGoals();
+    updateSidebarCounters();
+
+    if (typeof renderPerformance === 'function') {
+      renderPerformance();
+    }
+  }
+};
+
+window.resetDefaultGoalsAction = async function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Apenas administradores podem restaurar metas.');
+    return;
+  }
+
+  if (confirm('Deseja restaurar as 8 metas padrão recomendadas para avaliação dos desenvolvedores?\n\nIsso recriará as métricas calibradas para Pleno, Sênior e Tech Lead.')) {
+    await store.resetDefaultGoals();
+    showToast('Metas padrão recomendadas restauradas com sucesso!');
+    renderGoals();
+    updateSidebarCounters();
+
+    if (typeof renderPerformance === 'function') {
+      renderPerformance();
+    }
+  }
+};
+
 function updateSidebarCounters() {
   const projCounter = document.getElementById('counter-nav-projects');
   const reqCounter = document.getElementById('counter-nav-req');
@@ -3467,6 +4741,7 @@ function updateSidebarCounters() {
   const teamCounter = document.getElementById('counter-nav-team');
   const testCounter = document.getElementById('counter-nav-tests');
   const govCounter = document.getElementById('counter-nav-governance');
+  const auditCounter = document.getElementById('counter-nav-audit');
 
   if (projCounter) projCounter.textContent = store.state.projects.length;
   if (reqCounter) reqCounter.textContent = store.state.requirements.length;
@@ -3476,12 +4751,34 @@ function updateSidebarCounters() {
   if (govCounter && typeof authStore !== 'undefined') {
     govCounter.textContent = authStore.getUsers().length;
   }
+  if (auditCounter) {
+    auditCounter.textContent = store.auditLogs ? `${store.auditLogs.length}` : '0';
+  }
+  const goalsCounter = document.getElementById('counter-nav-goals');
+  if (goalsCounter) {
+    const activeCount = store.state.goals ? store.state.goals.filter(g => g.isActive).length : 0;
+    goalsCounter.textContent = activeCount > 0 ? `${activeCount}` : 'Admin';
+  }
 }
 
 function switchView(viewName) {
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
   const currentRole = currentUser ? currentUser.role : 'dev';
   const perms = RolePermissions[currentRole] || RolePermissions.dev;
+
+  if (viewName === 'goals' && currentRole !== 'admin') {
+    showToast('Acesso restrito: a gestão de metas é visível apenas para o Administrador do Sistema.');
+    const fallbackView = perms.allowedViews.includes('kanban') ? 'kanban' : perms.allowedViews[0];
+    switchView(fallbackView);
+    return;
+  }
+
+  if (viewName === 'audit' && currentRole !== 'admin') {
+    showToast('Acesso restrito: a ferramenta de auditoria é visível apenas para o Administrador do Sistema.');
+    const fallbackView = perms.allowedViews.includes('kanban') ? 'kanban' : perms.allowedViews[0];
+    switchView(fallbackView);
+    return;
+  }
 
   if (perms && perms.allowedViews && !perms.allowedViews.includes(viewName)) {
     showToast(`Acesso restrito: seu perfil (${perms.label}) não tem permissão para acessar esta área.`);
@@ -3513,6 +4810,8 @@ function switchView(viewName) {
   if (viewName === 'testing') renderTesting();
   if (viewName === 'governance') renderGovernance();
   if (viewName === 'performance') renderPerformance();
+  if (viewName === 'goals') renderGoals();
+  if (viewName === 'audit') refreshAuditLogsUI();
 }
 window.switchView = switchView;
 
@@ -3530,7 +4829,9 @@ function applyRolePermissions(user) {
     { id: 'nav-team', view: 'team' },
     { id: 'nav-testing', view: 'testing' },
     { id: 'nav-governance', view: 'governance' },
-    { id: 'nav-performance', view: 'performance' }
+    { id: 'nav-performance', view: 'performance' },
+    { id: 'nav-goals', view: 'goals' },
+    { id: 'nav-audit', view: 'audit' }
   ];
 
   allNavViews.forEach(item => {
@@ -4189,7 +5490,7 @@ window.addEventListener('DOMContentLoaded', () => {
     refreshAllUI();
   });
 
-  // 2. FORMULÁRIO DE DEMANDA / KANBAN (CRUD & ATRIBUIÇÃO)
+  // 2. FORMULÁRIO DE DEMANDA / KANBAN (CRUD, ATRIBUIÇÃO & NOTAS DEV/QA)
   document.getElementById('form-new-task')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const currentUser = authStore.getCurrentUser();
@@ -4201,10 +5502,17 @@ window.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const devNotes = document.getElementById('task-dev-notes')?.value || '';
+    const qaNotes = document.getElementById('task-qa-notes')?.value || '';
+
     if (editId && isDevOrQa) {
       const assigneeId = document.getElementById('task-assignee').value;
-      store.updateTask(editId, { assigneeId });
-      showToast('Atribuição da demanda atualizada com sucesso!');
+      const updateData = { assigneeId, devNotes };
+      if (currentUser.role === 'qa') {
+        updateData.qaNotes = qaNotes;
+      }
+      store.updateTask(editId, updateData);
+      showToast('Demanda atualizada com sucesso (notas e atribuição salvas)!');
       closeModal('modal-task');
       refreshAllUI();
       return;
@@ -4221,7 +5529,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const desc = document.getElementById('task-desc').value;
 
     if (editId) {
-      const updateData = { title, projectId, reqId, role, assigneeId, priority, complexity, hours, desc };
+      const updateData = { title, projectId, reqId, role, assigneeId, priority, complexity, hours, desc, devNotes, qaNotes };
       const isAdmin = currentUser && currentUser.role === 'admin';
       if (isAdmin) {
         const spentVal = document.getElementById('task-hours-spent')?.value;
@@ -4232,7 +5540,7 @@ window.addEventListener('DOMContentLoaded', () => {
       store.updateTask(editId, updateData);
       showToast(`Demanda "${title}" atualizada com sucesso!`);
     } else {
-      store.addTask({ title, projectId, reqId, role, assigneeId, priority, complexity, hours, desc });
+      store.addTask({ title, projectId, reqId, role, assigneeId, priority, complexity, hours, desc, devNotes, qaNotes });
       showToast(`Nova demanda "${title}" criada com sucesso!`);
     }
 

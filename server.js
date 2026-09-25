@@ -126,16 +126,174 @@ db.exec(`
     FOREIGN KEY (req_id) REFERENCES requirements(id) ON DELETE SET NULL,
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
   );
+
+  CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    entity_title TEXT,
+    action TEXT NOT NULL,
+    actor_id TEXT,
+    actor_name TEXT NOT NULL,
+    actor_role TEXT,
+    details TEXT NOT NULL,
+    previous_state TEXT,
+    new_state TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity_type, entity_id);
+  CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS promotion_goals (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    target_seniority TEXT NOT NULL,
+    category TEXT NOT NULL,
+    metric_key TEXT NOT NULL,
+    target_value REAL NOT NULL,
+    target_unit TEXT,
+    weight INTEGER DEFAULT 2,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_goals_seniority ON promotion_goals(target_seniority);
 `);
 
-// Migração segura para adicionar complexity em bases já existentes
-try {
-  db.exec("ALTER TABLE tasks ADD COLUMN complexity TEXT DEFAULT 'Média'");
-} catch (e) {}
+// Migrações seguras de colunas em bases já existentes
+try { db.exec("ALTER TABLE tasks ADD COLUMN complexity TEXT DEFAULT 'Média'"); } catch (e) {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN dev_notes TEXT"); } catch (e) {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN created_at TEXT"); } catch (e) {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN updated_at TEXT"); } catch (e) {}
 
 // ==============================================================================
 // 2. Inicialização Segura do Banco (Apenas conta de Administrador se vazio)
 // ==============================================================================
+function seedDefaultGoals(force = false) {
+  if (force) {
+    db.prepare('DELETE FROM promotion_goals').run();
+  }
+  const count = db.prepare('SELECT count(*) as count FROM promotion_goals').get().count;
+  if (count === 0 || force) {
+    console.log('🌱 Inicializando Metas Padrão de Promoção no SQLite...');
+    const insertGoal = db.prepare(`
+      INSERT INTO promotion_goals (id, title, description, target_seniority, category, metric_key, target_value, target_unit, weight, is_active, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const defaultGoals = [
+      {
+        id: "goal_1",
+        title: "Autonomia em Média Complexidade",
+        description: "Entrega consistente de tarefas de complexidade média com pouca necessidade de supervisão direta.",
+        target_seniority: "Pleno",
+        category: "volume",
+        metric_key: "med_tasks",
+        target_value: 2,
+        target_unit: "demandas",
+        weight: 3,
+        is_active: 1,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: "goal_2",
+        title: "Iniciação em Alta Complexidade",
+        description: "Capacidade comprovada de assumir e concluir com sucesso ao menos uma tarefa de Alta Complexidade no ciclo.",
+        target_seniority: "Pleno",
+        category: "complexity",
+        metric_key: "high_tasks",
+        target_value: 1,
+        target_unit: "demandas",
+        weight: 2,
+        is_active: 1,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: "goal_3",
+        title: "Qualidade & Aprovação em QA",
+        description: "Índice de aprovação direta em validações de QA e casos de testes sem bloqueios impeditivos.",
+        target_seniority: "Pleno",
+        category: "qa",
+        metric_key: "qa_rate",
+        target_value: 75,
+        target_unit: "%",
+        weight: 2,
+        is_active: 1,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: "goal_4",
+        title: "Domínio de Alta Complexidade",
+        description: "Liderança de entrega e resolução de problemas técnicos críticos de Alta Complexidade no sistema.",
+        target_seniority: "Sênior",
+        category: "complexity",
+        metric_key: "high_tasks",
+        target_value: 3,
+        target_unit: "demandas",
+        weight: 3,
+        is_active: 1,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: "goal_5",
+        title: "Predomínio de Tarefas Críticas",
+        description: "Proporção de tarefas de Alta Complexidade em relação ao volume total de demandas entregues pelo dev.",
+        target_seniority: "Sênior",
+        category: "complexity",
+        metric_key: "high_percent",
+        target_value: 25,
+        target_unit: "%",
+        weight: 2,
+        is_active: 1,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: "goal_6",
+        title: "Acurácia de Estimativas & Horas",
+        description: "Manter o equilíbrio de esforço com baixo desvio entre as horas estimadas e as horas apontadas na demanda.",
+        target_seniority: "Sênior",
+        category: "hours",
+        metric_key: "hours_variance",
+        target_value: 20,
+        target_unit: "%",
+        weight: 2,
+        is_active: 1,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: "goal_7",
+        title: "Governança & Arquitetura de Software",
+        description: "Liderança em soluções arquiteturais de alta criticidade e mentorias técnicas para os demais devs da squad.",
+        target_seniority: "Tech Lead",
+        category: "complexity",
+        metric_key: "high_tasks",
+        target_value: 5,
+        target_unit: "demandas",
+        weight: 3,
+        is_active: 1,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: "goal_8",
+        title: "Excelência de Qualidade de Código",
+        description: "Altíssimo rigor técnico com taxa de aprovação em QA superior a 90% em todas as entregas do ciclo.",
+        target_seniority: "Tech Lead",
+        category: "qa",
+        metric_key: "qa_rate",
+        target_value: 90,
+        target_unit: "%",
+        weight: 2,
+        is_active: 1,
+        created_at: new Date().toISOString()
+      }
+    ];
+
+    defaultGoals.forEach(g => {
+      insertGoal.run(g.id, g.title, g.description, g.target_seniority, g.category, g.metric_key, g.target_value, g.target_unit, g.weight, g.is_active, g.created_at);
+    });
+  }
+}
+
 function seedDatabaseIfEmpty() {
   const usersCount = db.prepare('SELECT count(*) as count FROM users').get().count;
   if (usersCount === 0) {
@@ -153,6 +311,8 @@ function seedDatabaseIfEmpty() {
       insertUser.run(u.id, u.name, u.email, u.password, u.role, u.dev_role, u.seniority, u.skills, u.avatar_bg, u.created_at);
     });
   }
+
+  seedDefaultGoals(false);
 
   console.log('✅ Banco de dados SQLite verificado e pronto para operações!');
 }
@@ -287,6 +447,48 @@ function parseJsonBody(req) {
   });
 }
 
+function getActorFromReq(req) {
+  const actorId = req.headers['x-user-id'] || null;
+  let actorName = 'Usuário';
+  if (req.headers['x-user-name']) {
+    try {
+      actorName = decodeURIComponent(req.headers['x-user-name']);
+    } catch(e) {
+      actorName = req.headers['x-user-name'];
+    }
+  }
+  const actorRole = req.headers['x-user-role'] || null;
+  return { actorId, actorName, actorRole, role: actorRole };
+}
+
+function logAudit({ entityType, entityId, entityTitle, action, actorId, actorName, actorRole, details, prevState, newState }) {
+  try {
+    const id = 'aud_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO audit_logs (id, entity_type, entity_id, entity_title, action, actor_id, actor_name, actor_role, details, previous_state, new_state, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      entityType || 'system',
+      String(entityId || ''),
+      entityTitle || null,
+      action || 'ACTION',
+      actorId || null,
+      actorName || 'Sistema',
+      actorRole || null,
+      details || '',
+      typeof prevState === 'object' ? JSON.stringify(prevState) : (prevState || null),
+      typeof newState === 'object' ? JSON.stringify(newState) : (newState || null),
+      now
+    );
+    return id;
+  } catch (err) {
+    console.error('[AUDIT ERROR]', err);
+    return null;
+  }
+}
+
 // ==============================================================================
 // 4. Mapeamento de Entidades do Banco para o Frontend
 // ==============================================================================
@@ -321,13 +523,38 @@ function getFullTasks() {
       status: t.status,
       desc: t.desc,
       impediment: t.impediment,
+      devNotes: t.dev_notes || '',
       qaApproved: Boolean(t.qa_approved),
-      qaNotes: t.qa_notes,
-      qaReviewer: t.qa_reviewer,
-      qaDate: t.qa_date,
+      qaNotes: t.qa_notes || '',
+      qaReviewer: t.qa_reviewer || '',
+      qaDate: t.qa_date || null,
+      createdAt: t.created_at || null,
+      updatedAt: t.updated_at || null,
       timesheet: taskTs
     };
   });
+}
+
+function getFullAuditLogs(limit = 150) {
+  try {
+    const rows = db.prepare('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ?').all(limit);
+    return rows.map(r => ({
+      id: r.id,
+      entityType: r.entity_type,
+      entityId: r.entity_id,
+      entityTitle: r.entity_title,
+      action: r.action,
+      actorId: r.actor_id,
+      actorName: r.actor_name,
+      actorRole: r.actor_role,
+      details: r.details,
+      previousState: r.previous_state,
+      newState: r.new_state,
+      createdAt: r.created_at
+    }));
+  } catch (e) {
+    return [];
+  }
 }
 
 function getFullRequirements() {
@@ -421,6 +648,23 @@ function getFullUsers() {
   return unique;
 }
 
+function getFullGoals() {
+  const rows = db.prepare("SELECT * FROM promotion_goals ORDER BY CASE target_seniority WHEN 'Pleno' THEN 1 WHEN 'Sênior' THEN 2 WHEN 'Tech Lead' THEN 3 ELSE 4 END, weight DESC, created_at ASC").all();
+  return rows.map(r => ({
+    id: r.id,
+    title: r.title,
+    description: r.description,
+    targetSeniority: r.target_seniority,
+    category: r.category,
+    metricKey: r.metric_key,
+    targetValue: r.target_value,
+    targetUnit: r.target_unit,
+    weight: r.weight,
+    isActive: r.is_active === 1,
+    createdAt: r.created_at
+  }));
+}
+
 // ==============================================================================
 // 5. Servidor HTTP Principal & Roteamento da REST API
 // ==============================================================================
@@ -430,7 +674,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-user-id, x-user-role, x-user-name'
     });
     return res.end();
   }
@@ -456,13 +700,17 @@ const server = http.createServer(async (req, res) => {
 
     // 2. Bootstrap Consolidado (Carga Rápida de Todo o Estado)
     if (method === 'GET' && pathname === '/api/bootstrap') {
+      const actor = getActorFromReq(req);
+      const isAdmin = actor && actor.role === 'admin';
       return sendJson(res, 200, {
         projects: getFullProjects(),
         requirements: getFullRequirements(),
         teamMembers: getFullTeamMembers(),
         tasks: getFullTasks(),
         testCases: getFullTestCases(),
-        users: getFullUsers()
+        users: getFullUsers(),
+        goals: getFullGoals(),
+        auditLogs: isAdmin ? getFullAuditLogs(150) : []
       });
     }
 
@@ -491,6 +739,17 @@ const server = http.createServer(async (req, res) => {
         avatarBg: user.avatar_bg,
         createdAt: user.created_at
       };
+
+      logAudit({
+        entityType: 'auth',
+        entityId: user.id,
+        entityTitle: user.name,
+        action: 'LOGIN',
+        actorId: user.id,
+        actorName: user.name,
+        actorRole: user.role,
+        details: `Usuário ${user.name} (${user.role}) efetuou login no sistema.`
+      });
 
       return sendJson(res, 200, { success: true, user: safeUser });
     }
@@ -562,6 +821,18 @@ const server = http.createServer(async (req, res) => {
         avatarBg: randomBg,
         createdAt: createdAt
       };
+
+      const actor = getActorFromReq(req);
+      logAudit({
+        entityType: 'auth',
+        entityId: newId,
+        entityTitle: name,
+        action: 'REGISTER',
+        actorId: actor.actorId || newId,
+        actorName: actor.actorName || name,
+        actorRole: actor.actorRole || 'admin',
+        details: `Novo usuário registrado: "${name}" (${email}) com perfil "${data.role || 'dev'}".`
+      });
 
       return sendJson(res, 201, { success: true, user: safeUser });
     }
@@ -669,10 +940,23 @@ const server = http.createServer(async (req, res) => {
         }
         const p = await parseJsonBody(req);
         const id = p.id || 'p_' + Date.now();
+        const now = new Date().toISOString();
         db.prepare(`
           INSERT INTO projects (id, code, name, desc, color, status, deadline, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, p.code || 'PROJ', p.name, p.desc || '', p.color || '#3b82f6', p.status || 'Ativo', p.deadline || '', new Date().toISOString());
+        `).run(id, p.code || 'PROJ', p.name, p.desc || '', p.color || '#3b82f6', p.status || 'Ativo', p.deadline || '', now);
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'project',
+          entityId: id,
+          entityTitle: p.name,
+          action: 'CREATE',
+          ...actor,
+          details: `Cadastrou novo projeto: [${p.code || 'PROJ'}] "${p.name}".`,
+          newState: p
+        });
+
         return sendJson(res, 201, { id, ...p });
       }
     }
@@ -685,11 +969,25 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para editar projetos.' });
         }
         const p = await parseJsonBody(req);
+        const existing = db.prepare('SELECT * FROM projects WHERE id = ?').get(projId);
         db.prepare(`
           UPDATE projects
           SET name = ?, code = ?, desc = ?, color = ?, status = ?, deadline = ?
           WHERE id = ?
         `).run(p.name || '', p.code || '', p.desc || '', p.color || '#3b82f6', p.status || 'Ativo', p.deadline || '', projId);
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'project',
+          entityId: projId,
+          entityTitle: p.name || (existing ? existing.name : projId),
+          action: 'UPDATE',
+          ...actor,
+          details: `Atualizou configurações do projeto [${p.code || 'PROJ'}] "${p.name}".`,
+          prevState: existing,
+          newState: p
+        });
+
         return sendJson(res, 200, { id: projId, ...p });
       }
       if (method === 'DELETE') {
@@ -697,7 +995,20 @@ const server = http.createServer(async (req, res) => {
         if (callerRole === 'dev' || callerRole === 'qa' || callerRole === 'pm') {
           return sendJson(res, 403, { success: false, message: 'Seu perfil não possui permissão para excluir projetos.' });
         }
+        const existing = db.prepare('SELECT name, code FROM projects WHERE id = ?').get(projId);
         db.prepare('DELETE FROM projects WHERE id = ?').run(projId);
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'project',
+          entityId: projId,
+          entityTitle: existing ? existing.name : projId,
+          action: 'DELETE',
+          ...actor,
+          details: `Excluiu projeto [${existing ? existing.code : 'PROJ'}] "${existing ? existing.name : projId}".`,
+          prevState: existing
+        });
+
         return sendJson(res, 200, { success: true, id: projId });
       }
     }
@@ -714,10 +1025,23 @@ const server = http.createServer(async (req, res) => {
         }
         const r = await parseJsonBody(req);
         const id = r.id || 'req_' + Date.now();
+        const now = new Date().toISOString();
         db.prepare(`
           INSERT INTO requirements (id, code, title, project_id, type, moscow, user_story, bdd, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, r.code || 'RF', r.title, r.projectId || null, r.type || 'functional', r.moscow || 'Must', r.userStory || '', r.bdd || '', new Date().toISOString());
+        `).run(id, r.code || 'RF', r.title, r.projectId || null, r.type || 'functional', r.moscow || 'Must', r.userStory || '', r.bdd || '', now);
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'requirement',
+          entityId: id,
+          entityTitle: r.title,
+          action: 'CREATE',
+          ...actor,
+          details: `Especificou novo requisito: [${r.code || 'RF'}] "${r.title}".`,
+          newState: r
+        });
+
         return sendJson(res, 201, { id, ...r });
       }
     }
@@ -730,11 +1054,25 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para editar requisitos.' });
         }
         const r = await parseJsonBody(req);
+        const existing = db.prepare('SELECT * FROM requirements WHERE id = ?').get(reqId);
         db.prepare(`
           UPDATE requirements
           SET code = ?, title = ?, project_id = ?, type = ?, moscow = ?, user_story = ?, bdd = ?
           WHERE id = ?
         `).run(r.code || 'RF', r.title || '', r.projectId || null, r.type || 'functional', r.moscow || 'Must', r.userStory || '', r.bdd || '', reqId);
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'requirement',
+          entityId: reqId,
+          entityTitle: r.title || (existing ? existing.title : reqId),
+          action: 'UPDATE',
+          ...actor,
+          details: `Atualizou especificação do requisito [${r.code || 'RF'}] "${r.title}".`,
+          prevState: existing,
+          newState: r
+        });
+
         return sendJson(res, 200, { id: reqId, ...r });
       }
       if (method === 'DELETE') {
@@ -742,7 +1080,20 @@ const server = http.createServer(async (req, res) => {
         if (callerRole === 'dev' || callerRole === 'qa') {
           return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para excluir requisitos.' });
         }
+        const existing = db.prepare('SELECT code, title FROM requirements WHERE id = ?').get(reqId);
         db.prepare('DELETE FROM requirements WHERE id = ?').run(reqId);
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'requirement',
+          entityId: reqId,
+          entityTitle: existing ? existing.title : reqId,
+          action: 'DELETE',
+          ...actor,
+          details: `Excluiu requisito [${existing ? existing.code : 'RF'}] "${existing ? existing.title : reqId}".`,
+          prevState: existing
+        });
+
         return sendJson(res, 200, { success: true, id: reqId });
       }
     }
@@ -755,11 +1106,30 @@ const server = http.createServer(async (req, res) => {
       if (method === 'POST') {
         const t = await parseJsonBody(req);
         const id = t.id || 't_' + Date.now();
+        const now = new Date().toISOString();
+        const devNotes = t.devNotes || '';
+        const qaNotes = t.qaNotes || '';
+        const qaReviewer = t.qaReviewer || '';
+        const qaDate = t.qaDate || null;
+        const qaApproved = t.qaApproved ? 1 : 0;
+
         db.prepare(`
-          INSERT INTO tasks (id, title, project_id, req_id, role, assignee_id, priority, complexity, hours, hours_spent, status, desc, impediment, qa_approved)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, null, 0)
-        `).run(id, t.title, t.projectId || null, t.reqId || null, t.role || 'backend', t.assigneeId || null, t.priority || 'Média', t.complexity || 'Média', parseFloat(t.hours) || 8, t.status || 'backlog', t.desc || '');
-        return sendJson(res, 201, { id, ...t });
+          INSERT INTO tasks (id, title, project_id, req_id, role, assignee_id, priority, complexity, hours, hours_spent, status, desc, impediment, qa_approved, qa_notes, qa_reviewer, qa_date, dev_notes, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, null, ?, ?, ?, ?, ?, ?, ?)
+        `).run(id, t.title, t.projectId || null, t.reqId || null, t.role || 'backend', t.assigneeId || null, t.priority || 'Média', t.complexity || 'Média', parseFloat(t.hours) || 8, t.status || 'backlog', t.desc || '', qaApproved, qaNotes, qaReviewer, qaDate, devNotes, now, now);
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'task',
+          entityId: id,
+          entityTitle: t.title,
+          action: 'CREATE',
+          ...actor,
+          details: `Criou nova demanda: "${t.title}" (${t.role || 'backend'}, ${t.priority || 'Média'}).${devNotes ? ' Possui notas técnicas iniciais.' : ''}`,
+          newState: t
+        });
+
+        return sendJson(res, 201, { id, ...t, devNotes, qaNotes, qaReviewer, qaDate, qaApproved: Boolean(qaApproved), createdAt: now, updatedAt: now });
       }
     }
 
@@ -771,11 +1141,30 @@ const server = http.createServer(async (req, res) => {
       // Mover status do Kanban
       if (action === 'move' && method === 'PUT') {
         const { status } = await parseJsonBody(req);
+        const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
+        const prevStatus = existing ? existing.status : 'desconhecido';
+        const now = new Date().toISOString();
+
         if (status === 'done') {
-          db.prepare('UPDATE tasks SET status = ?, qa_date = COALESCE(qa_date, ?) WHERE id = ?').run(status, new Date().toISOString(), taskId);
+          db.prepare('UPDATE tasks SET status = ?, qa_date = COALESCE(qa_date, ?), updated_at = ? WHERE id = ?').run(status, now, now, taskId);
         } else {
-          db.prepare('UPDATE tasks SET status = ? WHERE id = ?').run(status, taskId);
+          db.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?').run(status, now, taskId);
         }
+
+        const actor = getActorFromReq(req);
+        const colNames = { backlog: 'A Fazer (Backlog)', spec: 'Em Especificação', dev: 'Em Desenvolvimento', qa: 'Em Testes / Validação', done: 'Concluído' };
+
+        logAudit({
+          entityType: 'task',
+          entityId: taskId,
+          entityTitle: existing ? existing.title : taskId,
+          action: 'STATUS_CHANGE',
+          ...actor,
+          details: `Moveu status da demanda de "${colNames[prevStatus] || prevStatus}" para "${colNames[status] || status}".`,
+          prevState: { status: prevStatus },
+          newState: { status }
+        });
+
         return sendJson(res, 200, { success: true, id: taskId, status });
       }
 
@@ -785,19 +1174,33 @@ const server = http.createServer(async (req, res) => {
         const h = parseFloat(hours) || 0;
         const tsId = 'ts_' + Date.now();
         const now = new Date().toISOString();
+        const actor = getActorFromReq(req);
+        const authorName = author || actor.actorName || 'Desenvolvedor';
 
         db.prepare(`
           INSERT INTO task_timesheet (id, task_id, hours, date, notes, impediment, author, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(tsId, taskId, h, date || now.split('T')[0], notes || '', impediment || null, author || 'Dev', now);
+        `).run(tsId, taskId, h, date || now.split('T')[0], notes || '', impediment || null, authorName, now);
 
-        // Atualiza horas acumuladas da demanda
         db.prepare(`
           UPDATE tasks
           SET hours_spent = hours_spent + ?,
-              impediment = CASE WHEN ? != '' THEN ? ELSE impediment END
+              impediment = CASE WHEN ? != '' THEN ? ELSE impediment END,
+              updated_at = ?
           WHERE id = ?
-        `).run(h, impediment || '', impediment || null, taskId);
+        `).run(h, impediment || '', impediment || null, now, taskId);
+
+        const existing = db.prepare('SELECT title FROM tasks WHERE id = ?').get(taskId);
+
+        logAudit({
+          entityType: 'task',
+          entityId: taskId,
+          entityTitle: existing ? existing.title : taskId,
+          action: 'TIMESHEET_POINT',
+          ...actor,
+          details: `Apontamento de ${h}h realizado por ${authorName}.${notes ? ` Observações: "${notes}".` : ''}${impediment ? ` ⚠️ Impedimento registrado: "${impediment}".` : ''}`,
+          newState: { hours: h, date: date || now.split('T')[0], notes, impediment }
+        });
 
         return sendJson(res, 200, { success: true, tsId });
       }
@@ -806,25 +1209,66 @@ const server = http.createServer(async (req, res) => {
       if (action === 'qa-validate' && method === 'POST') {
         const { decision, notes, reviewer } = await parseJsonBody(req);
         const now = new Date().toISOString();
+        const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
+        const actor = getActorFromReq(req);
+        const reviewerName = reviewer || actor.actorName || 'QA Lead';
+        const qaNotesText = (notes || '').trim() || (decision === 'approve' ? 'Homologado com sucesso nos testes de QA.' : 'Reprovado nos critérios de aceitação.');
+
         if (decision === 'approve') {
           db.prepare(`
             UPDATE tasks
-            SET status = 'done', qa_approved = 1, qa_notes = ?, qa_reviewer = ?, qa_date = ?, impediment = null
+            SET status = 'done', qa_approved = 1, qa_notes = ?, qa_reviewer = ?, qa_date = ?, impediment = null, updated_at = ?
             WHERE id = ?
-          `).run(notes || 'Aprovado por QA', reviewer || 'QA Lead', now, taskId);
+          `).run(qaNotesText, reviewerName, now, now, taskId);
         } else {
           db.prepare(`
             UPDATE tasks
-            SET status = 'dev', qa_approved = 0, qa_notes = ?, qa_reviewer = ?, qa_date = ?, impediment = ?
+            SET status = 'dev', qa_approved = 0, qa_notes = ?, qa_reviewer = ?, qa_date = ?, impediment = ?, updated_at = ?
             WHERE id = ?
-          `).run(notes || 'Bloqueio QA', reviewer || 'QA Lead', now, `Bloqueio QA: ${notes || 'Critérios não cumpridos'}`, taskId);
+          `).run(qaNotesText, reviewerName, now, `Bloqueio QA: ${qaNotesText}`, now, taskId);
         }
-        return sendJson(res, 200, { success: true, decision });
+
+        logAudit({
+          entityType: 'task',
+          entityId: taskId,
+          entityTitle: existing ? existing.title : taskId,
+          action: 'QA_VALIDATE',
+          ...actor,
+          details: decision === 'approve'
+            ? `QA APROVADO: Demanda homologada por ${reviewerName}. Parecer: "${qaNotesText}".`
+            : `QA REPROVADO: Demanda bloqueada por ${reviewerName} e retornada para Desenvolvimento. Motivo: "${qaNotesText}".`,
+          prevState: { qaApproved: existing ? existing.qa_approved : 0, status: existing ? existing.status : 'qa' },
+          newState: { qaApproved: decision === 'approve' ? 1 : 0, qaNotes: qaNotesText, qaReviewer: reviewerName, qaDate: now }
+        });
+
+        return sendJson(res, 200, { success: true, decision, notes: qaNotesText, reviewer: reviewerName, date: now });
       }
 
+      // Atribuição de Demanda
       if (action === 'assign' && method === 'PUT') {
         const { assigneeId } = await parseJsonBody(req);
-        db.prepare('UPDATE tasks SET assignee_id = ? WHERE id = ?').run(assigneeId || null, taskId);
+        const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
+        const now = new Date().toISOString();
+        db.prepare('UPDATE tasks SET assignee_id = ?, updated_at = ? WHERE id = ?').run(assigneeId || null, now, taskId);
+
+        const actor = getActorFromReq(req);
+        let assigneeName = 'Livre (Desatribuída)';
+        if (assigneeId) {
+          const m = db.prepare('SELECT name FROM team_members WHERE id = ?').get(assigneeId);
+          assigneeName = m ? m.name : assigneeId;
+        }
+
+        logAudit({
+          entityType: 'task',
+          entityId: taskId,
+          entityTitle: existing ? existing.title : taskId,
+          action: assigneeId ? 'ASSIGN' : 'UNASSIGN',
+          ...actor,
+          details: assigneeId ? `Demanda atribuída para o desenvolvedor "${assigneeName}".` : 'Demanda desatribuída (colocada como Livre).',
+          prevState: { assigneeId: existing ? existing.assignee_id : null },
+          newState: { assigneeId: assigneeId || null }
+        });
+
         return sendJson(res, 200, { success: true, taskId, assigneeId });
       }
 
@@ -841,17 +1285,31 @@ const server = http.createServer(async (req, res) => {
         }
         const oldHours = task.hours_spent || 0;
         const nh = Math.max(0, parseFloat(newHoursSpent) || 0);
-        db.prepare('UPDATE tasks SET hours_spent = ? WHERE id = ?').run(nh, taskId);
+        const now = new Date().toISOString();
+        db.prepare('UPDATE tasks SET hours_spent = ?, updated_at = ? WHERE id = ?').run(nh, now, taskId);
 
         // Registrar entrada de auditoria no timesheet
         const tsId = 'ts_' + Date.now();
-        const now = new Date().toISOString();
         const diff = nh - oldHours;
         const notes = `[Ajuste Administrativo] Saldo de horas alterado de ${oldHours}h para ${nh}h. Motivo: ${reason || 'Ajuste de horas apontadas'}`;
+        const actor = getActorFromReq(req);
+        const authorName = author || actor.actorName || 'Administrador';
+
         db.prepare(`
           INSERT INTO task_timesheet (id, task_id, hours, date, notes, impediment, author, created_at)
           VALUES (?, ?, ?, ?, ?, null, ?, ?)
-        `).run(tsId, taskId, diff, now.split('T')[0], notes, author || 'Administrador', now);
+        `).run(tsId, taskId, diff, now.split('T')[0], notes, authorName, now);
+
+        logAudit({
+          entityType: 'task',
+          entityId: taskId,
+          entityTitle: task.title,
+          action: 'HOURS_ADJUST',
+          ...actor,
+          details: `Saldo de horas apontadas ajustado de ${oldHours}h para ${nh}h. Motivo: "${reason || 'Sem justificativa preenchida'}".`,
+          prevState: { hoursSpent: oldHours },
+          newState: { hoursSpent: nh }
+        });
 
         return sendJson(res, 200, { success: true, taskId, oldHours, newHours: nh, tsId });
       }
@@ -860,7 +1318,8 @@ const server = http.createServer(async (req, res) => {
         const t = await parseJsonBody(req);
         const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
         if (existing) {
-          const callerRole = req.headers['x-user-role'];
+          const actor = getActorFromReq(req);
+          const callerRole = actor.actorRole;
           const newTitle = t.title !== undefined ? t.title : existing.title;
           const newProj = t.projectId !== undefined ? (t.projectId || null) : existing.project_id;
           const newReq = t.reqId !== undefined ? (t.reqId || null) : existing.req_id;
@@ -872,7 +1331,6 @@ const server = http.createServer(async (req, res) => {
           
           let newHoursSpent = existing.hours_spent || 0;
           if (t.hoursSpent !== undefined) {
-            // Apenas admin (ou sem header de role restritivo) pode alterar horas apontadas
             if (callerRole === 'admin' || !callerRole) {
               const candidate = Math.max(0, parseFloat(t.hoursSpent) || 0);
               if (Math.abs(candidate - newHoursSpent) > 0.001) {
@@ -883,25 +1341,78 @@ const server = http.createServer(async (req, res) => {
                 db.prepare(`
                   INSERT INTO task_timesheet (id, task_id, hours, date, notes, impediment, author, created_at)
                   VALUES (?, ?, ?, ?, ?, null, ?, ?)
-                `).run(tsId, taskId, diff, now.split('T')[0], notes, 'Administrador', now);
+                `).run(tsId, taskId, diff, now.split('T')[0], notes, actor.actorName || 'Administrador', now);
                 newHoursSpent = candidate;
               }
             }
           }
 
           const newDesc = t.desc !== undefined ? t.desc : existing.desc;
+          const newDevNotes = t.devNotes !== undefined ? t.devNotes : (existing.dev_notes || '');
+          const newQaNotes = t.qaNotes !== undefined ? t.qaNotes : (existing.qa_notes || '');
+          const newQaReviewer = t.qaReviewer !== undefined ? t.qaReviewer : (existing.qa_reviewer || '');
+          const newQaDate = t.qaDate !== undefined ? t.qaDate : (existing.qa_date || '');
+          const newQaApproved = t.qaApproved !== undefined ? (t.qaApproved ? 1 : 0) : (existing.qa_approved || 0);
+          const now = new Date().toISOString();
+
           db.prepare(`
             UPDATE tasks
-            SET title = ?, project_id = ?, req_id = ?, role = ?, assignee_id = ?, priority = ?, complexity = ?, hours = ?, hours_spent = ?, desc = ?
+            SET title = ?, project_id = ?, req_id = ?, role = ?, assignee_id = ?, priority = ?, complexity = ?, hours = ?, hours_spent = ?, desc = ?, dev_notes = ?, qa_notes = ?, qa_reviewer = ?, qa_date = ?, qa_approved = ?, updated_at = ?
             WHERE id = ?
-          `).run(newTitle, newProj, newReq, newRole, newAssignee, newPriority, newComplexity, newHours, newHoursSpent, newDesc, taskId);
-          return sendJson(res, 200, { success: true, id: taskId, ...t, hoursSpent: newHoursSpent });
+          `).run(newTitle, newProj, newReq, newRole, newAssignee, newPriority, newComplexity, newHours, newHoursSpent, newDesc, newDevNotes, newQaNotes, newQaReviewer, newQaDate, newQaApproved, now, taskId);
+
+          const changeItems = [];
+          if (newTitle !== existing.title) changeItems.push(`Título alterado para "${newTitle}"`);
+          if (newDevNotes !== (existing.dev_notes || '')) changeItems.push('Notas técnicas do desenvolvedor atualizadas');
+          if (newQaNotes !== (existing.qa_notes || '')) changeItems.push(`Notas de QA atualizadas (${newQaReviewer || 'QA'})`);
+          if (newHoursSpent !== existing.hours_spent) changeItems.push(`Horas apontadas: ${newHoursSpent}h`);
+          if (newAssignee !== existing.assignee_id) changeItems.push('Responsável reatribuído');
+          if (newPriority !== existing.priority) changeItems.push(`Prioridade: ${newPriority}`);
+          if (newComplexity !== (existing.complexity || 'Média')) changeItems.push(`Complexidade: ${newComplexity}`);
+
+          logAudit({
+            entityType: 'task',
+            entityId: taskId,
+            entityTitle: newTitle,
+            action: 'UPDATE',
+            ...actor,
+            details: changeItems.length > 0 ? `Atualizou demanda: ${changeItems.join(', ')}.` : `Atualizou informações da demanda "${newTitle}".`,
+            prevState: { title: existing.title, devNotes: existing.dev_notes, qaNotes: existing.qa_notes },
+            newState: { title: newTitle, devNotes: newDevNotes, qaNotes: newQaNotes }
+          });
+
+          return sendJson(res, 200, {
+            success: true,
+            id: taskId,
+            ...t,
+            title: newTitle,
+            devNotes: newDevNotes,
+            qaNotes: newQaNotes,
+            qaReviewer: newQaReviewer,
+            qaDate: newQaDate,
+            qaApproved: Boolean(newQaApproved),
+            hoursSpent: newHoursSpent,
+            updatedAt: now
+          });
         }
         return sendJson(res, 404, { success: false, message: 'Demanda não encontrada.' });
       }
 
       if (method === 'DELETE') {
+        const existing = db.prepare('SELECT title FROM tasks WHERE id = ?').get(taskId);
         db.prepare('DELETE FROM tasks WHERE id = ?').run(taskId);
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'task',
+          entityId: taskId,
+          entityTitle: existing ? existing.title : taskId,
+          action: 'DELETE',
+          ...actor,
+          details: `Excluiu demanda #${taskId} - "${existing ? existing.title : taskId}".`,
+          prevState: existing
+        });
+
         return sendJson(res, 200, { success: true, id: taskId });
       }
     }
@@ -924,7 +1435,6 @@ const server = http.createServer(async (req, res) => {
           try { parsedSkills = JSON.parse(m.skills); } catch(e) { parsedSkills = m.skills.split(',').map(s=>s.trim()).filter(Boolean); }
         }
 
-        // Verifica se já existe um membro com este ID ou com o mesmo nome (case-insensitive)
         const existing = db.prepare('SELECT * FROM team_members WHERE id = ? OR lower(trim(name)) = lower(trim(?))').get(m.id || '', cleanName);
 
         if (existing) {
@@ -941,6 +1451,16 @@ const server = http.createServer(async (req, res) => {
             SET name = ?, role = ?, seniority = ?, skills = ?, capacity = ?, avatar_bg = ?
             WHERE id = ?
           `).run(cleanName, updatedRole, updatedSeniority, JSON.stringify(mergedSkills), updatedCapacity, updatedAvatarBg, existing.id);
+
+          const actor = getActorFromReq(req);
+          logAudit({
+            entityType: 'team_member',
+            entityId: existing.id,
+            entityTitle: cleanName,
+            action: 'UPDATE',
+            ...actor,
+            details: `Atualizou dados do membro "${cleanName}" (${updatedRole}, ${updatedSeniority}).`
+          });
 
           return sendJson(res, 200, {
             id: existing.id,
@@ -964,6 +1484,16 @@ const server = http.createServer(async (req, res) => {
           VALUES (?, ?, ?, ?, ?, ?, ?)
         `).run(id, cleanName, role, seniority, JSON.stringify(parsedSkills), capacity, avatarBg);
 
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'team_member',
+          entityId: id,
+          entityTitle: cleanName,
+          action: 'CREATE',
+          ...actor,
+          details: `Adicionou novo desenvolvedor na equipe: "${cleanName}" (${role}, ${seniority}).`
+        });
+
         return sendJson(res, 201, {
           id,
           name: cleanName,
@@ -986,10 +1516,33 @@ const server = http.createServer(async (req, res) => {
           SET name = ?, role = ?, seniority = ?, skills = ?, capacity = ?
           WHERE id = ?
         `).run(m.name, m.role, m.seniority, skillsStr, parseFloat(m.capacity) || 40, memberId);
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'team_member',
+          entityId: memberId,
+          entityTitle: m.name,
+          action: 'UPDATE',
+          ...actor,
+          details: `Atualizou informações do membro "${m.name}".`
+        });
+
         return sendJson(res, 200, { id: memberId, ...m });
       }
       if (method === 'DELETE') {
+        const existing = db.prepare('SELECT name FROM team_members WHERE id = ?').get(memberId);
         db.prepare('DELETE FROM team_members WHERE id = ?').run(memberId);
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'team_member',
+          entityId: memberId,
+          entityTitle: existing ? existing.name : memberId,
+          action: 'DELETE',
+          ...actor,
+          details: `Removeu membro da equipe: "${existing ? existing.name : memberId}".`
+        });
+
         return sendJson(res, 200, { success: true, id: memberId });
       }
     }
@@ -1006,6 +1559,17 @@ const server = http.createServer(async (req, res) => {
           INSERT INTO test_cases (id, title, type, req_id, task_id, status, steps, expected)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(id, tc.title, tc.type || 'Geral', tc.reqId || null, tc.taskId || null, tc.status || 'pending', tc.steps || '', tc.expected || '');
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'test_case',
+          entityId: id,
+          entityTitle: tc.title,
+          action: 'CREATE',
+          ...actor,
+          details: `Cadastrou caso de teste QA: "${tc.title}" (${tc.type || 'Geral'}).`
+        });
+
         return sendJson(res, 201, { id, ...tc });
       }
     }
@@ -1017,23 +1581,260 @@ const server = http.createServer(async (req, res) => {
 
       if (action === 'status' && method === 'PUT') {
         const { status } = await parseJsonBody(req);
+        const existing = db.prepare('SELECT * FROM test_cases WHERE id = ?').get(testId);
         db.prepare('UPDATE test_cases SET status = ? WHERE id = ?').run(status, testId);
+
+        const actor = getActorFromReq(req);
+        const statusLabels = { pass: 'Aprovado', fail: 'Reprovado', pending: 'Pendente' };
+
+        logAudit({
+          entityType: 'test_case',
+          entityId: testId,
+          entityTitle: existing ? existing.title : testId,
+          action: 'STATUS_CHANGE',
+          ...actor,
+          details: `Atualizou status do teste "${existing ? existing.title : testId}" para "${statusLabels[status] || status}".`
+        });
+
         return sendJson(res, 200, { success: true, id: testId, status });
       }
 
       if (method === 'PUT') {
         const tc = await parseJsonBody(req);
+        const existing = db.prepare('SELECT * FROM test_cases WHERE id = ?').get(testId);
         db.prepare(`
           UPDATE test_cases
           SET title = ?, type = ?, req_id = ?, steps = ?, expected = ?
           WHERE id = ?
         `).run(tc.title || '', tc.type || 'Geral', tc.reqId || null, tc.steps || '', tc.expected || '', testId);
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'test_case',
+          entityId: testId,
+          entityTitle: tc.title || (existing ? existing.title : testId),
+          action: 'UPDATE',
+          ...actor,
+          details: `Editou caso de teste QA: "${tc.title}".`
+        });
+
         return sendJson(res, 200, { id: testId, ...tc });
       }
 
       if (method === 'DELETE') {
+        const existing = db.prepare('SELECT title FROM test_cases WHERE id = ?').get(testId);
         db.prepare('DELETE FROM test_cases WHERE id = ?').run(testId);
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'test_case',
+          entityId: testId,
+          entityTitle: existing ? existing.title : testId,
+          action: 'DELETE',
+          ...actor,
+          details: `Excluiu caso de teste QA: "${existing ? existing.title : testId}".`
+        });
+
         return sendJson(res, 200, { success: true, id: testId });
+      }
+    }
+
+    // 9. API de Auditoria & Histórico de Operações (Compliance & Rastreabilidade)
+    if (pathname === '/api/audit-logs') {
+      if (method === 'GET') {
+        const actor = getActorFromReq(req);
+        if (!actor || actor.role !== 'admin') {
+          return sendJson(res, 403, { success: false, message: 'Acesso restrito: apenas o Administrador do Sistema pode consultar a trilha de auditoria.' });
+        }
+        const entityType = url.searchParams.get('entityType');
+        const entityId = url.searchParams.get('entityId');
+        const limit = Math.min(500, Math.max(1, parseInt(url.searchParams.get('limit')) || 150));
+
+        let query = 'SELECT * FROM audit_logs';
+        const params = [];
+        const conditions = [];
+
+        if (entityType && entityType !== 'all') {
+          conditions.push('entity_type = ?');
+          params.push(entityType);
+        }
+        if (entityId) {
+          conditions.push('entity_id = ?');
+          params.push(entityId);
+        }
+
+        if (conditions.length > 0) {
+          query += ' WHERE ' + conditions.join(' AND ');
+        }
+
+        query += ' ORDER BY created_at DESC LIMIT ?';
+        params.push(limit);
+
+        const rows = db.prepare(query).all(...params);
+        return sendJson(res, 200, rows.map(r => ({
+          id: r.id,
+          entityType: r.entity_type,
+          entityId: r.entity_id,
+          entityTitle: r.entity_title,
+          action: r.action,
+          actorId: r.actor_id,
+          actorName: r.actor_name,
+          actorRole: r.actor_role,
+          details: r.details,
+          previousState: r.previous_state,
+          newState: r.new_state,
+          createdAt: r.created_at
+        })));
+      }
+    }
+
+    // 10. Gestão de Metas & Métricas de Promoção (Exclusivo Administrador)
+    if (pathname === '/api/goals/reset-defaults' && method === 'POST') {
+      const actor = getActorFromReq(req);
+      if (!actor || actor.role !== 'admin') {
+        return sendJson(res, 403, { success: false, message: 'Apenas Administradores podem restaurar metas padrão.' });
+      }
+      seedDefaultGoals(true);
+      logAudit({
+        entityType: 'goal',
+        entityId: 'all',
+        entityTitle: 'Metas Padrão de Promoção',
+        action: 'UPDATE',
+        ...actor,
+        details: 'Restaurou a matriz padrão de metas e métricas de promoção de desenvolvedores.'
+      });
+      return sendJson(res, 200, getFullGoals());
+    }
+
+    if (pathname === '/api/goals') {
+      if (method === 'GET') {
+        return sendJson(res, 200, getFullGoals());
+      }
+      if (method === 'POST') {
+        const actor = getActorFromReq(req);
+        if (!actor || actor.role !== 'admin') {
+          return sendJson(res, 403, { success: false, message: 'Apenas Administradores podem cadastrar metas de promoção.' });
+        }
+        const data = await parseJsonBody(req);
+        const id = data.id || 'goal_' + Date.now();
+        const createdAt = new Date().toISOString();
+        const targetValue = parseFloat(data.targetValue) || 0;
+        const weight = parseInt(data.weight, 10) || 2;
+        const isActive = data.isActive === false || data.isActive === 0 ? 0 : 1;
+
+        db.prepare(`
+          INSERT INTO promotion_goals (id, title, description, target_seniority, category, metric_key, target_value, target_unit, weight, is_active, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          id,
+          data.title || 'Nova Meta',
+          data.description || '',
+          data.targetSeniority || 'Pleno',
+          data.category || 'complexity',
+          data.metricKey || 'high_tasks',
+          targetValue,
+          data.targetUnit || 'demandas',
+          weight,
+          isActive,
+          createdAt
+        );
+
+        logAudit({
+          entityType: 'goal',
+          entityId: id,
+          entityTitle: data.title,
+          action: 'CREATE',
+          ...actor,
+          details: `Cadastrou meta de promoção: "${data.title}" para ${data.targetSeniority} (${targetValue} ${data.targetUnit || ''}, Peso ${weight}x).`
+        });
+
+        return sendJson(res, 201, {
+          id,
+          title: data.title,
+          description: data.description,
+          targetSeniority: data.targetSeniority || 'Pleno',
+          category: data.category || 'complexity',
+          metricKey: data.metricKey || 'high_tasks',
+          targetValue,
+          targetUnit: data.targetUnit || 'demandas',
+          weight,
+          isActive: isActive === 1,
+          createdAt
+        });
+      }
+    }
+
+    if (pathname.startsWith('/api/goals/')) {
+      const goalId = pathname.split('/')[3];
+      if (method === 'PUT') {
+        const actor = getActorFromReq(req);
+        if (!actor || actor.role !== 'admin') {
+          return sendJson(res, 403, { success: false, message: 'Apenas Administradores podem editar metas de promoção.' });
+        }
+        const data = await parseJsonBody(req);
+        const existing = db.prepare('SELECT * FROM promotion_goals WHERE id = ?').get(goalId);
+        if (!existing) {
+          return sendJson(res, 404, { success: false, message: 'Meta não encontrada.' });
+        }
+
+        const title = data.title !== undefined ? data.title : existing.title;
+        const description = data.description !== undefined ? data.description : existing.description;
+        const targetSeniority = data.targetSeniority !== undefined ? data.targetSeniority : existing.target_seniority;
+        const category = data.category !== undefined ? data.category : existing.category;
+        const metricKey = data.metricKey !== undefined ? data.metricKey : existing.metric_key;
+        const targetValue = data.targetValue !== undefined ? parseFloat(data.targetValue) : existing.target_value;
+        const targetUnit = data.targetUnit !== undefined ? data.targetUnit : existing.target_unit;
+        const weight = data.weight !== undefined ? parseInt(data.weight, 10) : existing.weight;
+        const isActive = data.isActive !== undefined ? (data.isActive ? 1 : 0) : existing.is_active;
+
+        db.prepare(`
+          UPDATE promotion_goals
+          SET title = ?, description = ?, target_seniority = ?, category = ?, metric_key = ?, target_value = ?, target_unit = ?, weight = ?, is_active = ?
+          WHERE id = ?
+        `).run(title, description, targetSeniority, category, metricKey, targetValue, targetUnit, weight, isActive, goalId);
+
+        logAudit({
+          entityType: 'goal',
+          entityId: goalId,
+          entityTitle: title,
+          action: 'UPDATE',
+          ...actor,
+          details: `Atualizou meta de promoção: "${title}" (${targetValue} ${targetUnit}, Peso ${weight}x).`
+        });
+
+        return sendJson(res, 200, {
+          id: goalId,
+          title,
+          description,
+          targetSeniority,
+          category,
+          metricKey,
+          targetValue,
+          targetUnit,
+          weight,
+          isActive: isActive === 1,
+          createdAt: existing.created_at
+        });
+      }
+
+      if (method === 'DELETE') {
+        const actor = getActorFromReq(req);
+        if (!actor || actor.role !== 'admin') {
+          return sendJson(res, 403, { success: false, message: 'Apenas Administradores podem excluir metas de promoção.' });
+        }
+        const existing = db.prepare('SELECT title FROM promotion_goals WHERE id = ?').get(goalId);
+        db.prepare('DELETE FROM promotion_goals WHERE id = ?').run(goalId);
+
+        logAudit({
+          entityType: 'goal',
+          entityId: goalId,
+          entityTitle: existing ? existing.title : goalId,
+          action: 'DELETE',
+          ...actor,
+          details: `Excluiu meta de promoção: "${existing ? existing.title : goalId}".`
+        });
+
+        return sendJson(res, 200, { success: true, id: goalId });
       }
     }
 

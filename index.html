@@ -158,6 +158,16 @@
           <span class="nav-text">Desempenho & Promoção</span>
           <span class="nav-counter" id="counter-nav-performance" style="background: rgba(99, 102, 241, 0.25); color: #818cf8; font-size: 0.68rem; padding: 2px 6px;">Admin</span>
         </button>
+        <button class="nav-item" data-view="goals" id="nav-goals" style="display: none;">
+          <span class="nav-icon">🎯</span>
+          <span class="nav-text">Gestão de Metas</span>
+          <span class="nav-counter" id="counter-nav-goals" style="background: rgba(99, 102, 241, 0.25); color: #818cf8; font-size: 0.68rem; padding: 2px 6px;">Admin</span>
+        </button>
+        <button class="nav-item" data-view="audit" id="nav-audit" style="display: none;">
+          <span class="nav-icon">📜</span>
+          <span class="nav-text">Trilha de Auditoria</span>
+          <span class="nav-counter" id="counter-nav-audit" style="background: rgba(99, 102, 241, 0.25); color: #818cf8; font-size: 0.68rem; padding: 2px 6px;">Admin</span>
+        </button>
       </nav>
 
       <!-- Widget de Saúde dos Projetos no Rodapé da Sidebar -->
@@ -1220,6 +1230,219 @@
 
         </section>
 
+        <!-- =================================================================
+             PAINEL: GESTÃO DE METAS & CRITÉRIOS DE PROMOÇÃO (ADMIN)
+             ================================================================= -->
+        <section class="view-panel" id="view-goals">
+          <div class="view-header">
+            <div>
+              <div style="display: flex; align-items: center; gap: 0.65rem; margin-bottom: 0.35rem;">
+                <h2 class="view-title" style="margin: 0;">🎯 Gestão de Metas & Métricas de Promoção</h2>
+                <span class="user-role-badge tag-admin" style="font-size: 0.72rem; padding: 2px 8px;">Apenas Administrador</span>
+              </div>
+              <p class="view-subtitle">Defina e calibre as metas corporativas, desafios técnicos e critérios de qualidade que alimentam o algoritmo de diagnóstico de carreira e avaliação de promoção dos desenvolvedores.</p>
+            </div>
+            <div class="view-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+              <button class="btn btn-primary btn-sm btn-glow" id="btn-open-goal-modal" onclick="openGoalModalForCreate()">
+                <span>+ Nova Meta</span>
+              </button>
+              <button class="btn btn-secondary btn-sm" id="btn-reset-goals" onclick="resetDefaultGoalsAction()" title="Restaurar matriz recomendada de metas">
+                <span>🔄 Restaurar Padrões</span>
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick="switchView('performance')" title="Ir para a tela de avaliação individual dos devs">
+                <span>📈 Avaliar Desenvolvedores ➔</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Cards de Métricas e Resumo das Metas -->
+          <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 1.5rem;">
+            <div class="metric-card glass-panel">
+              <div class="metric-icon" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">🎯</div>
+              <div class="metric-info">
+                <div class="metric-label">Metas Cadastradas</div>
+                <div class="metric-value" id="goals-stat-total">0</div>
+              </div>
+            </div>
+            <div class="metric-card glass-panel">
+              <div class="metric-icon" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa;">🌱</div>
+              <div class="metric-info">
+                <div class="metric-label">Requisitos p/ Pleno</div>
+                <div class="metric-value" id="goals-stat-pleno">0</div>
+              </div>
+            </div>
+            <div class="metric-card glass-panel">
+              <div class="metric-icon" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">⭐</div>
+              <div class="metric-info">
+                <div class="metric-label">Requisitos p/ Sênior</div>
+                <div class="metric-value" id="goals-stat-senior">0</div>
+              </div>
+            </div>
+            <div class="metric-card glass-panel">
+              <div class="metric-icon" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">👑</div>
+              <div class="metric-info">
+                <div class="metric-label">Requisitos p/ Tech Lead</div>
+                <div class="metric-value" id="goals-stat-lead">0</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Banner Informativo de Integração com o Módulo de Promoção -->
+          <div class="glass-panel" style="padding: 1rem 1.25rem; border-radius: var(--radius-md); margin-bottom: 1.5rem; background: rgba(99, 102, 241, 0.08); border-left: 4px solid #6366f1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <span style="font-size: 1.5rem;">💡</span>
+              <div style="font-size: 0.84rem; color: var(--text-secondary); line-height: 1.45;">
+                <strong style="color: var(--text-main);">Como as metas impactam a avaliação de carreira:</strong>
+                As metas ativas abaixo são automaticamente cruzadas com as entregas reais de cada desenvolvedor no módulo <strong>Desempenho & Promoção</strong>, gerando o checklist de maturidade e o <strong>Score de Prontidão (%)</strong> para promoção de senioridade.
+              </div>
+            </div>
+          </div>
+
+          <!-- Barra de Filtros e Busca de Metas -->
+          <div class="glass-panel" style="padding: 1.15rem; margin-bottom: 1.5rem; border-radius: var(--radius-lg);">
+            <div class="form-row" style="margin-bottom: 0; align-items: flex-end;">
+              <div class="form-group flex-1">
+                <label for="goals-filter-seniority">Nível / Senioridade Alvo</label>
+                <select id="goals-filter-seniority" class="custom-select" onchange="renderGoals()">
+                  <option value="all">Todas as Senioridades</option>
+                  <option value="Pleno">🌱 Requisitos para Pleno (Júnior ➔ Pleno)</option>
+                  <option value="Sênior">⭐ Requisitos para Sênior (Pleno ➔ Sênior)</option>
+                  <option value="Tech Lead">👑 Requisitos para Tech Lead (Sênior ➔ Lead)</option>
+                  <option value="Todos">🌐 Metas Gerais / Todos os Níveis</option>
+                </select>
+              </div>
+              <div class="form-group flex-1">
+                <label for="goals-filter-category">Categoria da Métrica</label>
+                <select id="goals-filter-category" class="custom-select" onchange="renderGoals()">
+                  <option value="all">Todas as Categorias</option>
+                  <option value="complexity">🚀 Complexidade Técnica</option>
+                  <option value="volume">📦 Volume de Entregas</option>
+                  <option value="qa">🧪 Qualidade & QA</option>
+                  <option value="hours">⏱️ Horas & Estimativas</option>
+                  <option value="skills">🧠 Habilidades & Mentoria</option>
+                </select>
+              </div>
+              <div class="form-group flex-1">
+                <label for="goals-search-input">Buscar Metas</label>
+                <div class="input-with-icon">
+                  <span class="input-icon">🔍</span>
+                  <input type="text" id="goals-search-input" class="custom-input" placeholder="Buscar por título, métrica ou descrição..." oninput="renderGoals()">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Grid de Cards de Metas -->
+          <div id="goals-cards-container" class="goals-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.25rem;">
+            <!-- Renderizado dinamicamente via script.js -->
+          </div>
+        </section>
+
+        <!-- =================================================================
+             PAINEL: TRILHA DE AUDITORIA & HISTÓRICO GLOBAL
+             ================================================================= -->
+        <section class="view-panel" id="view-audit">
+          <div class="view-header">
+            <div>
+              <h2 class="view-title">📜 Trilha de Auditoria & Conformidade</h2>
+              <p class="view-subtitle">Histórico imutável de todas as modificações, transições de status, apontamentos, notas de QA/Dev e eventos operacionais.</p>
+            </div>
+            <div class="view-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+              <button class="btn btn-secondary btn-sm" id="btn-refresh-audit" onclick="refreshAuditLogsUI()">🔄 Atualizar Logs</button>
+              <button class="btn btn-primary btn-sm" id="btn-export-xlsx" onclick="exportAuditLogsXLSX()" style="background: linear-gradient(135deg, #10b981, #059669); border-color: #059669;">📊 Exportar XLSX</button>
+              <button class="btn btn-secondary btn-sm" id="btn-export-pdf" onclick="exportAuditLogsPDF()" style="background: linear-gradient(135deg, #ef4444, #dc2626); border-color: #dc2626; color: #fff;">📄 Exportar PDF</button>
+              <button class="btn btn-ghost btn-sm" id="btn-export-csv" onclick="exportAuditLogsCSV()">📝 CSV</button>
+            </div>
+          </div>
+
+          <!-- Cards de Resumo da Auditoria -->
+          <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 1.5rem;">
+            <div class="metric-card glass-panel">
+              <div class="metric-icon" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">📜</div>
+              <div class="metric-info">
+                <div class="metric-label">Total de Eventos</div>
+                <div class="metric-value" id="audit-stat-total">0</div>
+              </div>
+            </div>
+            <div class="metric-card glass-panel">
+              <div class="metric-icon" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">🚀</div>
+              <div class="metric-info">
+                <div class="metric-label">Ações em Demandas</div>
+                <div class="metric-value" id="audit-stat-tasks">0</div>
+              </div>
+            </div>
+            <div class="metric-card glass-panel">
+              <div class="metric-icon" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">🧪</div>
+              <div class="metric-info">
+                <div class="metric-label">Validações QA</div>
+                <div class="metric-value" id="audit-stat-qa">0</div>
+              </div>
+            </div>
+            <div class="metric-card glass-panel">
+              <div class="metric-icon" style="background: rgba(236, 72, 153, 0.15); color: #f472b6;">⏱️</div>
+              <div class="metric-info">
+                <div class="metric-label">Apontamentos / Horas</div>
+                <div class="metric-value" id="audit-stat-timesheet">0</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Filtros de Auditoria -->
+          <div class="glass-panel" style="padding: 1.25rem; margin-bottom: 1.5rem; border-radius: var(--radius-lg);">
+            <div class="form-row" style="margin-bottom: 0; align-items: flex-end;">
+              <div class="form-group flex-1">
+                <label for="audit-filter-entity">Tipo de Entidade</label>
+                <select id="audit-filter-entity" class="custom-select" onchange="renderAuditTable()">
+                  <option value="all">Todas as Entidades</option>
+                  <option value="task">🚀 Demandas (Tarefas)</option>
+                  <option value="project">📁 Projetos</option>
+                  <option value="requirement">📋 Requisitos</option>
+                  <option value="test">🧪 Testes / Casos QA</option>
+                  <option value="team">👥 Equipe</option>
+                  <option value="auth">🔐 Autenticação & Acessos</option>
+                </select>
+              </div>
+              <div class="form-group flex-1">
+                <label for="audit-filter-action">Tipo de Ação</label>
+                <select id="audit-filter-action" class="custom-select" onchange="renderAuditTable()">
+                  <option value="all">Todas as Ações</option>
+                  <option value="CREATE">✨ Criação (CREATE)</option>
+                  <option value="UPDATE">✏️ Atualização (UPDATE)</option>
+                  <option value="STATUS_CHANGE">🔄 Transição de Status</option>
+                  <option value="QA_VALIDATE">🧪 Validação QA</option>
+                  <option value="TIMESHEET_POINT">⏱️ Apontamento de Horas</option>
+                  <option value="HOURS_ADJUST">👑 Ajuste de Horas</option>
+                  <option value="ASSIGN">👤 Atribuição de Demanda</option>
+                  <option value="DELETE">🗑️ Exclusão (DELETE)</option>
+                </select>
+              </div>
+              <div class="form-group flex-2">
+                <label for="audit-search-input">Busca Textual</label>
+                <input type="text" id="audit-search-input" placeholder="Buscar por ator, título, detalhes ou motivo..." oninput="renderAuditTable()">
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabela de Logs de Auditoria -->
+          <div class="glass-panel" style="padding: 1.25rem; border-radius: var(--radius-lg); overflow-x: auto;">
+            <table class="data-table audit-table" style="width: 100%;">
+              <thead>
+                <tr>
+                  <th style="width: 155px;">Data & Hora</th>
+                  <th style="width: 150px;">Usuário / Autor</th>
+                  <th style="width: 140px;">Entidade</th>
+                  <th style="width: 130px;">Ação</th>
+                  <th>Detalhamento do Evento</th>
+                  <th style="width: 90px; text-align: center;">Diferença</th>
+                </tr>
+              </thead>
+              <tbody id="audit-logs-tbody">
+                <!-- Preenchido via script -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
       </main>
     </div>
   </div>
@@ -1278,87 +1501,177 @@
     </div>
   </div>
 
-  <!-- Modal: Nova Demanda (Criação e Edição - CRUD) -->
+  <!-- Modal: Demanda (Criação, Edição, Notas Dev, Notas QA e Trilha de Auditoria) -->
   <div class="modal-backdrop" id="modal-task">
-    <div class="modal-dialog glass-panel">
+    <div class="modal-dialog glass-panel" style="max-width: 740px; width: 95%;">
       <div class="modal-header">
         <h2 class="modal-title" id="modal-task-title">🚀 Cadastrar Nova Demanda</h2>
         <button class="modal-close" data-close="modal-task">&times;</button>
       </div>
-      <form id="form-new-task" class="modal-body">
-        <input type="hidden" id="task-id-edit" value="">
-        <div class="form-group">
-          <label for="task-title">Título da Demanda *</label>
-          <input type="text" id="task-title" required placeholder="Ex: Criar endpoint REST de autenticação com validação de OTP">
+
+      <!-- Abas Internas da Demanda -->
+      <div class="modal-tabs" id="modal-task-tabs">
+        <button type="button" class="modal-tab-btn active" id="tab-btn-task-form" onclick="switchTaskModalTab('form')">
+          📋 Informações da Demanda
+        </button>
+        <button type="button" class="modal-tab-btn" id="tab-btn-task-history" onclick="switchTaskModalTab('history')">
+          📜 Histórico & Auditoria <span class="badge-tab-count" id="task-history-count">0</span>
+        </button>
+      </div>
+
+      <!-- Conteúdo da Aba: Formulário da Demanda -->
+      <div class="modal-tab-pane active" id="pane-task-form">
+        <form id="form-new-task" class="modal-body" style="padding-top: 1rem;">
+          <input type="hidden" id="task-id-edit" value="">
+          <div class="form-group">
+            <label for="task-title">Título da Demanda *</label>
+            <input type="text" id="task-title" required placeholder="Ex: Criar endpoint REST de autenticação com validação de OTP">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="task-project">Projeto Associado *</label>
+              <select id="task-project" required class="custom-select">
+                <!-- Preenchido via script -->
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="task-requirement">Requisito Vinculado</label>
+              <select id="task-requirement" class="custom-select">
+                <!-- Preenchido via script -->
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="task-role">Especialidade Técnica *</label>
+              <select id="task-role" required class="custom-select">
+                <option value="backend">⚙️ Back-end</option>
+                <option value="frontend">🎨 Front-end</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="task-assignee">Desenvolvedor Responsável</label>
+              <select id="task-assignee" class="custom-select">
+                <!-- Preenchido dinamicamente -->
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="task-priority">Prioridade *</label>
+              <select id="task-priority" class="custom-select">
+                <option value="Alta">🔴 Alta</option>
+                <option value="Média" selected>🟡 Média</option>
+                <option value="Baixa">🟢 Baixa</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="task-complexity">Complexidade *</label>
+              <select id="task-complexity" class="custom-select">
+                <option value="Alta">🔴 Alta</option>
+                <option value="Média" selected>🟡 Média</option>
+                <option value="Baixa">🟢 Baixa</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="task-hours">Horas Estimadas (h)</label>
+              <input type="number" id="task-hours" min="1" max="120" value="8">
+            </div>
+            <div class="form-group" id="group-task-hours-spent">
+              <label for="task-hours-spent" style="display: flex; align-items: center; justify-content: space-between;">
+                <span>Horas Apontadas (h)</span>
+                <span id="badge-admin-hours" style="font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; background: rgba(99, 102, 241, 0.2); color: #818cf8; font-weight: 600;">👑 Admin</span>
+              </label>
+              <input type="number" id="task-hours-spent" min="0" max="999" step="0.5" value="0" placeholder="0">
+              <small id="task-hours-spent-hint" class="text-muted" style="font-size: 0.72rem; margin-top: 3px; display: block;"></small>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="task-desc">Descrição Técnica & Detalhes</label>
+            <textarea id="task-desc" rows="3" placeholder="Critérios técnicos, bibliotecas, contratos de API ou requisitos de tela..."></textarea>
+          </div>
+
+          <!-- NOTAS IMPORTANTES DO DESENVOLVEDOR -->
+          <div class="form-group dev-notes-box">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <label for="task-dev-notes" style="margin-bottom: 0; display: flex; align-items: center; gap: 8px;">
+                <span>💻 Notas do Desenvolvedor</span>
+                <span class="badge-dev-notes">Dev Notes</span>
+              </label>
+              <span class="text-muted" style="font-size: 0.73rem;">Decisões técnicas, branch, PR e observações do dev</span>
+            </div>
+            <textarea id="task-dev-notes" rows="3" placeholder="Insira observações importantes sobre a implementação desta demanda (ex: branch feature/login-otp, PR #42, libs utilizadas, decisões arquiteturais)..."></textarea>
+          </div>
+
+          <!-- NOTAS & PERSISTÊNCIA DE QUALIDADE (QA) -->
+          <div class="form-group qa-notes-box" id="group-task-qa-box">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <label for="task-qa-notes" style="margin-bottom: 0; display: flex; align-items: center; gap: 8px;">
+                <span>🧪 Notas & Validação de Qualidade (QA)</span>
+                <span id="task-qa-status-pill" class="badge-qa-pill">Pendente</span>
+              </label>
+              <span id="task-qa-reviewer-meta" class="text-muted" style="font-size: 0.73rem;"></span>
+            </div>
+            <textarea id="task-qa-notes" rows="3" placeholder="Critérios verificados pelo QA, status dos testes de regressão, motivos de bloqueio ou observações de homologação..."></textarea>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" data-close="modal-task">Cancelar</button>
+            <button type="submit" class="btn btn-primary" id="btn-save-task">Salvar Demanda</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Conteúdo da Aba: Histórico & Trilha de Auditoria Desta Demanda -->
+      <div class="modal-tab-pane" id="pane-task-history" style="display: none; padding: 1.25rem;">
+        <div class="task-audit-container">
+          <div class="audit-history-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div>
+              <h4 style="font-size: 0.95rem; font-weight: 700; margin: 0; color: var(--text-main);">Trilha de Auditoria Desta Demanda</h4>
+              <p style="font-size: 0.78rem; color: var(--text-muted); margin: 2px 0 0 0;">Histórico cronológico de criação, alterações, apontamentos e validações.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="reloadCurrentTaskHistory()">🔄 Recarregar</button>
+          </div>
+          <div id="task-audit-timeline" class="task-audit-timeline">
+            <!-- Timeline renderizada via JS -->
+          </div>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="task-project">Projeto Associado *</label>
-            <select id="task-project" required class="custom-select">
-              <!-- Preenchido via script -->
-            </select>
+        <div class="modal-footer" style="padding-top: 1rem; border-top: 1px solid var(--border-subtle); margin-top: 1rem;">
+          <button type="button" class="btn btn-ghost" data-close="modal-task">Fechar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Detalhes do Log de Auditoria (Inspeção de Diferença de Estado) -->
+  <div class="modal-backdrop" id="modal-audit-diff">
+    <div class="modal-dialog glass-panel" style="max-width: 680px; width: 95%;">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-audit-diff-title">📜 Registro de Auditoria</h2>
+        <button class="modal-close" data-close="modal-audit-diff">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 1.25rem;">
+        <div id="audit-diff-meta" style="margin-bottom: 1rem; padding: 0.85rem; border-radius: var(--radius-md); background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle);">
+          <!-- Meta preenchido via script -->
+        </div>
+        <div class="diff-split-view" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div>
+            <div style="font-size: 0.8rem; font-weight: 700; color: #f43f5e; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 4px;">
+              <span>◀ Estado Anterior</span>
+            </div>
+            <pre id="audit-diff-prev" class="audit-code-box" style="margin: 0; padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.76rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(244,63,94,0.2); max-height: 280px; overflow-y: auto; color: #fda4af; white-space: pre-wrap; font-family: 'Fira Code', monospace;"></pre>
           </div>
-          <div class="form-group">
-            <label for="task-requirement">Requisito Vinculado</label>
-            <select id="task-requirement" class="custom-select">
-              <!-- Preenchido via script -->
-            </select>
+          <div>
+            <div style="font-size: 0.8rem; font-weight: 700; color: #10b981; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 4px;">
+              <span>▶ Novo Estado</span>
+            </div>
+            <pre id="audit-diff-next" class="audit-code-box" style="margin: 0; padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.76rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(16,185,129,0.2); max-height: 280px; overflow-y: auto; color: #a7f3d0; white-space: pre-wrap; font-family: 'Fira Code', monospace;"></pre>
           </div>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="task-role">Especialidade Técnica *</label>
-            <select id="task-role" required class="custom-select">
-              <option value="backend">⚙️ Back-end</option>
-              <option value="frontend">🎨 Front-end</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="task-assignee">Desenvolvedor Responsável</label>
-            <select id="task-assignee" class="custom-select">
-              <!-- Preenchido dinamicamente -->
-            </select>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="task-priority">Prioridade *</label>
-            <select id="task-priority" class="custom-select">
-              <option value="Alta">🔴 Alta</option>
-              <option value="Média" selected>🟡 Média</option>
-              <option value="Baixa">🟢 Baixa</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="task-complexity">Complexidade *</label>
-            <select id="task-complexity" class="custom-select">
-              <option value="Alta">🔴 Alta</option>
-              <option value="Média" selected>🟡 Média</option>
-              <option value="Baixa">🟢 Baixa</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="task-hours">Horas Estimadas (h)</label>
-            <input type="number" id="task-hours" min="1" max="120" value="8">
-          </div>
-          <div class="form-group" id="group-task-hours-spent">
-            <label for="task-hours-spent" style="display: flex; align-items: center; justify-content: space-between;">
-              <span>Horas Apontadas (h)</span>
-              <span id="badge-admin-hours" style="font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; background: rgba(99, 102, 241, 0.2); color: #818cf8; font-weight: 600;">👑 Admin</span>
-            </label>
-            <input type="number" id="task-hours-spent" min="0" max="999" step="0.5" value="0" placeholder="0">
-            <small id="task-hours-spent-hint" class="text-muted" style="font-size: 0.72rem; margin-top: 3px; display: block;"></small>
-          </div>
-        </div>
-        <div class="form-group">
-          <label for="task-desc">Descrição Técnica & Detalhes</label>
-          <textarea id="task-desc" rows="3" placeholder="Critérios técnicos, bibliotecas, contratos de API ou requisitos de tela..."></textarea>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-ghost" data-close="modal-task">Cancelar</button>
-          <button type="submit" class="btn btn-primary" id="btn-save-task">Salvar Demanda</button>
-        </div>
-      </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-close="modal-audit-diff">Fechar</button>
+      </div>
     </div>
   </div>
 
@@ -1736,8 +2049,103 @@
     </div>
   </div>
 
+  <!-- MODAL: CADASTRAR / EDITAR META DE PROMOÇÃO -->
+  <div class="modal-backdrop" id="modal-goal">
+    <div class="modal-dialog glass-panel" style="max-width: 620px;">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-goal-title">🎯 Cadastrar Meta de Promoção</h2>
+        <button type="button" class="modal-close" data-close="modal-goal">&times;</button>
+      </div>
+      <form id="form-goal" class="modal-body" onsubmit="event.preventDefault(); saveGoalModal();">
+        <input type="hidden" id="goal-id-edit">
+
+        <div class="form-group">
+          <label for="goal-title">Título da Meta / Métrica *</label>
+          <input type="text" id="goal-title" required placeholder="Ex: Domínio de Tarefas de Alta Complexidade">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="goal-target-seniority">Senioridade Alvo *</label>
+            <select id="goal-target-seniority" class="custom-select" required>
+              <option value="Pleno">Requisito para Pleno (Júnior ➔ Pleno)</option>
+              <option value="Sênior">Requisito para Sênior (Pleno ➔ Sênior)</option>
+              <option value="Tech Lead">Requisito para Tech Lead (Sênior ➔ Lead)</option>
+              <option value="Todos">Geral / Todos os Níveis</option>
+            </select>
+          </div>
+          <div class="form-group flex-1">
+            <label for="goal-category">Categoria da Métrica *</label>
+            <select id="goal-category" class="custom-select" required>
+              <option value="complexity">🚀 Complexidade Técnica</option>
+              <option value="volume">📦 Volume & Entregas</option>
+              <option value="qa">🧪 Qualidade & Validação QA</option>
+              <option value="hours">⏱️ Horas & Previsibilidade</option>
+              <option value="skills">🧠 Habilidades & Mentoria</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="goal-metric-key">Algoritmo / Tipo de Indicador *</label>
+            <select id="goal-metric-key" class="custom-select" required onchange="handleGoalMetricKeyChange()">
+              <option value="high_tasks">Demandas de Alta Complexidade Concluídas</option>
+              <option value="med_tasks">Demandas de Média Complexidade Concluídas</option>
+              <option value="total_tasks">Volume Total de Demandas Concluídas</option>
+              <option value="high_percent">Percentual de Demandas em Alta Complexidade (%)</option>
+              <option value="qa_rate">Taxa Mínima de Aprovação em QA (%)</option>
+              <option value="hours_variance">Desvio Máximo de Horas Apontadas (%)</option>
+              <option value="custom">Critério Qualitativo / Avaliação do Gestor</option>
+            </select>
+          </div>
+          <div class="form-group" style="width: 140px;">
+            <label for="goal-target-value">Meta Alvo *</label>
+            <input type="number" id="goal-target-value" step="0.1" required placeholder="Ex: 3">
+          </div>
+          <div class="form-group" style="width: 130px;">
+            <label for="goal-target-unit">Unidade *</label>
+            <input type="text" id="goal-target-unit" required placeholder="demandas, %">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="goal-weight">Peso no Score de Promoção *</label>
+            <select id="goal-weight" class="custom-select" required>
+              <option value="3">⭐⭐⭐ Peso 3x (Crítico / Obrigatório)</option>
+              <option value="2" selected>⭐⭐ Peso 2x (Importante / Relevante)</option>
+              <option value="1">⭐ Peso 1x (Desejável / Complementar)</option>
+            </select>
+          </div>
+          <div class="form-group flex-1" style="display: flex; align-items: flex-end; padding-bottom: 0.5rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-main); cursor: pointer; user-select: none;">
+              <input type="checkbox" id="goal-is-active" checked style="cursor: pointer; width: 18px; height: 18px;">
+              <span><strong>Meta Ativa</strong> (considerada no cálculo)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="goal-description">Descrição & Diretriz de Avaliação</label>
+          <textarea id="goal-description" rows="2" class="custom-input" placeholder="Orientações e expectativas detalhadas que o gestor deve observar para considerar a meta atingida..."></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close="modal-goal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-goal">Salvar Meta</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div id="toast-container" class="toast-container"></div>
+
+  <!-- Bibliotecas de Exportação (XLSX & PDF) -->
+  <script src="vendor/xlsx.full.min.js"></script>
+  <script src="vendor/jspdf.umd.min.js"></script>
+  <script src="vendor/jspdf.plugin.autotable.min.js"></script>
 
   <!-- Script Principal da Aplicação -->
   <script src="script.js"></script>
