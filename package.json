@@ -2,13 +2,13 @@
   "name": "devsquad-manager",
   "version": "1.0.0",
   "description": "DevSquad ALM - Plataforma Integrada de Gestão de Requisitos, Equipe Dev (Front & Back), Demandas Multi-Projetos e Camada de Testes/QA",
-  "main": "index.html",
+  "main": "server.js",
   "scripts": {
     "start": "node --no-warnings --experimental-sqlite server.js",
     "start:local": ".\\.tools\\node\\node.exe --no-warnings --experimental-sqlite server.js"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": "22.x"
   },
   "keywords": [
     "antigravity",
