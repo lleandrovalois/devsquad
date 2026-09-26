@@ -745,6 +745,7 @@ class ALMStore {
       if (data.title !== undefined) tc.title = data.title;
       if (data.type !== undefined) tc.type = data.type;
       if (data.reqId !== undefined) tc.reqId = data.reqId;
+      if (data.taskId !== undefined) tc.taskId = data.taskId;
       if (data.steps !== undefined) tc.steps = data.steps;
       if (data.expected !== undefined) tc.expected = data.expected;
       if (data.status !== undefined) tc.status = data.status;
@@ -1489,12 +1490,89 @@ function renderDashboard() {
   const traceTableBody = document.getElementById('trace-table-body');
   traceTableBody.innerHTML = '';
 
+  // Determinar status inteligente de Cobertura e Homologação de Testes
+  function getTaskTestCoverage(task) {
+    const linkedTests = store.state.testCases.filter(tc => {
+      if (tc.taskId && tc.taskId === task.id) return true;
+      if (task.reqId && tc.reqId && tc.reqId === task.reqId) return true;
+      return false;
+    });
+
+    const hasFailedTest = linkedTests.some(tc => tc.status === 'fail');
+    const hasPassedTest = linkedTests.some(tc => tc.status === 'pass');
+    const hasPendingTest = linkedTests.some(tc => tc.status === 'pending');
+
+    // 1. Falha em bateria ou caso de teste vinculado
+    if (hasFailedTest) {
+      const failCount = linkedTests.filter(tc => tc.status === 'fail').length;
+      return {
+        cssClass: 'status-fail',
+        label: '✖ Teste Reprovado',
+        title: `${failCount} teste(s) reprovado(s). Clique para revisar homologação de QA.`
+      };
+    }
+
+    // 2. Demanda com bloqueio formal de QA
+    if (task.impediment && task.impediment.toLowerCase().includes('qa')) {
+      return {
+        cssClass: 'status-fail',
+        label: '⚠️ Bloqueio QA',
+        title: `${task.impediment}. Clique para revisar ou alterar validação.`
+      };
+    }
+
+    // 3. Demanda formalmente homologada e aprovada em QA (qaApproved = 1 / true)
+    if (task.qaApproved == 1 || task.qaApproved === true) {
+      const reviewer = task.qaReviewer || 'QA';
+      const notes = task.qaNotes ? `: "${task.qaNotes}"` : '';
+      return {
+        cssClass: 'status-pass',
+        label: '✓ QA Aprovado',
+        title: `Homologado por ${reviewer}${notes}. Clique para alterar status de validação.`
+      };
+    }
+
+    // 4. Casos de teste concluídos com sucesso (pass)
+    if (linkedTests.length > 0 && hasPassedTest && !hasPendingTest) {
+      return {
+        cssClass: 'status-pass',
+        label: '✓ Teste Aprovado',
+        title: `${linkedTests.length} caso(s) de teste aprovado(s). Clique para ver detalhes.`
+      };
+    }
+
+    // 5. Demanda em estágio de QA aguardando homologação
+    if (task.status === 'qa') {
+      return {
+        cssClass: 'status-pending',
+        label: '🔍 Em Validação QA',
+        title: 'Demanda aguardando validação formal de QA. Clique para validar agora.'
+      };
+    }
+
+    // 6. Casos de testes cadastrados aguardando execução
+    if (linkedTests.length > 0 && hasPendingTest) {
+      return {
+        cssClass: 'status-pending',
+        label: '⏳ Teste Pendente',
+        title: `${linkedTests.length} teste(s) vinculado(s) aguardando execução. Clique para validar.`
+      };
+    }
+
+    // 7. Padrão: Nenhum teste realizado ainda
+    return {
+      cssClass: 'status-pending',
+      label: '⏳ Pendente',
+      title: 'Nenhum teste homologado ou cadastrado ainda. Clique para validar QA.'
+    };
+  }
+
   const sampleTasks = store.state.tasks.slice(0, 6);
   sampleTasks.forEach(task => {
     const req = store.getRequirementById(task.reqId);
     const project = store.getProjectById(task.projectId);
     const assignee = store.getMemberById(task.assigneeId);
-    const hasTest = store.state.testCases.some(tc => tc.reqId === task.reqId);
+    const cov = getTaskTestCoverage(task);
 
     const isTaskOver = task.hoursSpent && (parseFloat(task.hoursSpent) > (parseFloat(task.hours) || 8));
     const hoursBadge = task.hoursSpent 
@@ -1516,7 +1594,13 @@ function renderDashboard() {
       <td>${task.title} ${hoursBadge} <br><small style="color: var(--text-muted);">Responsável: ${assignee ? assignee.name : 'Não Atribuído'}</small></td>
       <td><span class="task-role-tag ${task.role === 'frontend' ? 'role-front' : 'role-back'}">${task.role === 'frontend' ? 'Front-end' : 'Back-end'}</span></td>
       <td><span class="status-pill status-${task.status === 'done' ? 'pass' : 'pending'}">${statusLabels[task.status] || task.status}</span></td>
-      <td><span class="status-pill ${hasTest ? 'status-pass' : 'status-pending'}">${hasTest ? '✓ Coberto' : '⏳ Pendente'}</span></td>
+      <td>
+        <span class="status-pill clickable ${cov.cssClass}" 
+              onclick="openQAModal('${task.id}')" 
+              title="${cov.title}">
+          ${cov.label}
+        </span>
+      </td>
     `;
     traceTableBody.appendChild(tr);
   });
@@ -2663,6 +2747,8 @@ window.openTestModalForEdit = function(testId) {
   document.getElementById('test-title').value = tc.title;
   document.getElementById('test-type-select').value = tc.type;
   document.getElementById('test-req-select').value = tc.reqId;
+  const taskSel = document.getElementById('test-task-select');
+  if (taskSel) taskSel.value = tc.taskId || "";
   document.getElementById('test-steps').value = tc.steps || "";
   document.getElementById('test-expected').value = tc.expected || "";
   document.getElementById('btn-save-test').textContent = "Atualizar Caso de Teste";
@@ -3842,6 +3928,12 @@ function populateModalSelects() {
   const testReqSelect = document.getElementById('test-req-select');
   if (testReqSelect) {
     testReqSelect.innerHTML = reqs.map(r => `<option value="${r.id}">[${r.code}] ${r.title}</option>`).join('');
+  }
+
+  const testTaskSelect = document.getElementById('test-task-select');
+  if (testTaskSelect) {
+    testTaskSelect.innerHTML = `<option value="">Todas as demandas do requisito / Geral</option>` + 
+      store.state.tasks.map(t => `<option value="${t.id}">#${t.id.slice(-6)} - ${t.title}</option>`).join('');
   }
 }
 
@@ -5256,6 +5348,16 @@ window.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {
       api.checkHealth();
     }, 15000);
+
+    // Verificação instantânea ao clicar no badge de status
+    document.getElementById('db-status-pill')?.addEventListener('click', async () => {
+      const online = await api.checkHealth();
+      if (online) {
+        showToast('🟢 Backend Online: Conexão ativa com devsquad.db!');
+      } else {
+        showToast('🟠 Backend Offline: Servidor desconectado. Operando em Cache Local.');
+      }
+    });
   }
 
   // Navegação da Sidebar
@@ -5594,14 +5696,15 @@ window.addEventListener('DOMContentLoaded', () => {
     const title = document.getElementById('test-title').value;
     const type = document.getElementById('test-type-select').value;
     const reqId = document.getElementById('test-req-select').value;
+    const taskId = document.getElementById('test-task-select')?.value || null;
     const steps = document.getElementById('test-steps').value;
     const expected = document.getElementById('test-expected').value;
 
     if (editId) {
-      store.updateTestCase(editId, { title, type, reqId, steps, expected });
+      store.updateTestCase(editId, { title, type, reqId, taskId, steps, expected });
       showToast(`Caso de teste atualizado com sucesso!`);
     } else {
-      store.addTestCase({ title, type, reqId, steps, expected });
+      store.addTestCase({ title, type, reqId, taskId, steps, expected });
       showToast(`Novo caso de teste registrado com sucesso!`);
     }
 

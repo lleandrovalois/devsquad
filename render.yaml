@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: devsquad-pro
+    runtime: node
+    plan: free
+    buildCommand: ""
+    startCommand: node --no-warnings --experimental-sqlite server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 22.21.1
+      - key: PORT
+        value: 3001
+      - key: HOST
+        value: 0.0.0.0

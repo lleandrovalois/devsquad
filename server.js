@@ -11,6 +11,7 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 
 const PORT = process.env.PORT || 3001;
+const HOST = process.env.HOST || '0.0.0.0';
 const DB_PATH = path.join(__dirname, 'devsquad.db');
 
 console.log('--------------------------------------------------');
@@ -1515,7 +1516,7 @@ const server = http.createServer(async (req, res) => {
           UPDATE team_members
           SET name = ?, role = ?, seniority = ?, skills = ?, capacity = ?
           WHERE id = ?
-        `).run(m.name, m.role, m.seniority, skillsStr, parseFloat(m.capacity) || 40, memberId);
+        `).run(m.name || '', m.role || 'backend', m.seniority || 'Pleno', skillsStr || '[]', parseFloat(m.capacity) || 40, memberId);
 
         const actor = getActorFromReq(req);
         logAudit({
@@ -1604,9 +1605,9 @@ const server = http.createServer(async (req, res) => {
         const existing = db.prepare('SELECT * FROM test_cases WHERE id = ?').get(testId);
         db.prepare(`
           UPDATE test_cases
-          SET title = ?, type = ?, req_id = ?, steps = ?, expected = ?
+          SET title = ?, type = ?, req_id = ?, task_id = ?, steps = ?, expected = ?
           WHERE id = ?
-        `).run(tc.title || '', tc.type || 'Geral', tc.reqId || null, tc.steps || '', tc.expected || '', testId);
+        `).run(tc.title || '', tc.type || 'Geral', tc.reqId || null, tc.taskId || null, tc.steps || '', tc.expected || '', testId);
 
         const actor = getActorFromReq(req);
         logAudit({
@@ -1869,8 +1870,8 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// Inicialização do Servidor na Porta Definida (Dual Stack IPv4 + IPv6)
-server.listen(PORT, () => {
+// Inicialização do Servidor na Porta e Host Definidos (0.0.0.0 escuta em todas as interfaces de rede local)
+server.listen(PORT, HOST, () => {
   const os = require('node:os');
   const nets = os.networkInterfaces();
   const lanIps = [];
