@@ -1795,6 +1795,9 @@ function renderRequirements() {
     const moscowClass = req.moscow === 'Must' ? 'moscow-must' : (req.moscow === 'Should' ? 'moscow-should' : 'moscow-could');
 
     let reqActionsHtml = '';
+    if (perms.canCreateTask) {
+      reqActionsHtml += `<button class="card-btn-action btn-add-task" onclick="openTaskModalForCreate('${req.id}')" title="Criar Demanda vinculada a este Requisito">➕ Criar Tarefa</button>`;
+    }
     if (perms.canEditReq) {
       reqActionsHtml += `<button class="card-btn-action" onclick="openReqModalForEdit('${req.id}')" title="Editar Requisito">✏️ Editar</button>`;
     }
@@ -1804,6 +1807,8 @@ function renderRequirements() {
 
     const card = document.createElement('article');
     card.className = 'requirement-card glass-panel';
+    card.id = `req-card-${req.id}`;
+    card.setAttribute('data-req-id', req.id);
     card.innerHTML = `
       <div class="req-header-row">
         <span class="req-code-badge">${req.code}</span>
@@ -1826,11 +1831,24 @@ function renderRequirements() {
       </div>
 
       <div class="req-footer-row">
-        <div>
-          <span>🔗 Demandas Vinculadas (${linkedTasks.length}):</span>
-          ${linkedTasks.map(t => `<span class="task-role-tag ${t.role === 'frontend' ? 'role-front' : 'role-back'}" style="margin-left: 4px;">${t.role === 'frontend' ? 'Front-end' : 'Back-end'} #${t.id}</span>`).join('') || '<span style="color: var(--text-muted); margin-left: 4px;">Nenhuma</span>'}
+        <div class="req-linked-tasks-block">
+          <div class="req-linked-tasks-header" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+            <span class="req-linked-tasks-label">🔗 <strong>Demandas Vinculadas (${linkedTasks.length}):</strong></span>
+            ${perms.canCreateTask ? `
+              <button class="card-btn-action btn-add-task-pill" onclick="openTaskModalForCreate('${req.id}')" title="Criar Tarefa para este Requisito">
+                ➕ Criar Tarefa
+              </button>
+            ` : ''}
+          </div>
+          <div class="req-linked-tasks-list" style="display: flex; flex-wrap: wrap; gap: 6px;">
+            ${linkedTasks.length > 0 ? linkedTasks.map(t => `
+              <span class="task-role-tag ${t.role === 'frontend' ? 'role-front' : 'role-back'} linked-task-chip" onclick="openTaskModalForEdit('${t.id}')" title="Demanda #${t.id}: ${escapeHtml(t.title)} (Clique para inspecionar)" style="cursor: pointer;">
+                ${t.role === 'frontend' ? '🎨 Front' : '⚙️ Back'} <strong>#${t.id.slice(-5)}</strong>: ${escapeHtml(t.title)}
+              </span>
+            `).join('') : '<span style="color: var(--text-muted); font-size: 0.82rem; font-style: italic;">Nenhuma demanda vinculada</span>'}
+          </div>
         </div>
-        <div>
+        <div class="req-linked-tests-block" style="margin-left: auto; align-self: flex-start;">
           <span>🧪 Casos de Teste QA: <strong>${linkedTests.length}</strong></span>
         </div>
       </div>
@@ -2264,7 +2282,7 @@ async function loadTaskAuditTimeline(taskId) {
   }
 }
 
-window.openTaskModalForCreate = function() {
+window.openTaskModalForCreate = function(prefillReqId) {
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
   const isDevOrQa = currentUser && (currentUser.role === 'dev' || currentUser.role === 'qa');
   if (isDevOrQa) {
@@ -2308,13 +2326,46 @@ window.openTaskModalForCreate = function() {
   const groupHoursSpent = document.getElementById('group-task-hours-spent');
   if (groupHoursSpent) groupHoursSpent.style.display = 'none';
 
-  document.getElementById('modal-task-title').textContent = "🚀 Cadastrar Nova Demanda";
   document.getElementById('task-id-edit').value = "";
   document.getElementById('form-new-task').reset();
   document.getElementById('btn-save-task').textContent = "Salvar Demanda";
   document.getElementById('btn-save-task').style.display = 'inline-flex';
+  
   openModal('modal-task');
+
+  // Pré-vínculo do requisito quando disparado via atalho do card
+  if (prefillReqId) {
+    const req = (store.state.requirements || []).find(r => r.id === prefillReqId);
+    const reqSelect = document.getElementById('task-requirement');
+    if (reqSelect) {
+      reqSelect.value = prefillReqId;
+    }
+    if (req && req.projectId) {
+      const projSelect = document.getElementById('task-project');
+      if (projSelect) {
+        projSelect.value = req.projectId;
+      }
+    }
+    const modalTitleEl = document.getElementById('modal-task-title');
+    if (modalTitleEl && req) {
+      modalTitleEl.textContent = `🚀 Cadastrar Demanda para [${req.code}] ${req.title}`;
+    }
+  } else {
+    document.getElementById('modal-task-title').textContent = "🚀 Cadastrar Nova Demanda";
+  }
+
+  // Foco imediato no título da demanda para máxima agilidade
+  setTimeout(() => {
+    const titleInput = document.getElementById('task-title');
+    if (titleInput) titleInput.focus();
+  }, 100);
 };
+
+// Alias de atalho explícito para requisitos
+window.openTaskModalForReq = function(reqId) {
+  openTaskModalForCreate(reqId);
+};
+
 
 window.openTaskModalForEdit = function(taskId) {
   const task = store.getTaskById(taskId);
@@ -5655,6 +5706,30 @@ window.addEventListener('DOMContentLoaded', () => {
     closeModal('modal-task');
     e.target.reset();
     refreshAllUI();
+
+    // Se a demanda foi criada a partir de um requisito, destaca e rola suavemente até o card
+    if (reqId && store.activeView === 'requirements') {
+      setTimeout(() => {
+        const cardEl = document.getElementById(`req-card-${reqId}`);
+        if (cardEl) {
+          cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          cardEl.classList.add('highlight-pulse');
+          setTimeout(() => cardEl.classList.remove('highlight-pulse'), 2500);
+        }
+      }, 100);
+    }
+  });
+
+  // Sincronização inteligente: selecionou um requisito, vincula automaticamente o projeto associado
+  document.getElementById('task-requirement')?.addEventListener('change', (e) => {
+    const selectedReqId = e.target.value;
+    if (selectedReqId) {
+      const r = (store.state.requirements || []).find(item => item.id === selectedReqId);
+      if (r && r.projectId) {
+        const projEl = document.getElementById('task-project');
+        if (projEl) projEl.value = r.projectId;
+      }
+    }
   });
 
   // 3. FORMULÁRIO DE REQUISITO (CRUD)
