@@ -984,7 +984,7 @@ const RolePermissions = {
     canManageTeam: true,
     canManageGovernance: true,
     canManageGoals: true,
-    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing', 'governance', 'performance', 'goals', 'audit'],
+    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing', 'governance', 'performance', 'goals', 'audit', 'career'],
     allowedNewItems: ['project', 'task', 'req', 'test', 'member']
   },
   pm: {
@@ -1007,7 +1007,7 @@ const RolePermissions = {
     canCreateTest: true,
     canManageTeam: true,
     canManageGovernance: false,
-    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing'],
+    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing', 'career'],
     allowedNewItems: ['project', 'task', 'req', 'test', 'member']
   },
   dev: {
@@ -1032,7 +1032,7 @@ const RolePermissions = {
     canCreateTest: true,
     canManageTeam: false,
     canManageGovernance: false,
-    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing'],
+    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing', 'career'],
     allowedNewItems: ['test']
   },
   qa: {
@@ -1057,7 +1057,7 @@ const RolePermissions = {
     canCreateTest: true,
     canManageTeam: false,
     canManageGovernance: false,
-    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing'],
+    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing', 'career'],
     allowedNewItems: ['test']
   }
 };
@@ -4851,6 +4851,10 @@ function updateSidebarCounters() {
     const activeCount = store.state.goals ? store.state.goals.filter(g => g.isActive).length : 0;
     goalsCounter.textContent = activeCount > 0 ? `${activeCount}` : 'Admin';
   }
+  const careerCounter = document.getElementById('counter-nav-career');
+  if (careerCounter) {
+    careerCounter.textContent = '5 Trilhas';
+  }
 }
 
 function switchView(viewName) {
@@ -4904,6 +4908,7 @@ function switchView(viewName) {
   if (viewName === 'performance') renderPerformance();
   if (viewName === 'goals') renderGoals();
   if (viewName === 'audit') refreshAuditLogsUI();
+  if (viewName === 'career') renderCareer();
 }
 window.switchView = switchView;
 
@@ -4923,7 +4928,8 @@ function applyRolePermissions(user) {
     { id: 'nav-governance', view: 'governance' },
     { id: 'nav-performance', view: 'performance' },
     { id: 'nav-goals', view: 'goals' },
-    { id: 'nav-audit', view: 'audit' }
+    { id: 'nav-audit', view: 'audit' },
+    { id: 'nav-career', view: 'career' }
   ];
 
   allNavViews.forEach(item => {
@@ -5930,3 +5936,793 @@ window.openMyProfileModal = function() {
 
   openModal('modal-user-profile');
 };
+
+// ==============================================================================
+// 11. MÓDULO DE PROPOSTA DA PLATAFORMA & TRILHAS DE CARREIRA / PROMOÇÃO
+// ==============================================================================
+
+const careerTracksData = {
+  frontend: {
+    roleName: "Desenvolvedor(a) Front-end",
+    icon: "🎨",
+    discipline: "Front-end Engineering",
+    mission: "Criar interfaces responsivas, rápidas, acessíveis e robustas, conectando regras de negócio a experiências de usuário fluidas e confiáveis.",
+    levels: [
+      {
+        key: "junior",
+        name: "Front-end Júnior",
+        nextLevel: "Front-end Pleno",
+        tag: "Iniciação & Execução Guiada",
+        focus: "Construção de componentes, correção de bugs de interface e consumo de APIs.",
+        missionDetail: "Atua na implementação de componentes reutilizáveis, telas responsivas e consumo de endpoints REST definidos nos Requisitos/BDD. Trabalha com suporte técnico pontual de plenos e sêniores.",
+        hardSkills: ["HTML5 Semântico", "CSS3 / Flexbox / Grid", "JavaScript Moderno (ES6+)", "Consumo de APIs REST (Fetch/JSON)", "Git Básico (Branches, Commits, PRs)", "Responsividade Mobile-first"],
+        softSkills: ["Curiosidade técnica ativa", "Comunicação transparente nas dailies", "Atenção a feedbacks em Code Reviews", "Autonomia progressiva na depuração de erros"],
+        metrics: {
+          tasks: "4+ demandas concluídas",
+          complexity: "2+ Médias e 1+ Alta",
+          qaRate: "≥ 75% aprovação em QA",
+          hoursVariance: "Desvio de horas ≤ 25%"
+        },
+        triggers: [
+          "Entrega consistente de demandas de Média Complexidade sem necessidade de reescrita de código.",
+          "Capacidade comprovada de assumir ao menos 1 demanda de Alta Complexidade e homologá-la com sucesso.",
+          "Índice de aprovação direta em testes de QA igual ou superior a 75%.",
+          "Acurácia nas estimativas de esforço, evitando estouros sistemáticos de prazo."
+        ]
+      },
+      {
+        key: "pleno",
+        name: "Front-end Pleno",
+        nextLevel: "Front-end Sênior",
+        tag: "Autonomia & Domínio de Soluções",
+        focus: "Arquitetura clientside, performance Web Vitals, testes de componentes e Design System.",
+        missionDetail: "Lidera a implementação de features completas de ponta a ponta. Garante acessibilidade (a11y), otimização de performance, componentização escalável e alinhamento próximo com UI/UX e Back-end.",
+        hardSkills: ["Arquitetura de Estado (Global & Local)", "Core Web Vitals (LCP, FID/INP, CLS)", "Acessibilidade Web (WCAG & ARIA)", "Design Systems & Tokenização", "Testes Automatizados de Componentes", "Tratamento Robusto de Offline/Loading/Erros"],
+        softSkills: ["Comunicação propositiva com Produto e QA", "Capacidade de dar mentorias a juniores", "Resolução independente de problemas complexos", "Postura colaborativa e resolutiva"],
+        metrics: {
+          tasks: "6+ demandas concluídas no ciclo",
+          complexity: "3+ Altas (25%+ do volume)",
+          qaRate: "≥ 85% aprovação em QA",
+          hoursVariance: "Desvio de horas ≤ 20%"
+        },
+        triggers: [
+          "Domínio comprovado de Alta Complexidade com 3 ou mais entregas críticas concluídas.",
+          "Mínimo de 25% de todo o volume de trabalho focado em demandas de alta criticidade técnica.",
+          "Taxa de aprovação direta em validações de QA superior a 85%, com baixíssimo índice de bugs em produção.",
+          "Apoio técnico e mentoria para desenvolvedores juniores da squad."
+        ]
+      },
+      {
+        key: "senior",
+        name: "Front-end Sênior",
+        nextLevel: "Tech Lead Front-end",
+        tag: "Excelência Técnica & Mentoria",
+        focus: "Decisões arquiteturais, segurança front-end, tooling de build e governança de qualidade.",
+        missionDetail: "Referência técnica da disciplina na squad. Define padrões de código, antecipa riscos arquiteturais, otimiza bundles, combate ativamente o débito técnico e atua como mentor contínuo de toda a equipe.",
+        hardSkills: ["Decisões Arquiteturais Avançadas", "Segurança Front-end (XSS, CSRF, CSP)", "Tooling de Build & Bundlers", "Otimização Extrema de Performance", "Code Reviews Formativos", "Especificação Técnica e Cenários BDD"],
+        softSkills: ["Liderança técnica e influência positiva", "Resiliência e foco na resolução de incidentes", "Habilidade de traduzir negócio em arquitetura", "Facilidade de mentoria e formação de pessoas"],
+        metrics: {
+          tasks: "Volume expressivo com impacto",
+          complexity: "5+ Demandas de Alta Complexidade",
+          qaRate: "≥ 90% aprovação em QA",
+          readinessScore: "Score de Prontidão ≥ 85%"
+        },
+        triggers: [
+          "Liderança em 5 ou mais iniciativas ou demandas de Alta Complexidade e impacto sistêmico.",
+          "Taxa de aprovação em QA igual ou superior a 90% em todas as entregas do ciclo.",
+          "Condução de revisões de código de alto padrão que ensinam e elevam a barra técnica de todo o time.",
+          "Score de prontidão auditado pelo sistema igual ou superior a 85%."
+        ]
+      },
+      {
+        key: "lead",
+        name: "Tech Lead Front-end / Staff",
+        nextLevel: "Principal / Engineering Manager",
+        tag: "Liderança de Engenharia & Impacto",
+        focus: "Estratégia tecnológica, governança de squads, alinhamento executivo e desenvolvimento de talentos.",
+        missionDetail: "Equilibra excelência técnica de classe mundial e alinhamento com os objetivos estratégicos de negócio. É o guardião da arquitetura e da velocidade sustentável da equipe.",
+        hardSkills: ["Arquitetura Corporativa Front-end", "Governança & Padronização ALM", "Modelagem de Capacidade Produtiva", "Gestão de Débito Técnico", "Observabilidade & Telemetria Clientside"],
+        softSkills: ["Comunicação executiva com C-Level e PMs", "Gestão de conflitos técnicos", "Visão estratégica de produto", "Inspiração e cultura de alta performance"],
+        metrics: {
+          tasks: "Liderança de projetos ativos",
+          complexity: "100% alinhamento arquitetural",
+          qaRate: "Zero falhas críticas em releases",
+          readinessScore: "Avaliação 360° e Governança"
+        },
+        triggers: [
+          "Sustentação de múltiplos projetos simultâneos com saúde técnica verde.",
+          "Calibração de metas de promoção justas e auditáveis para os desenvolvedores da squad.",
+          "Condução de 1:1s e planos de desenvolvimento técnico individuais (PDI) baseados nos dados do sistema."
+        ]
+      }
+    ]
+  },
+  backend: {
+    roleName: "Desenvolvedor(a) Back-end",
+    icon: "⚙️",
+    discipline: "Back-end & Systems Engineering",
+    mission: "Projetar e construir serviços confiáveis, regras de negócio determinísticas, APIs de alto desempenho e persistência de dados com integridade transacional ACID.",
+    levels: [
+      {
+        key: "junior",
+        name: "Back-end Júnior",
+        nextLevel: "Back-end Pleno",
+        tag: "Fundamentos & Execução de APIs",
+        focus: "Endpoints RESTful, validação de entradas, consultas SQL e testes automatizados básicos.",
+        missionDetail: "Implementa rotas de API, regras de negócio orientadas por especificações BDD e consultas a banco de dados relacional. Trabalha na correção de bugs e manutenção evolutiva de serviços.",
+        hardSkills: ["Node.js / Go / Python / C#", "APIs RESTful (Status HTTP, JSON, Rotas)", "SQL Relacional (Tabelas, FKs, Índices)", "Validação e Sanitização de Dados", "Testes Unitários Básicos", "Git & Controle de Versão"],
+        softSkills: ["Atenção a detalhes em regras de negócio", "Busca de entendimento do domínio da aplicação", "Comunicação clara de bloqueios", "Vontade constante de aprender"],
+        metrics: {
+          tasks: "4+ demandas concluídas",
+          complexity: "2+ Médias e 1+ Alta",
+          qaRate: "≥ 75% aprovação em QA",
+          hoursVariance: "Desvio de horas ≤ 25%"
+        },
+        triggers: [
+          "Capacidade de construir endpoints completos com validação de payload e tratamento de erros sem supervisão.",
+          "Entrega de ao menos 1 demanda de Alta Complexidade (ex: transações, filtros compostos ou novas entidades).",
+          "Taxa de aprovação em testes de QA ≥ 75%.",
+          "Desvio de estimativas controlado dentro da margem de 25%."
+        ]
+      },
+      {
+        key: "pleno",
+        name: "Back-end Pleno",
+        nextLevel: "Back-end Sênior",
+        tag: "Confiabilidade & Modelagem Relacional",
+        focus: "Integridade ACID, otimização de queries, autenticação/segurança e concorrência.",
+        missionDetail: "Desenvolve módulos de missão crítica, modela esquemas relacionais eficientes, cria integrações complexas e garante a performance sob concorrência e carga de trabalho intensa.",
+        hardSkills: ["Modelagem de Dados Avançada (Normalização & Índices)", "Transações ACID & WAL Mode", "Segurança de APIs (RBAC, JWT, Rate Limiting)", "Otimização de Consultas & Query Plans", "Testes de Integração & Mocks", "Documentação OpenAPI/Swagger"],
+        softSkills: ["Alinhamento técnico ágil com desenvolvedores front-end", "Capacidade analítica na depuração de incidentes", "Mentoria a desenvolvedores juniores", "Visão crítica sobre simplicidade arquitetural"],
+        metrics: {
+          tasks: "6+ demandas concluídas no ciclo",
+          complexity: "3+ Altas (25%+ do volume)",
+          qaRate: "≥ 85% aprovação em QA",
+          hoursVariance: "Desvio de horas ≤ 20%"
+        },
+        triggers: [
+          "Mínimo de 3 demandas de Alta Complexidade lideradas e homologadas com sucesso.",
+          "Comprovação de domínio sobre o modelo de dados e consultas de alta performance.",
+          "Taxa de aprovação em QA ≥ 85%, sem incidentes impeditivos em homologação.",
+          "Acurácia de esforço estimada vs real mantida com desvio inferior a 20%."
+        ]
+      },
+      {
+        key: "senior",
+        name: "Back-end Sênior",
+        nextLevel: "Tech Lead Back-end",
+        tag: "Arquitetura & Resiliência",
+        focus: "Sistemas distribuídos, observabilidade, migrações sem downtime e liderança técnica.",
+        missionDetail: "Arquiteta soluções robustas para requisitos complexos, define políticas de tolerância a falhas, implementa telemetria abrangente e atua como a referência técnica de dados e backend da squad.",
+        hardSkills: ["Arquitetura Distribuída & Microsserviços", "Mensageria, Filas & Eventos", "Observabilidade (Logs Estruturados, Métricas)", "Zero-Downtime Database Migrations", "Design Defensivo e Segurança em Repouso", "Prevenção a Falhas em Cascata"],
+        softSkills: ["Liderança técnica serena e estruturada", "Mentor de desenvolvedores plenos e juniores", "Excelente capacidade de síntese e documentação", "Tomada de decisão baseada em trade-offs"],
+        metrics: {
+          tasks: "Volume expressivo com impacto",
+          complexity: "5+ Demandas de Alta Complexidade",
+          qaRate: "≥ 90% aprovação em QA",
+          readinessScore: "Score de Prontidão ≥ 85%"
+        },
+        triggers: [
+          "Liderança de 5 ou mais iniciativas críticas de infraestrutura, arquitetura ou banco de dados.",
+          "Taxa de homologação direta em QA igual ou superior a 90%.",
+          "Condução de revisões de código aprofundadas com foco em segurança, integridade e performance.",
+          "Score de prontidão oficial no DevSquad PRO atingindo 85% ou mais."
+        ]
+      },
+      {
+        key: "lead",
+        name: "Tech Lead Back-end / Arquiteto",
+        nextLevel: "Principal / Head de Engenharia",
+        tag: "Governança Corporativa & Escala",
+        focus: "Estratégia corporativa de dados, escalabilidade, governança de microsserviços e liderança de pessoas.",
+        missionDetail: "Garante a integridade, segurança e escalabilidade de todos os serviços do ecossistema. Alinha as capacidades técnicas aos objetivos de longo prazo da empresa.",
+        hardSkills: ["Enterprise Architecture", "Governança de Dados & LGPD/Compliance", "Disaster Recovery & Alta Disponibilidade", "Estratégias de Cache Global & CDN", "Definição de SLAs e SLOs"],
+        softSkills: ["Liderança estratégica e gestão de pessoas", "Ponte entre produto, diretoria e engenharia", "Resolução de impasses arquiteturais", "Desenvolvimento contínuo de talentos"],
+        metrics: {
+          tasks: "Governança de serviços e squads",
+          complexity: "100% integridade transacional",
+          qaRate: "Zero quebra de SLAs em produção",
+          readinessScore: "Auditoria e Governança Plena"
+        },
+        triggers: [
+          "Auditoria contínua de conformidade e integridade dos bancos de dados do workspace.",
+          "Definição de metas e benchmarks de performance adotados por toda a engenharia.",
+          "Mentoria formal de desenvolvedores seniores para a formação de novos líderes técnicos."
+        ]
+      }
+    ]
+  },
+  qa: {
+    roleName: "Analista de Qualidade / QA Engineer",
+    icon: "🧪",
+    discipline: "Quality Engineering & Testing",
+    mission: "Assegurar que cada entrega atenda aos mais altos padrões de funcionalidade, usabilidade e segurança antes de alcançar o usuário final.",
+    levels: [
+      {
+        key: "junior",
+        name: "QA Engineer Júnior",
+        nextLevel: "QA Engineer Pleno",
+        tag: "Execução & Testes Funcionais",
+        focus: "Execução de testes manuais, escrita de casos de teste a partir de BDD e relato estruturado de bugs.",
+        missionDetail: "Analisa requisitos, cria e executa casos de teste funcionais e documenta não-conformidades de forma clara e reprodutível no quadro de Qualidade.",
+        hardSkills: ["Escrita de Casos de Teste Estruturados", "Interpretação de Critérios BDD", "Testes de APIs (Postman/cURL)", "Reporte Detalhado de Bugs com Evidências", "Execução de Testes Exploratórios", "Matriz de Rastreabilidade Básica"],
+        softSkills: ["Comunicação empática e construtiva com os devs", "Atenção cirúrgica aos detalhes", "Organização e pontualidade", "Foco em prevenção e não só detecção"],
+        metrics: {
+          tasks: "100% requisitos cobertos por testes",
+          complexity: "Execução autônoma de suítes de teste",
+          qaRate: "Bugs reportados com precisão ≥ 85%",
+          hoursVariance: "Agilidade nas validações do Kanban"
+        },
+        triggers: [
+          "Autonomia na criação de planos de teste completos para requisitos de média complexidade.",
+          "Abertura de relatórios de bugs completos com steps-to-reproduce, payloads e prints sem ambiguidades.",
+          "Manutenção tempestiva das validações das demandas no fluxo do Kanban sem gargalos.",
+          "Domínio do uso dos casos de teste vinculados aos requisitos no DevSquad PRO."
+        ]
+      },
+      {
+        key: "pleno",
+        name: "QA Engineer Pleno",
+        nextLevel: "QA Engineer Sênior",
+        tag: "Automação & Cultura Shift-Left",
+        focus: "Automação de testes de API/E2E, testes de regressão e participação ativa no refinamento de requisitos.",
+        missionDetail: "Automatiza suítes de testes de regressão, integra testes aos fluxos de entrega contínua e atua antes do código ser escrito (Shift-Left), refinando cenários BDD junto aos PMs e Devs.",
+        hardSkills: ["Automação E2E (Playwright, Cypress)", "Automação de APIs & Contratos", "Testes de Regressão Automatizados", "Integração Contínua (CI/CD Gates)", "Análise de Riscos de Homologação", "Refinamento BDD Avançado"],
+        softSkills: ["Influência técnica para qualidade no time", "Capacidade de ensinar boas práticas de teste aos devs", "Visão crítica de cobertura vs custo", "Proatividade na mitigação de riscos"],
+        metrics: {
+          tasks: "Redução de bugs em produção a < 5%",
+          complexity: "Suítes de automação ativas",
+          qaRate: "Agilidade na homologação de demandas",
+          hoursVariance: "Zero bloqueios críticos sem alerta"
+        },
+        triggers: [
+          "Construção de suítes de teste automatizadas que reduzem o tempo de homologação manual em mais de 30%.",
+          "Taxa de bugs que escapam para homologação externa mantida abaixo de 5%.",
+          "Participação ativa na especificação dos requisitos garantindo critérios de teste claros antes da sprint.",
+          "Mentoria em testes para desenvolvedores juniores e estagiários."
+        ]
+      },
+      {
+        key: "senior",
+        name: "QA Engineer Sênior / Lead",
+        nextLevel: "Head de Qualidade",
+        tag: "Estratégia & Governança de Qualidade",
+        focus: "Quality Gates, testes não funcionais (carga, segurança), governança de qualidade de múltiplos projetos.",
+        missionDetail: "Define a estratégia corporativa de qualidade do workspace, estabelece métricas de confiabilidade (DORA metrics, escape rate) e capacita as squads na cultura de qualidade intrínseca.",
+        hardSkills: ["Arquitetura de Testes & Frameworks", "Testes de Carga & Performance (k6, JMeter)", "Testes de Segurança de Aplicações", "Quality Gates Automatizados", "Métricas de Qualidade (Escape Rate, DORA)", "Auditoria e Conformidade"],
+        softSkills: ["Liderança de capítulo de qualidade", "Alinhamento de qualidade com o valor de negócio", "Visão holística do ciclo de vida de software", "Mediação técnica em decisões de release"],
+        metrics: {
+          tasks: "Governança da qualidade de todos os projetos",
+          complexity: "Zero falhas críticas pós-release",
+          qaRate: "Conformidade em 100% dos Quality Gates",
+          readinessScore: "Auditoria de QA Impecável"
+        },
+        triggers: [
+          "Padronização e governança dos processos de teste em todos os projetos ativos no DevSquad PRO.",
+          "Implementação de Quality Gates que garantem zero paradas não planejadas após o deploy.",
+          "Capacitação contínua das squads em técnicas avançadas de teste e BDD."
+        ]
+      }
+    ]
+  },
+  pm: {
+    roleName: "Product Manager (PM / Scrum Master)",
+    icon: "📊",
+    discipline: "Product Management & Agile Delivery",
+    mission: "Maximizar o valor entregue pela squad, conectando os anseios do negócio e usuários a um fluxo contínuo, previsível e sustentável de engenharia.",
+    levels: [
+      {
+        key: "junior",
+        name: "Associate PM / Júnior",
+        nextLevel: "Product Manager Pleno",
+        tag: "Especificação & Facilitação Ágil",
+        focus: "Histórias de usuário com BDD, facilitação de cerimônias ágeis e acompanhamento de demandas.",
+        missionDetail: "Traduz necessidades de stakeholders em requisitos detalhados com critérios de aceitação claros, prioriza o backlog de tarefas e facilita as cerimônias da squad no dia a dia.",
+        hardSkills: ["Escrita de Histórias de Usuário & BDD", "Gestão de Backlog & Priorização (MoSCoW, RICE)", "Facilitação de Dailies, Plannings e Retros", "Acompanhamento de Fluxo Kanban", "Mapeamento de Critérios de Aceite"],
+        softSkills: ["Comunicação empática e clara com stakeholders", "Escuta ativa da equipe técnica", "Organização e rigor de prazos", "Remoção veloz de impedimentos"],
+        metrics: {
+          tasks: "Backlog refinado com 2+ sprints de antecedência",
+          complexity: "Zero demandas sem critério de aceite",
+          qaRate: "Redução de retrabalho por ambiguidade",
+          hoursVariance: "Previsibilidade de entrega ≥ 80%"
+        },
+        triggers: [
+          "Manutenção de um backlog saudável e detalhado sem lacunas conceituais para a squad.",
+          "Condução autônoma de todas as cerimônias ágeis com participação e engajamento da equipe.",
+          "Cumprimento dos prazos de entrega dos projetos com índice superior a 80%.",
+          "Uso eficaz dos módulos de Requisitos, Projetos e Kanban do DevSquad PRO."
+        ]
+      },
+      {
+        key: "pleno",
+        name: "Product Manager Pleno",
+        nextLevel: "Senior Product Manager",
+        tag: "Gestão de Valor & Métricas de Fluxo",
+        focus: "Métricas de entrega (Lead Time, Throughput), gestão de riscos e dependências entre squads.",
+        missionDetail: "Gerencia produtos e projetos complexos com foco no impacto de negócio. Analisa métricas de eficiência do fluxo, prevê riscos técnicos e equilibra novas features com controle de débito técnico.",
+        hardSkills: ["Métricas Ágeis (Lead Time, Cycle Time, CFD)", "Gestão de Riscos & Dependências Multi-Projeto", "Negociação de Escopo & Trade-offs Técnicos", "Análise de Impacto & Viabilidade Técnica", "Mapeamento de Jornadas e MVPs"],
+        softSkills: ["Excelente capacidade de negociação", "Defesa técnica e cuidado com a saúde do time", "Visão holística de negócio e produto", "Resolução proativa de conflitos de prioridade"],
+        metrics: {
+          tasks: "Previsibilidade de releases ≥ 90%",
+          complexity: "Gestão de iniciativas complexas",
+          qaRate: "Baixo índice de retrabalho (< 5%)",
+          hoursVariance: "Alinhamento contínuo de capacidade"
+        },
+        triggers: [
+          "Previsibilidade de entrega acima de 90% ao longo dos ciclos de desenvolvimento.",
+          "Gestão impecável de dependências técnicas e funcionais entre Front-end, Back-end e QA.",
+          "Negociação transparente com stakeholders, garantindo que o time trabalhe com ritmo sustentável.",
+          "Mentoria para novos Scrum Masters e analistas de produto."
+        ]
+      },
+      {
+        key: "senior",
+        name: "Senior PM / Agile Chapter Lead",
+        nextLevel: "Group PM / Head de Produto",
+        tag: "Estratégia de Portfólio & Governança",
+        focus: "Governança de portfólio multi-projetos, evolução metodológica e estratégia corporativa.",
+        missionDetail: "Supervisiona múltiplos projetos e produtos simultâneos no DevSquad PRO. Define as diretrizes ágeis da organização e garante o alinhamento estratégico com a diretoria executiva.",
+        hardSkills: ["Gestão de Portfólio & Roadmaps Estratégicos", "Governança Ágil Organizacional", "Métricas de Negócio & ROI", "Design de Processos de Engenharia", "Auditoria de Projetos e Entregas"],
+        softSkills: ["Liderança inspiradora e influente", "Comunicação executiva de alto nível", "Formação de novas lideranças ágeis", "Pensamento estratégico de longo prazo"],
+        metrics: {
+          tasks: "Governança plena de todos os projetos",
+          complexity: "Saúde técnica e prazos no verde",
+          qaRate: "Conformidade e auditoria corporativa",
+          readinessScore: "Satisfação de stakeholders e time"
+        },
+        triggers: [
+          "Garantia de saúde, previsibilidade e transparência em todos os projetos do workspace.",
+          "Evolução comprovada dos processos ágeis e de qualidade adotados pela organização.",
+          "Formação e mentoria de novos Product Managers e Scrum Masters."
+        ]
+      }
+    ]
+  },
+  techlead: {
+    roleName: "Tech Lead & Liderança Técnica",
+    icon: "👑",
+    discipline: "Technical Leadership & Software Governance",
+    mission: "Multiplicar o impacto da engenharia, equilibrando excelência arquitetural, governança de dados, desbloqueio de pessoas e velocidade de entrega.",
+    levels: [
+      {
+        key: "lead",
+        name: "Tech Lead",
+        nextLevel: "Staff / Principal Engineer",
+        tag: "Multiplicador Técnico & Arquitetura",
+        focus: "Liderança técnica da squad, desbloqueio de desenvolvedores, qualidade arquitetural e ponte com PM/QA.",
+        missionDetail: "Atua como líder técnico da equipe, removendo bloqueios conceituais, garantindo que as melhores práticas de código e teste sejam seguidas e participando de decisões arquiteturais estratégicas.",
+        hardSkills: ["Arquitetura de Software Ponta a Ponta", "Governança de Banco de Dados e APIs", "Facilitação de Technical Design Docs", "Pair Programming nos Problemas Mais Complexos", "Definição de Padrões e Linters", "Calibração de Metas de Promoção"],
+        softSkills: ["Liderança servidora sem autoridade formal", "Excelente capacidade de comunicação e escuta", "Mentoria ativa e personalizada", "Gestão do equilíbrio entre velocidade e débito técnico"],
+        metrics: {
+          tasks: "Squad com 100% dos projetos saudáveis",
+          complexity: "Liderança nos maiores desafios técnicos",
+          qaRate: "Taxa média de QA da squad ≥ 85%",
+          readinessScore: "Metas da equipe calibradas no SQLite"
+        },
+        triggers: [
+          "Squad entregando com consistência, alta qualidade de código e conformidade em QA.",
+          "Acompanhamento individual da evolução técnica de cada desenvolvedor através do módulo de Desempenho.",
+          "Gestão proativa do débito técnico, mantendo a manutenibilidade do código elevada.",
+          "Condução de sessões de mentoria e compartilhamento de conhecimento técnico."
+        ]
+      },
+      {
+        key: "staff",
+        name: "Staff Engineer / Engineering Director",
+        nextLevel: "VP of Engineering / CTO",
+        tag: "Impacto Organizacional & Governança Global",
+        focus: "Visão estratégica de tecnologia, resiliência corporativa, padrões globais de engenharia e cultura de excelência.",
+        missionDetail: "Define o futuro tecnológico da empresa, estabelece padrões arquiteturais para todas as squads, fomenta a cultura de meritocracia técnica baseada em dados e desenvolve novas lideranças de engenharia.",
+        hardSkills: ["Enterprise Architecture & Cloud Systems", "Segurança da Informação & Compliance", "Planejamento Estratégico de Engenharia", "Governança ALM Corporativa", "Auditoria Contínua de Processos e Dados"],
+        softSkills: ["Visão de negócio e tecnologia unificadas", "Comunicação e presença executiva", "Atração e retenção dos melhores talentos", "Criação de cultura de alta confiança e entrega"],
+        metrics: {
+          tasks: "Eficiência e governança global da engenharia",
+          complexity: "Zero riscos estruturais não mapeados",
+          qaRate: "Excelência de qualidade em toda a organização",
+          readinessScore: "Cultura meritocrática consolidada"
+        },
+        triggers: [
+          "Criação e sustentação de uma cultura de engenharia onde promoções são transparentes, auditáveis e justas.",
+          "Implementação de processos que garantem a escalabilidade e segurança de longo prazo do ecossistema.",
+          "Formação comprovada de Tech Leads, PMs e desenvolvedores sêniores na organização."
+        ]
+      }
+    ]
+  }
+};
+
+let activeCareerRole = 'frontend';
+let activeCareerLevel = 'junior';
+let simulatedCriteriaState = {};
+
+window.renderCareer = function() {
+  const container = document.getElementById('career-role-content');
+  if (!container) return;
+
+  const roleData = careerTracksData[activeCareerRole] || careerTracksData.frontend;
+  const currentLevels = roleData.levels || [];
+  
+  if (!currentLevels.some(l => l.key === activeCareerLevel)) {
+    activeCareerLevel = currentLevels[0].key;
+  }
+
+  const activeLevelData = currentLevels.find(l => l.key === activeCareerLevel) || currentLevels[0];
+
+  // 1. Atualizar abas dos cargos
+  document.querySelectorAll('.career-role-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.role === activeCareerRole);
+  });
+
+  // 2. Renderizar Conteúdo do Cargo & Escada de Senioridade
+  container.innerHTML = `
+    <!-- Banner do Cargo -->
+    <div class="career-role-banner">
+      <div class="career-role-info">
+        <div class="career-role-avatar">${roleData.icon}</div>
+        <div class="career-role-titles">
+          <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <h3>${roleData.roleName}</h3>
+            <span class="career-tag">${roleData.discipline}</span>
+          </div>
+          <p>${roleData.mission}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stepper de Senioridade (Escada) -->
+    <div class="career-stepper">
+      <div class="career-stepper-line"></div>
+      ${currentLevels.map((lvl, idx) => `
+        <button class="career-step-btn ${lvl.key === activeCareerLevel ? 'active' : ''}" onclick="selectCareerLevel('${lvl.key}')" title="Clique para ver os requisitos de ${lvl.name}">
+          <div class="career-step-circle">${idx + 1}</div>
+          <span class="career-step-label">${lvl.name}</span>
+        </button>
+      `).join('')}
+    </div>
+
+    <!-- Detalhamento Completo do Nível Ativo -->
+    <div class="career-level-display">
+      
+      <!-- Card: Missão & Escopo -->
+      <div class="career-subcard">
+        <div class="career-subcard-header">
+          <span>🎯</span>
+          <span>Missão & Escopo de Atuação</span>
+        </div>
+        <div class="career-subcard-body">
+          <p style="margin-bottom: 0.75rem; font-weight: 600; color: var(--text-main);">${activeLevelData.focus}</p>
+          <p>${activeLevelData.missionDetail}</p>
+        </div>
+      </div>
+
+      <!-- Card: Hard Skills & Tecnologias -->
+      <div class="career-subcard">
+        <div class="career-subcard-header">
+          <span>🛠️</span>
+          <span>Hard Skills & Ferramentas Essenciais</span>
+        </div>
+        <div class="career-subcard-body">
+          <p style="margin-bottom: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">Competências técnicas esperadas para este nível:</p>
+          <div class="career-skills-wrap">
+            ${activeLevelData.hardSkills.map(s => `<span class="career-skill-badge highlight">${s}</span>`).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Card: Soft Skills & Atitudes -->
+      <div class="career-subcard">
+        <div class="career-subcard-header">
+          <span>🤝</span>
+          <span>Soft Skills & Postura Comportamental</span>
+        </div>
+        <div class="career-subcard-body">
+          <ul>
+            ${activeLevelData.softSkills.map(sk => `<li>${sk}</li>`).join('')}
+          </ul>
+        </div>
+      </div>
+
+      <!-- Card: Métricas no DevSquad PRO para Promoção -->
+      <div class="career-subcard">
+        <div class="career-subcard-header">
+          <span>📊</span>
+          <span>Métricas no DevSquad PRO para Subir</span>
+        </div>
+        <div class="career-subcard-body">
+          <div class="career-metric-row">
+            <div class="career-metric-box">
+              <span class="label">Volume de Demandas</span>
+              <span class="val">${activeLevelData.metrics.tasks}</span>
+              <span class="desc">Entregas homologadas</span>
+            </div>
+            <div class="career-metric-box">
+              <span class="label">Complexidade</span>
+              <span class="val" style="color: #60a5fa;">${activeLevelData.metrics.complexity}</span>
+              <span class="desc">Autonomia comprovada</span>
+            </div>
+            <div class="career-metric-box">
+              <span class="label">Qualidade / QA</span>
+              <span class="val" style="color: #fbbf24;">${activeLevelData.metrics.qaRate}</span>
+              <span class="desc">Taxa de aprovação</span>
+            </div>
+            <div class="career-metric-box">
+              <span class="label">Acurácia de Horas</span>
+              <span class="val" style="color: #f472b6;">${activeLevelData.metrics.hoursVariance || activeLevelData.metrics.readinessScore}</span>
+              <span class="desc">Esforço previsto vs real</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gatilhos & Checklist Formal de Promoção -->
+      <div class="career-promotion-trigger">
+        <div class="career-trigger-header">
+          <span class="career-trigger-title">
+            <span>🚀</span>
+            <span>Checklist & Gatilhos para Conquistar a Promoção para ${activeLevelData.nextLevel}</span>
+          </span>
+          <span class="career-tag success">Próximo Degrau: ${activeLevelData.nextLevel}</span>
+        </div>
+        <div style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6;">
+          <ul style="margin: 0; padding-left: 1.25rem;">
+            ${activeLevelData.triggers.map(t => `<li style="margin-bottom: 0.45rem;"><strong>${t}</strong></li>`).join('')}
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  // Atualizar simulador interativo
+  updateSimulatorChecklist();
+};
+window.renderCareer = renderCareer;
+
+window.selectCareerRole = function(roleKey) {
+  if (!careerTracksData[roleKey]) return;
+  activeCareerRole = roleKey;
+  activeCareerLevel = careerTracksData[roleKey].levels[0].key;
+  renderCareer();
+};
+
+window.selectCareerLevel = function(levelKey) {
+  activeCareerLevel = levelKey;
+  renderCareer();
+};
+
+window.updateSimulatorChecklist = function() {
+  const roleSelect = document.getElementById('sim-role-select');
+  const targetSelect = document.getElementById('sim-target-select');
+  const checklistContainer = document.getElementById('career-checklist-container');
+  const targetBadge = document.getElementById('sim-target-badge');
+
+  if (!roleSelect || !targetSelect || !checklistContainer) return;
+
+  const roleValue = roleSelect.value;
+  const targetValue = targetSelect.value;
+
+  const targetTitles = {
+    pleno: 'Promoção a Pleno',
+    senior: 'Promoção a Sênior',
+    lead: 'Promoção a Tech Lead / Especialista'
+  };
+
+  if (targetBadge) {
+    targetBadge.textContent = `Alvo: ${targetTitles[targetValue] || 'Promoção'}`;
+  }
+
+  const criteria = getSimulatorCriteriaFor(roleValue, targetValue);
+
+  criteria.forEach(c => {
+    if (simulatedCriteriaState[c.id] === undefined) {
+      simulatedCriteriaState[c.id] = false;
+    }
+  });
+
+  checklistContainer.innerHTML = criteria.map(c => `
+    <div class="career-checklist-item ${simulatedCriteriaState[c.id] ? 'checked' : ''}" onclick="toggleSimulatorCriterion('${c.id}')">
+      <div class="career-checkbox">
+        ${simulatedCriteriaState[c.id] ? '✓' : ''}
+      </div>
+      <div class="career-check-meta">
+        <strong>${c.title} <span style="font-size: 0.72rem; color: #818cf8; font-weight: normal; margin-left: 0.35rem;">(Peso ${c.weight}x)</span></strong>
+        <small>${c.desc}</small>
+      </div>
+    </div>
+  `).join('');
+
+  calculateSimulatorScore(criteria);
+};
+
+window.toggleSimulatorCriterion = function(criterionId) {
+  simulatedCriteriaState[criterionId] = !simulatedCriteriaState[criterionId];
+  
+  const roleSelect = document.getElementById('sim-role-select');
+  const targetSelect = document.getElementById('sim-target-select');
+  if (roleSelect && targetSelect) {
+    const criteria = getSimulatorCriteriaFor(roleSelect.value, targetSelect.value);
+    
+    document.querySelectorAll('.career-checklist-item').forEach(item => {
+      const onclickAttr = item.getAttribute('onclick') || '';
+      if (onclickAttr.includes(criterionId)) {
+        item.classList.toggle('checked', simulatedCriteriaState[criterionId]);
+        const box = item.querySelector('.career-checkbox');
+        if (box) box.textContent = simulatedCriteriaState[criterionId] ? '✓' : '';
+      }
+    });
+
+    calculateSimulatorScore(criteria);
+  }
+};
+
+function getSimulatorCriteriaFor(roleValue, targetSeniorityKey) {
+  const seniorityMap = {
+    pleno: 'Pleno',
+    senior: 'Sênior',
+    lead: 'Tech Lead'
+  };
+  const targetSeniority = seniorityMap[targetSeniorityKey] || 'Pleno';
+
+  const dbGoals = typeof store.getGoals === 'function' ? store.getGoals() : [];
+  const relevantGoals = dbGoals.filter(g => g.isActive && g.targetSeniority === targetSeniority);
+
+  if (relevantGoals.length > 0) {
+    return relevantGoals.map(g => ({
+      id: g.id,
+      title: g.title,
+      desc: `${g.description || ''} • Meta Mínima: ${g.targetValue} ${g.targetUnit || ''}`,
+      weight: g.weight || 2
+    }));
+  }
+
+  if (targetSeniorityKey === 'pleno') {
+    return [
+      { id: 'crit_pleno_1', title: 'Autonomia em Média Complexidade', desc: 'Concluiu e entregou ao menos 2 demandas de complexidade Média com sucesso.', weight: 3 },
+      { id: 'crit_pleno_2', title: 'Iniciação em Alta Complexidade', desc: 'Assumiu e concluiu com êxito ao menos 1 tarefa de Alta Complexidade no ciclo.', weight: 2 },
+      { id: 'crit_pleno_3', title: 'Aprovação Direta em QA', desc: 'Manteve taxa de aprovação em validações de qualidade e testes igual ou superior a 75%.', weight: 2 },
+      { id: 'crit_pleno_4', title: 'Precisão nas Estimativas', desc: 'Desvio médio entre horas estimadas e apontadas controlado dentro de 25%.', weight: 2 },
+      { id: 'crit_pleno_5', title: 'Colaboração & Dailies', desc: 'Comunicação pontual nas cerimônias, transparência de bloqueios e proatividade.', weight: 1 }
+    ];
+  } else if (targetSeniorityKey === 'senior') {
+    return [
+      { id: 'crit_senior_1', title: 'Domínio de Alta Complexidade', desc: 'Concluiu com êxito 3 ou mais demandas de Alta Complexidade no ciclo.', weight: 3 },
+      { id: 'crit_senior_2', title: 'Predomínio de Demandas Críticas', desc: 'Ao menos 25% do volume de tarefas concluídas foram de alta criticidade técnica.', weight: 2 },
+      { id: 'crit_senior_3', title: 'Qualidade Rigorosa em QA', desc: 'Índice de aprovação direta em testes de QA igual ou superior a 85%.', weight: 3 },
+      { id: 'crit_senior_4', title: 'Acurácia de Horas & Esforço', desc: 'Equilíbrio sólido de esforço com desvio de horas inferior a 20%.', weight: 2 },
+      { id: 'crit_senior_5', title: 'Mentoria & Code Reviews', desc: 'Revisão ativa de código dos demais desenvolvedores e mentoria técnica a membros juniores.', weight: 2 }
+    ];
+  } else {
+    return [
+      { id: 'crit_lead_1', title: 'Governança & Arquitetura de Software', desc: 'Liderou soluções arquiteturais complexas e sustentou múltiplos projetos saudáveis.', weight: 3 },
+      { id: 'crit_lead_2', title: 'Excelência em Qualidade (QA)', desc: 'Taxa de aprovação em QA superior a 90% em todas as entregas do ciclo.', weight: 3 },
+      { id: 'crit_lead_3', title: 'Capacitação e Mentoria do Time', desc: 'Conduziu 1:1s técnicos e atuou como multiplicador da barra de excelência da squad.', weight: 2 },
+      { id: 'crit_lead_4', title: 'Gestão de Débito Técnico & Riscos', desc: 'Mapeou e eliminou ativamente débitos técnicos antes que virassem incidentes de produção.', weight: 2 }
+    ];
+  }
+}
+
+function calculateSimulatorScore(criteria) {
+  let earnedScore = 0;
+  let totalWeight = 0;
+
+  criteria.forEach(c => {
+    const weight = c.weight || 1;
+    totalWeight += weight;
+    if (simulatedCriteriaState[c.id]) {
+      earnedScore += weight;
+    }
+  });
+
+  const score = totalWeight > 0 ? Math.min(100, Math.round((earnedScore / totalWeight) * 100)) : 0;
+
+  const scoreNumberEl = document.getElementById('sim-score-number');
+  const scoreStatusEl = document.getElementById('sim-score-status');
+  const gaugeCircleEl = document.getElementById('sim-gauge-circle');
+  const opinionBoxEl = document.getElementById('sim-opinion-box');
+
+  if (scoreNumberEl) scoreNumberEl.textContent = `${score}%`;
+
+  let statusText = 'Em Evolução';
+  let opinionText = '';
+  let color = '#6366f1';
+
+  if (score >= 80) {
+    statusText = '🟢 Elegível para Promoção!';
+    color = '#10b981';
+    opinionText = `Parabéns! Você cumpre os critérios técnicos e comportamentais fundamentais exigidos pelo DevSquad PRO (Score: ${score}%). Suas entregas e histórico respaldam sua conversa de 1:1 para oficializar a promoção.`;
+  } else if (score >= 50) {
+    statusText = '🟡 Quase Lá (Em Consolidação)';
+    color = '#f59e0b';
+    opinionText = `Você já atingiu critérios importantes da trilha (Score: ${score}%). Recomendamos focar nas metas pendentes assinaladas acima nas próximas sprints para alcançar a prontidão plena (80%+).`;
+  } else {
+    statusText = '🔵 Desenvolvendo Habilidades';
+    color = '#3b82f6';
+    opinionText = `Você está no caminho do crescimento. Mantenha a consistência nas tarefas do Kanban, zele pelas validações em QA e aponte suas horas para consolidar os critérios deste nível.`;
+  }
+
+  if (scoreStatusEl) {
+    scoreStatusEl.textContent = statusText;
+    scoreStatusEl.style.color = color;
+  }
+
+  if (gaugeCircleEl) {
+    gaugeCircleEl.style.borderColor = color;
+    gaugeCircleEl.style.transform = `rotate(${45 + (score * 1.8)}deg)`;
+  }
+
+  if (opinionBoxEl) {
+    opinionBoxEl.style.borderLeftColor = color;
+    opinionBoxEl.textContent = opinionText;
+  }
+}
+
+window.syncMyDevMetricsToSimulator = function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser) {
+    showToast('Você precisa estar autenticado para carregar suas métricas.');
+    return;
+  }
+
+  const allMembers = store.getTeamMembers ? store.getTeamMembers() : [];
+  const myMember = allMembers.find(m => m.id === currentUser.id || m.name.toLowerCase() === currentUser.name.toLowerCase()) || allMembers[0];
+
+  if (!myMember) {
+    showToast('Nenhum dado de desenvolvedor encontrado vinculado à sua conta.');
+    return;
+  }
+
+  const roleSelect = document.getElementById('sim-role-select');
+  const targetSelect = document.getElementById('sim-target-select');
+
+  const myRole = (myMember.role || currentUser.devRole || 'frontend').toLowerCase();
+  const mySeniority = (myMember.seniority || currentUser.seniority || 'Júnior').toLowerCase();
+
+  let targetValue = 'pleno';
+  if (mySeniority.includes('pleno')) targetValue = 'senior';
+  else if (mySeniority.includes('sênior') || mySeniority.includes('senior')) targetValue = 'lead';
+
+  if (targetSelect) targetSelect.value = targetValue;
+
+  if (roleSelect) {
+    const rolePrefix = myRole.includes('back') ? 'backend' : (myRole.includes('qa') ? 'qa' : 'frontend');
+    const senioritySuffix = mySeniority.includes('sênior') || mySeniority.includes('senior') ? 'senior' : (mySeniority.includes('pleno') ? 'pleno' : 'junior');
+    const combinedVal = `${rolePrefix}_${senioritySuffix}`;
+    if (Array.from(roleSelect.options).some(o => o.value === combinedVal)) {
+      roleSelect.value = combinedVal;
+    }
+  }
+
+  const allTasks = store.getTasks ? store.getTasks() : [];
+  const myTasks = allTasks.filter(t => t.assignedTo === myMember.id || t.assignedTo === myMember.name);
+  const doneTasks = myTasks.filter(t => t.status === 'Concluído');
+  
+  const highTasks = doneTasks.filter(t => t.complexity === 'Alta').length;
+  const medTasks = doneTasks.filter(t => t.complexity === 'Média').length;
+  const totalHoursEstimated = doneTasks.reduce((acc, t) => acc + (parseFloat(t.estimatedHours) || 0), 0);
+  const totalHoursSpent = doneTasks.reduce((acc, t) => acc + (parseFloat(t.hoursSpent) || 0), 0);
+
+  const criteria = getSimulatorCriteriaFor(roleSelect ? roleSelect.value : 'frontend_junior', targetValue);
+
+  criteria.forEach(c => {
+    const titleLower = c.title.toLowerCase();
+    if (titleLower.includes('média') && medTasks >= 2) {
+      simulatedCriteriaState[c.id] = true;
+    } else if (titleLower.includes('alta') && highTasks >= 1) {
+      simulatedCriteriaState[c.id] = true;
+    } else if (titleLower.includes('qa') && doneTasks.length >= 2) {
+      simulatedCriteriaState[c.id] = true;
+    } else if (titleLower.includes('horas') || titleLower.includes('estimativas')) {
+      const diff = Math.abs(totalHoursEstimated - totalHoursSpent);
+      const variance = totalHoursEstimated > 0 ? (diff / totalHoursEstimated) * 100 : 0;
+      simulatedCriteriaState[c.id] = variance <= 25 && doneTasks.length > 0;
+    } else if (titleLower.includes('colaboração') || titleLower.includes('dailies')) {
+      simulatedCriteriaState[c.id] = true;
+    } else {
+      simulatedCriteriaState[c.id] = false;
+    }
+  });
+
+  updateSimulatorChecklist();
+  showToast(`Métricas reais de ${myMember.name} sincronizadas com o simulador! 🚀`);
+};
+

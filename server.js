@@ -12,7 +12,12 @@ const { DatabaseSync } = require('node:sqlite');
 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
-const DB_PATH = path.join(__dirname, 'devsquad.db');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'devsquad.db');
+
+const dbDir = path.dirname(DB_PATH);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
 
 console.log('--------------------------------------------------');
 console.log('🚀 Inicializando DevSquad PRO Backend Server...');

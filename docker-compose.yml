@@ -1,0 +1,20 @@
+services:
+  devsquad:
+    build: .
+    container_name: devsquad-app
+    restart: unless-stopped
+    ports:
+      # Vincula exclusivamente à interface local (127.0.0.1) para não expor na WAN
+      # e permitir que o Nginx do host gerencie proxy reverso e SSL com segurança total
+      - "127.0.0.1:3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - HOST=0.0.0.0
+      - DB_PATH=/app/data/devsquad.db
+    volumes:
+      - devsquad_data:/app/data
+
+volumes:
+  devsquad_data:
+    driver: local

@@ -153,6 +153,11 @@
           <span class="nav-text">Trilha de Auditoria</span>
           <span class="nav-counter" id="counter-nav-audit" style="background: rgba(99, 102, 241, 0.25); color: #818cf8; font-size: 0.68rem; padding: 2px 6px;">Admin</span>
         </button>
+        <button class="nav-item" data-view="career" id="nav-career">
+          <span class="nav-icon">🧭</span>
+          <span class="nav-text">Proposta & Carreiras</span>
+          <span class="nav-counter" id="counter-nav-career" style="background: rgba(16, 185, 129, 0.25); color: #34d399; font-size: 0.68rem; padding: 2px 6px;">5 Trilhas</span>
+        </button>
       </nav>
 
       <!-- Widget de Saúde dos Projetos no Rodapé da Sidebar -->
@@ -201,6 +206,12 @@
             <span class="db-dot"></span>
             <span class="db-text" id="db-status-text">SQLite Conectado</span>
           </div>
+
+          <!-- Botão de Acesso Rápido às Trilhas de Carreira & Proposta -->
+          <button class="btn btn-secondary btn-sm" id="btn-topbar-career" onclick="switchView('career')" title="Conheça a Proposta & Trilhas de Promoção" style="display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.45rem 0.85rem; border-radius: var(--radius-full); font-size: 0.82rem; font-weight: 600; border: 1px solid rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.12); color: #34d399;">
+            <span>🧭</span>
+            <span>Trilhas de Carreira</span>
+          </button>
 
           <!-- Botão Dropdown "+ Novo" -->
           <div class="dropdown-wrapper" id="dropdown-new-item">
@@ -312,6 +323,24 @@
               <span class="pulse-dot"></span>
               <span>Ambiente de Engenharia Ativo</span>
             </div>
+          </div>
+
+          <!-- Banner Informativo: Proposta da Ferramenta & Trilhas de Promoção -->
+          <div class="career-promo-banner glass-panel" id="dashboard-career-banner">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+              <div style="width: 48px; height: 48px; border-radius: var(--radius-md); background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); display: flex; align-items: center; justify-content: center; font-size: 1.6rem;">🧭</div>
+              <div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                  <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text-main);">Proposta DevSquad & Trilhas de Promoção</h3>
+                  <span class="career-tag success" style="font-size: 0.65rem; padding: 1px 6px;">Novo Guia</span>
+                </div>
+                <p style="margin: 0.2rem 0 0; font-size: 0.85rem; color: var(--text-secondary);">Descubra a proposta de valor da ferramenta e o checklist prático que cada cargo e senioridade deve cumprir para ser promovido.</p>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-sm btn-glow" onclick="switchView('career')" style="white-space: nowrap;">
+              <span>Explorar Trilhas</span>
+              <span style="font-size: 1rem;">➔</span>
+            </button>
           </div>
 
           <!-- Cartões de Métricas Principais (KPIs) -->
@@ -1426,6 +1455,295 @@
               </tbody>
             </table>
           </div>
+        </section>
+
+        <!-- =================================================================
+             PAINEL: PROPOSTA DA FERRAMENTA & TRILHAS DE CARREIRA E PROMOÇÃO
+             ================================================================= -->
+        <section class="view-panel" id="view-career">
+          
+          <!-- Hero Banner da Proposta de Valor -->
+          <div class="career-hero">
+            <div class="career-hero-glow"></div>
+            <div class="career-hero-content">
+              <div class="career-hero-tags">
+                <span class="career-tag">🧭 DevSquad PRO • ALM</span>
+                <span class="career-tag success">🎯 Meritocracia por Dados</span>
+                <span class="career-tag cyan">📈 Transparência de Carreira</span>
+              </div>
+              <h1 class="career-hero-title">Proposta da Plataforma & Trilhas de Carreira</h1>
+              <p class="career-hero-desc">
+                O <strong>DevSquad PRO</strong> foi concebido para transformar a engenharia de software em um ecossistema integrado e transparente. 
+                Eliminamos o abismo entre Negócio, Desenvolvimento (Front e Back) e Qualidade (QA), unificando requisitos BDD, quadro ágil no Kanban, validações formais de QA e 
+                avaliação de prontidão para promoção 100% orientada a métricas reais do ciclo de entrega.
+              </p>
+              <div class="career-hero-actions">
+                <button class="btn btn-primary btn-glow" onclick="document.getElementById('career-tracks-section').scrollIntoView({behavior: 'smooth'})">
+                  <span>🧭 Explorar Trilhas por Cargo</span>
+                  <span class="btn-arrow">➔</span>
+                </button>
+                <button class="btn btn-secondary" onclick="document.getElementById('career-simulator-section').scrollIntoView({behavior: 'smooth'})">
+                  <span>🎯 Simulador de Prontidão</span>
+                </button>
+                <button class="btn btn-ghost" onclick="document.getElementById('career-matrix-section').scrollIntoView({behavior: 'smooth'})">
+                  <span>📊 Matriz de Senioridade</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- SEÇÃO 1: Os 4 Pilares da Proposta do DevSquad PRO -->
+          <div class="career-pillars-section">
+            <div class="career-section-header">
+              <div>
+                <h2 class="career-section-title">💡 Por Que Usamos o DevSquad PRO?</h2>
+                <p class="career-section-desc">Os quatro pilares essenciais que orientam a engenharia de alta performance e a justiça nas avaliações do time.</p>
+              </div>
+            </div>
+
+            <div class="career-pillars-grid">
+              <div class="career-pillar-card glass-panel">
+                <div class="career-pillar-icon indigo">📋</div>
+                <h3 class="career-pillar-title">1. Requisitos BDD & Sem Ruído</h3>
+                <p class="career-pillar-text">
+                  Histórias de Usuário estruturadas com critérios <em>Dado-Quando-Então</em>. A squad só inicia o desenvolvimento quando a regra de negócio e os critérios de aceitação estão 100% acordados.
+                </p>
+              </div>
+
+              <div class="career-pillar-card glass-panel">
+                <div class="career-pillar-icon cyan">🚀</div>
+                <h3 class="career-pillar-title">2. Fluxo Ágil & Rastreabilidade</h3>
+                <p class="career-pillar-text">
+                  Quadro Kanban com classificação de complexidade real (Baixa, Média, Alta) e apontamento preciso de esforço. Acompanhe o fluxo de valor sem retrabalho e sem tarefas órfãs.
+                </p>
+              </div>
+
+              <div class="career-pillar-card glass-panel">
+                <div class="career-pillar-icon amber">🧪</div>
+                <h3 class="career-pillar-title">3. Qualidade Shift-Left & QA</h3>
+                <p class="career-pillar-text">
+                  Casos de teste formalizados e vinculados aos requisitos. O código só é homologado após validações rigorosas em QA, elevando a confiabilidade do produto final entregue.
+                </p>
+              </div>
+
+              <div class="career-pillar-card glass-panel">
+                <div class="career-pillar-icon emerald">🎯</div>
+                <h3 class="career-pillar-title">4. Promoção Baseada em Evidências</h3>
+                <p class="career-pillar-text">
+                  Fim dos achismos e políticas de corredor. O sistema calcula a prontidão para promoção através de entregas homologadas, autonomia em alta complexidade, aprovação em QA e acurácia de horas.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- SEÇÃO 2: Trilhas de Carreira por Cargo -->
+          <div class="career-tracks-section" id="career-tracks-section">
+            <div class="career-section-header">
+              <div>
+                <h2 class="career-section-title">🧭 Trilhas de Carreira por Cargo & Especialidade</h2>
+                <p class="career-section-desc">Selecione uma especialidade abaixo para navegar pela escada de evolução e compreender os requisitos exigidos para cada promoção.</p>
+              </div>
+            </div>
+
+            <!-- Abas dos Cargos -->
+            <div class="career-role-nav" id="career-role-nav-container">
+              <button class="career-role-tab active" data-role="frontend" onclick="selectCareerRole('frontend')">
+                <span>🎨</span>
+                <span>Front-end Developer</span>
+                <span class="career-tab-badge">Júnior ➔ Lead</span>
+              </button>
+              <button class="career-role-tab" data-role="backend" onclick="selectCareerRole('backend')">
+                <span>⚙️</span>
+                <span>Back-end Developer</span>
+                <span class="career-tab-badge">Júnior ➔ Lead</span>
+              </button>
+              <button class="career-role-tab" data-role="qa" onclick="selectCareerRole('qa')">
+                <span>🧪</span>
+                <span>QA / Qualidade</span>
+                <span class="career-tab-badge">Júnior ➔ QA Lead</span>
+              </button>
+              <button class="career-role-tab" data-role="pm" onclick="selectCareerRole('pm')">
+                <span>📊</span>
+                <span>Product Manager (PM)</span>
+                <span class="career-tab-badge">Assoc. ➔ Lead</span>
+              </button>
+              <button class="career-role-tab" data-role="techlead" onclick="selectCareerRole('techlead')">
+                <span>👑</span>
+                <span>Tech Lead & Arquitetura</span>
+                <span class="career-tab-badge">Lead ➔ Staff</span>
+              </button>
+            </div>
+
+            <!-- Container Dinâmico do Cargo Selecionado -->
+            <div class="career-track-main" id="career-role-content">
+              <!-- Preenchido dinamicamente via renderCareer() -->
+            </div>
+          </div>
+
+          <!-- SEÇÃO 3: Simulador Interativo de Prontidão de Carreira -->
+          <div class="career-simulator" id="career-simulator-section">
+            <div class="career-section-header">
+              <div>
+                <h2 class="career-section-title">🎯 Simulador Interativo de Prontidão de Promoção</h2>
+                <p class="career-section-desc">Simule sua conformidade com os critérios do DevSquad PRO ou preencha automaticamente com os dados reais da sua conta.</p>
+              </div>
+              <button class="btn btn-secondary btn-sm" id="btn-sync-my-metrics" onclick="syncMyDevMetricsToSimulator()" style="border-color: rgba(99, 102, 241, 0.4); background: rgba(99, 102, 241, 0.15); color: #c7d2fe;">
+                <span>⚡ Carregar Minhas Entregas do Sistema</span>
+              </button>
+            </div>
+
+            <div class="form-row" style="margin-bottom: 1.5rem; background: var(--bg-subpanel); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+              <div class="form-group flex-1">
+                <label for="sim-role-select">Cargo Atual</label>
+                <select id="sim-role-select" class="custom-select" onchange="updateSimulatorChecklist()">
+                  <option value="frontend_junior">🎨 Front-end Júnior</option>
+                  <option value="frontend_pleno">🎨 Front-end Pleno</option>
+                  <option value="frontend_senior">🎨 Front-end Sênior</option>
+                  <option value="backend_junior">⚙️ Back-end Júnior</option>
+                  <option value="backend_pleno">⚙️ Back-end Pleno</option>
+                  <option value="backend_senior">⚙️ Back-end Sênior</option>
+                  <option value="qa_junior">🧪 QA Engineer Júnior</option>
+                  <option value="qa_pleno">🧪 QA Engineer Pleno</option>
+                  <option value="pm_junior">📊 PM / Scrum Master Júnior</option>
+                  <option value="pm_pleno">📊 PM / Scrum Master Pleno</option>
+                </select>
+              </div>
+              <div class="form-group flex-1">
+                <label for="sim-target-select">Cargo Alvo da Promoção</label>
+                <select id="sim-target-select" class="custom-select" onchange="updateSimulatorChecklist()">
+                  <option value="pleno" selected>🟢 Promoção a Pleno</option>
+                  <option value="senior">🟢 Promoção a Sênior</option>
+                  <option value="lead">🟢 Promoção a Tech Lead / Especialista</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="career-sim-grid">
+              <!-- Checklist Interativo -->
+              <div>
+                <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
+                  <span>Checklist de Evidências & Metas no DevSquad</span>
+                  <small style="color: var(--text-muted); font-weight: normal;">Clique para marcar</small>
+                </h4>
+                <div id="career-checklist-container">
+                  <!-- Renderizado dinamicamente -->
+                </div>
+              </div>
+
+              <!-- Painel de Score e Diagnóstico -->
+              <div class="career-score-card">
+                <span class="career-tag" id="sim-target-badge" style="margin-bottom: 0.5rem;">Meta: Promoção a Pleno</span>
+                <span style="font-size: 0.82rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Score de Prontidão</span>
+                
+                <div class="career-gauge-wrap">
+                  <div style="position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 8px solid var(--border-subtle);"></div>
+                  <div id="sim-gauge-circle" style="position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 8px solid #6366f1; border-top-color: transparent; border-right-color: transparent; transform: rotate(45deg); transition: all 0.5s ease;"></div>
+                  <div style="display: flex; flex-direction: column; align-items: center;">
+                    <span class="career-gauge-val" id="sim-score-number">0%</span>
+                    <span class="career-gauge-sub" id="sim-score-status">Em Evolução</span>
+                  </div>
+                </div>
+
+                <div class="career-opinion-box" id="sim-opinion-box">
+                  Selecione seu cargo e marque os critérios atingidos para calcular seu índice de prontidão para promoção.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SEÇÃO 4: Matriz Comparativa de Senioridades -->
+          <div class="career-matrix-section" id="career-matrix-section" style="margin-bottom: 2.5rem;">
+            <div class="career-section-header">
+              <div>
+                <h2 class="career-section-title">📊 Matriz Comparativa de Senioridade & Expectativas</h2>
+                <p class="career-section-desc">Visão horizontal das competências fundamentais exigidas em cada estágio da carreira técnica.</p>
+              </div>
+            </div>
+
+            <div class="career-matrix-wrap">
+              <table class="career-matrix-table">
+                <thead>
+                  <tr>
+                    <th style="width: 170px;">Dimensão</th>
+                    <th>Júnior</th>
+                    <th>Pleno</th>
+                    <th>Sênior</th>
+                    <th>Tech Lead / Staff</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="career-matrix-dim">🎯 Autonomia</td>
+                    <td>Requer direcionamento para quebrar tarefas e priorizar soluções.</td>
+                    <td>Trabalha com alta autonomia em demandas de média e alta complexidade.</td>
+                    <td>Autônomo de ponta a ponta; define abordagens e antecipa bloqueios.</td>
+                    <td>Direciona a squad e garante a autonomia dos demais engenheiros.</td>
+                  </tr>
+                  <tr>
+                    <td class="career-matrix-dim">🧩 Complexidade</td>
+                    <td>Domínio de tarefas de Baixa complexidade e início em Média.</td>
+                    <td>Domínio de Média complexidade e entrega consistente de Alta.</td>
+                    <td>Liderança de demandas de Alta complexidade e problemas não triviais.</td>
+                    <td>Arquitetura de sistemas distribuídos, resiliência e débito técnico.</td>
+                  </tr>
+                  <tr>
+                    <td class="career-matrix-dim">🧪 Qualidade & QA</td>
+                    <td>Testa seus fluxos e depende da validação detalhada do QA.</td>
+                    <td>Escreve código testável e mantém taxa de aprovação direta ≥ 75%.</td>
+                    <td>Zero bugs críticos; arquitetura defensiva e aprovação em QA ≥ 85%.</td>
+                    <td>Define os Quality Gates, padrões de teste e excelência de QA da squad.</td>
+                  </tr>
+                  <tr>
+                    <td class="career-matrix-dim">⏱️ Estimativas</td>
+                    <td>Variação comum nas estimativas; foco em aprender a mensurar esforço.</td>
+                    <td>Acurácia sólida de horas apontadas com desvio abaixo de 25%.</td>
+                    <td>Alta precisão de estimativas e controle de riscos de entrega (≤ 20%).</td>
+                    <td>Calibra o planejamento estratégico e a capacidade produtiva da squad.</td>
+                  </tr>
+                  <tr>
+                    <td class="career-matrix-dim">🤝 Mentoria & Cultura</td>
+                    <td>Consumidor ativo de conhecimento; recebe feedbacks com abertura.</td>
+                    <td>Ajuda novos membros, compartilha boas práticas e revisa PRs simples.</td>
+                    <td>Mentor formal de juniores/plenos; promove code reviews formativos.</td>
+                    <td>Referência e multiplicador técnico; promove a evolução contínua da equipe.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- SEÇÃO 5: Como Conquistar Sua Promoção (Passo a Passo) -->
+          <div class="glass-panel" style="padding: 1.75rem; border-radius: var(--radius-lg); border: 1px solid var(--border-subtle); margin-bottom: 2rem;">
+            <h3 style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; color: var(--text-main); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+              <span>🚀 Passo a Passo: Como Conquistar Sua Promoção no DevSquad</span>
+            </h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
+              <div style="background: var(--bg-subpanel); padding: 1.15rem; border-radius: var(--radius-md); border-left: 3px solid #6366f1;">
+                <span style="font-size: 0.75rem; font-weight: 800; color: #818cf8; text-transform: uppercase;">Passo 1</span>
+                <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); margin: 0.35rem 0 0.25rem;">Assuma Desafios no Kanban</h4>
+                <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 0; line-height: 1.5;">Puxe demandas de complexidade progressiva e garanta que todas as tarefas concluídas estejam documentadas.</p>
+              </div>
+
+              <div style="background: var(--bg-subpanel); padding: 1.15rem; border-radius: var(--radius-md); border-left: 3px solid #10b981;">
+                <span style="font-size: 0.75rem; font-weight: 800; color: #34d399; text-transform: uppercase;">Passo 2</span>
+                <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); margin: 0.35rem 0 0.25rem;">Aponte Horas com Precisão</h4>
+                <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 0; line-height: 1.5;">Registre as horas gastas em cada demanda para demonstrar previsibilidade e baixo desvio de estimativas.</p>
+              </div>
+
+              <div style="background: var(--bg-subpanel); padding: 1.15rem; border-radius: var(--radius-md); border-left: 3px solid #f59e0b;">
+                <span style="font-size: 0.75rem; font-weight: 800; color: #fbbf24; text-transform: uppercase;">Passo 3</span>
+                <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); margin: 0.35rem 0 0.25rem;">Zele Pela Aprovação em QA</h4>
+                <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 0; line-height: 1.5;">Trabalhe com o time de QA para aprovar as entregas de primeira, mantendo a taxa de aprovação acima de 75-85%.</p>
+              </div>
+
+              <div style="background: var(--bg-subpanel); padding: 1.15rem; border-radius: var(--radius-md); border-left: 3px solid #06b6d4;">
+                <span style="font-size: 0.75rem; font-weight: 800; color: #38bdf8; text-transform: uppercase;">Passo 4</span>
+                <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); margin: 0.35rem 0 0.25rem;">Conduza Seu 1:1 com Dados</h4>
+                <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 0; line-height: 1.5;">No momento de avaliação, apresente suas métricas consolidadas no DevSquad ao seu gestor para formalizar a promoção.</p>
+              </div>
+            </div>
+          </div>
+
         </section>
 
       </main>
