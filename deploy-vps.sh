@@ -22,33 +22,59 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# 2. Perguntar o domínio / subdomínio
-read -p "👉 Informe o domínio ou subdomínio para o DevSquad (ex: devsquad.meudominio.com): " DOMAIN_NAME
+# 2. Obter domínio / subdomínio
+# Prioridade: 1º argumento ($1) -> variável $DOMAIN -> leitura interativa do terminal
+DOMAIN_NAME="${1:-$DOMAIN}"
+
 if [ -z "$DOMAIN_NAME" ]; then
-  echo "❌ Domínio não pode ser vazio. Abortando."
+  if [ -t 0 ]; then
+    read -p "👉 Informe o domínio ou subdomínio para o DevSquad (ex: devsquad.meudominio.com): " DOMAIN_NAME
+  elif [ -e /dev/tty ]; then
+    read -p "👉 Informe o domínio ou subdomínio para o DevSquad (ex: devsquad.meudominio.com): " DOMAIN_NAME < /dev/tty
+  fi
+fi
+
+if [ -z "$DOMAIN_NAME" ]; then
+  echo "❌ Domínio não informado."
+  echo "👉 Dica: Você pode passar o domínio diretamente no comando, por exemplo:"
+  echo "   curl -fsSL https://raw.githubusercontent.com/lleandrovalois/devsquad/main/deploy-vps.sh | sudo bash -s -- devsquad.meudominio.com"
+  echo "   ou clonar e rodar: sudo bash deploy-vps.sh devsquad.meudominio.com"
   exit 1
 fi
 
-# 3. Verificação de conflito de porta
-APP_PORT=$DEFAULT_PORT
-echo "🔍 Verificando se a porta $APP_PORT já está em uso no servidor..."
+echo "🌐 Domínio configurado: $DOMAIN_NAME"
+
+# 3. Verificação e resolução de conflito de porta
+APP_PORT="${2:-$DEFAULT_PORT}"
+echo "🔍 Verificando disponibilidade da porta $APP_PORT no servidor..."
 
 if ss -tulpn | grep -q ":$APP_PORT "; then
   echo "⚠️ ATENÇÃO: A porta $APP_PORT já está sendo usada por outra aplicação no servidor!"
-  echo "Para evitar conflitos, escolha outra porta interna (ex: 3005, 3010, 3100)."
-  read -p "👉 Digite a porta alternativa para o DevSquad: " APP_PORT
-  if [ -z "$APP_PORT" ]; then
-    echo "❌ Nenhuma porta informada. Abortando para garantir a integridade dos outros sistemas."
-    exit 1
+  
+  # Buscar automaticamente a próxima porta livre a partir de 3005
+  CANDIDATE_PORT=3005
+  while ss -tulpn | grep -q ":$CANDIDATE_PORT "; do
+    CANDIDATE_PORT=$((CANDIDATE_PORT + 1))
+  done
+
+  if [ -t 0 ]; then
+    read -p "👉 Digite uma porta alternativa [Pressione Enter para usar $CANDIDATE_PORT]: " INPUT_PORT
+    APP_PORT="${INPUT_PORT:-$CANDIDATE_PORT}"
+  elif [ -e /dev/tty ]; then
+    read -p "👉 Digite uma porta alternativa [Pressione Enter para usar $CANDIDATE_PORT]: " INPUT_PORT < /dev/tty
+    APP_PORT="${INPUT_PORT:-$CANDIDATE_PORT}"
+  else
+    echo "⚡ Selecionando automaticamente porta livre: $CANDIDATE_PORT"
+    APP_PORT=$CANDIDATE_PORT
   fi
-  # Validação da nova porta
+
   if ss -tulpn | grep -q ":$APP_PORT "; then
-    echo "❌ A porta $APP_PORT também já está em uso! Abortando por segurança."
+    echo "❌ A porta $APP_PORT também já está em uso! Abortando por segurança para não afetar outros serviços."
     exit 1
   fi
 fi
 
-echo "✅ Porta selecionada para escuta local: $APP_PORT (127.0.0.1:$APP_PORT)"
+echo "✅ Porta selecionada para escuta local segura: $APP_PORT (127.0.0.1:$APP_PORT)"
 
 # 4. Criar ou atualizar o diretório do projeto
 if [ ! -d "$APP_DIR" ]; then
@@ -56,9 +82,10 @@ if [ ! -d "$APP_DIR" ]; then
   git clone "$REPO_URL" "$APP_DIR"
   cd "$APP_DIR"
 else
-  echo "🔄 Repositório já existe em $APP_DIR. Atualizando código (git pull)..."
+  echo "🔄 Diretório $APP_DIR já existe. Atualizando código (git pull)..."
   cd "$APP_DIR"
-  git pull origin main
+  git fetch origin main
+  git reset --hard origin/main
 fi
 
 # 5. Ajustar porta no docker-compose.yml se diferente do padrão
@@ -68,7 +95,7 @@ if [ "$APP_PORT" != "$DEFAULT_PORT" ]; then
 fi
 
 # 6. Build e execução via Docker Compose
-echo "🐳 Construindo e iniciando o container isolado..."
+echo "🐳 Construindo e iniciando o container isolado (devsquad-app)..."
 docker compose down || true
 docker compose up -d --build
 
@@ -124,7 +151,7 @@ echo ""
 echo "========================================================"
 echo "🎉 DEPLOY CONCLUÍDO COM SUCESSO E TOTAL ISOLAMENTO!"
 echo "========================================================"
-echo "Aplicação rodando em: http://$DOMAIN_NAME"
+echo "Aplicação respondendo em: http://$DOMAIN_NAME"
 echo "Container: devsquad-app (127.0.0.1:$APP_PORT)"
 echo "Volume persistente: devsquad_data"
 echo ""
