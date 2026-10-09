@@ -2309,20 +2309,249 @@ window.switchTaskModalTab = function(tabName) {
 
   const btnForm = document.getElementById('tab-btn-task-form');
   const btnHist = document.getElementById('tab-btn-task-history');
+  const btnReq = document.getElementById('tab-btn-task-req');
   const paneForm = document.getElementById('pane-task-form');
   const paneHist = document.getElementById('pane-task-history');
+  const paneReq = document.getElementById('pane-task-req');
+
+  btnForm?.classList.remove('active');
+  btnHist?.classList.remove('active');
+  btnReq?.classList.remove('active');
+
+  if (paneForm) paneForm.style.display = 'none';
+  if (paneHist) paneHist.style.display = 'none';
+  if (paneReq) paneReq.style.display = 'none';
 
   if (tabName === 'history') {
-    btnForm?.classList.remove('active');
     btnHist?.classList.add('active');
-    if (paneForm) paneForm.style.display = 'none';
     if (paneHist) paneHist.style.display = 'block';
+  } else if (tabName === 'requirement') {
+    btnReq?.classList.add('active');
+    if (paneReq) paneReq.style.display = 'block';
+    renderTaskRequirementTab();
   } else {
-    btnHist?.classList.remove('active');
+    // Padrão: aba do formulário da demanda
     btnForm?.classList.add('active');
-    if (paneHist) paneHist.style.display = 'none';
     if (paneForm) paneForm.style.display = 'block';
   }
+};
+
+window.updateTaskRequirementPreview = function() {
+  const reqSelect = document.getElementById('task-requirement');
+  const reqId = reqSelect ? reqSelect.value : null;
+
+  const btnToggle = document.getElementById('btn-toggle-req-spec-preview');
+  const btnQuick = document.getElementById('btn-quick-expand-req');
+  const tabBtnReq = document.getElementById('tab-btn-task-req');
+  const tabBadge = document.getElementById('task-req-code-tab-badge');
+  const panel = document.getElementById('task-req-preview-panel');
+
+  if (!reqId) {
+    if (btnToggle) btnToggle.style.display = 'none';
+    if (btnQuick) btnQuick.style.display = 'none';
+    if (tabBtnReq) tabBtnReq.style.display = 'none';
+    if (panel) panel.style.display = 'none';
+    return;
+  }
+
+  const req = (store.state.requirements || []).find(r => r.id === reqId);
+  if (!req) {
+    if (btnToggle) btnToggle.style.display = 'none';
+    if (btnQuick) btnQuick.style.display = 'none';
+    if (tabBtnReq) tabBtnReq.style.display = 'none';
+    if (panel) panel.style.display = 'none';
+    return;
+  }
+
+  // Ativa botões e aba dedicada
+  if (btnToggle) btnToggle.style.display = 'inline-flex';
+  if (btnQuick) btnQuick.style.display = 'inline-flex';
+  if (tabBtnReq) {
+    tabBtnReq.style.display = 'inline-flex';
+    if (tabBadge) tabBadge.textContent = req.code || 'RF';
+  }
+
+  const project = store.getProjectById ? store.getProjectById(req.projectId) : null;
+  const projectName = project ? project.name : (req.project || 'Geral');
+
+  const moscowLabels = {
+    Must: "Must Have",
+    Should: "Should Have",
+    Could: "Could Have",
+    "Won't": "Won't Have"
+  };
+
+  const moscowClasses = {
+    Must: "moscow-must",
+    Should: "moscow-should",
+    Could: "moscow-could",
+    "Won't": "badge-subtle"
+  };
+
+  const isRnf = req.type === 'RNF' || (req.code && req.code.startsWith('RNF'));
+
+  // Preenche dados do painel inline/drawer
+  const elCode = document.getElementById('preview-req-code');
+  if (elCode) elCode.textContent = req.code || 'RF';
+
+  const elTitle = document.getElementById('preview-req-title');
+  if (elTitle) elTitle.textContent = req.title || '';
+
+  const elType = document.getElementById('preview-req-type');
+  if (elType) {
+    elType.textContent = isRnf ? 'Não-Funcional (RNF)' : 'Funcional (RF)';
+    elType.className = isRnf ? 'badge-subtle badge-rnf' : 'badge-subtle badge-rf';
+  }
+
+  const elMoscow = document.getElementById('preview-req-moscow');
+  if (elMoscow) {
+    elMoscow.textContent = moscowLabels[req.moscow] || req.moscow || 'Prioridade';
+    elMoscow.className = `moscow-badge ${moscowClasses[req.moscow] || 'moscow-must'}`;
+  }
+
+  const elProject = document.getElementById('preview-req-project');
+  if (elProject) elProject.textContent = `📁 ${projectName}`;
+
+  const elUserStory = document.getElementById('preview-req-user-story');
+  if (elUserStory) elUserStory.textContent = req.userStory || 'História de usuário não informada.';
+
+  const elBdd = document.getElementById('preview-req-bdd');
+  if (elBdd) elBdd.textContent = req.bdd || 'Critérios de aceite (Dado / Quando / Então) não documentados.';
+};
+
+window.toggleTaskReqPreview = function(forceOpen) {
+  const panel = document.getElementById('task-req-preview-panel');
+  if (!panel) return;
+
+  const btnText = document.getElementById('btn-req-spec-text');
+  const btnIcon = document.getElementById('btn-req-spec-icon');
+  const btnQuick = document.getElementById('btn-quick-expand-req');
+
+  const isCurrentlyOpen = panel.style.display !== 'none';
+  const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !isCurrentlyOpen;
+
+  if (shouldOpen) {
+    updateTaskRequirementPreview();
+    panel.style.display = 'block';
+    if (btnText) btnText.textContent = 'Ocultar Especificação';
+    if (btnIcon) btnIcon.textContent = '🔼';
+    if (btnQuick) {
+      btnQuick.innerHTML = '✕';
+      btnQuick.title = 'Recolher especificação do requisito';
+    }
+  } else {
+    panel.style.display = 'none';
+    if (btnText) btnText.textContent = 'Ver Especificação';
+    if (btnIcon) btnIcon.textContent = '📖';
+    if (btnQuick) {
+      btnQuick.innerHTML = '👁️';
+      btnQuick.title = 'Expandir especificação do requisito';
+    }
+  }
+};
+
+window.renderTaskRequirementTab = function() {
+  const reqSelect = document.getElementById('task-requirement');
+  const reqId = reqSelect ? reqSelect.value : null;
+  const contentEl = document.getElementById('task-req-tab-content');
+  if (!contentEl) return;
+
+  if (!reqId) {
+    contentEl.innerHTML = `
+      <div style="text-align: center; padding: 2.5rem 1.5rem; color: var(--text-muted);">
+        <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">📋</div>
+        <h4 style="color: var(--text-main); margin-bottom: 0.5rem; font-size: 1.1rem;">Nenhum Requisito Vinculado a Esta Demanda</h4>
+        <p style="font-size: 0.85rem; max-width: 480px; margin: 0 auto 1.5rem auto; line-height: 1.5;">
+          Esta demanda está configurada como avulsa. Vincule um requisito no seletor de "Requisito Vinculado" para visualizar a especificação técnica completa aqui.
+        </p>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="switchTaskModalTab('form')">Voltar ao Formulário</button>
+      </div>
+    `;
+    return;
+  }
+
+  const req = (store.state.requirements || []).find(r => r.id === reqId);
+  if (!req) {
+    contentEl.innerHTML = `<div style="text-align: center; padding: 2rem; color: #f43f5e;">Requisito não localizado na base de dados.</div>`;
+    return;
+  }
+
+  const project = store.getProjectById ? store.getProjectById(req.projectId) : null;
+  const projectName = project ? project.name : (req.project || 'Geral');
+
+  const moscowLabels = {
+    Must: "Obrigatório (Must Have)",
+    Should: "Importante (Should Have)",
+    Could: "Desejável (Could Have)",
+    "Won't": "Não Prioritário"
+  };
+
+  const moscowClasses = {
+    Must: "moscow-must",
+    Should: "moscow-should",
+    Could: "moscow-could",
+    "Won't": "badge-subtle"
+  };
+
+  const isRnf = req.type === 'RNF' || (req.code && req.code.startsWith('RNF'));
+  const typeLabel = isRnf ? 'Não-Funcional (RNF)' : 'Funcional (RF)';
+  const linkedTasks = (store.state.tasks || []).filter(t => t.reqId === req.id);
+  const currentTaskId = document.getElementById('task-id-edit')?.value;
+
+  contentEl.innerHTML = `
+    <div class="task-req-tab-card glass-panel" style="padding: 1.25rem; border: 1px solid rgba(99, 102, 241, 0.3); background: rgba(15, 23, 42, 0.65); border-radius: var(--radius-lg);">
+      <!-- Cabeçalho -->
+      <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 0.85rem;">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span class="req-code-badge" style="font-size: 0.95rem; font-weight: 800; padding: 4px 10px;">${escapeHtml(req.code || 'REQ')}</span>
+          <h3 style="margin: 0; font-size: 1.15rem; color: var(--text-main); font-weight: 700;">${escapeHtml(req.title || '')}</h3>
+          <span class="badge-subtle" style="font-size: 0.75rem;">${typeLabel}</span>
+          <span class="moscow-badge ${moscowClasses[req.moscow] || 'moscow-must'}" style="font-size: 0.75rem;">${moscowLabels[req.moscow] || req.moscow}</span>
+          <span class="badge-subtle" style="font-size: 0.75rem;">📁 ${escapeHtml(projectName)}</span>
+        </div>
+      </div>
+
+      <!-- História de Usuário -->
+      <div style="margin-bottom: 1.25rem;">
+        <div style="font-size: 0.78rem; text-transform: uppercase; font-weight: 700; color: #a78bfa; margin-bottom: 0.4rem; letter-spacing: 0.5px;">
+          👤 História de Usuário
+        </div>
+        <div class="user-story-quote" style="font-size: 0.9rem; line-height: 1.5; padding: 0.85rem 1rem; margin: 0; background: rgba(139, 92, 246, 0.08); border-left: 4px solid #8b5cf6; border-radius: 0 var(--radius-sm) var(--radius-sm) 0;">
+          ${escapeHtml(req.userStory || 'História de usuário não cadastrada.')}
+        </div>
+      </div>
+
+      <!-- Critérios de Aceite BDD -->
+      <div style="margin-bottom: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+          <div style="font-size: 0.78rem; text-transform: uppercase; font-weight: 700; color: #38bdf8; letter-spacing: 0.5px;">
+            🧪 Critérios de Aceite (BDD / Gherkin)
+          </div>
+          <span style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">Cenário: Dado / Quando / Então</span>
+        </div>
+        <div class="bdd-container" style="margin: 0; padding: 1rem; background: #050811; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: var(--radius-md);">
+          <div class="bdd-content font-mono" style="font-size: 0.85rem; line-height: 1.6; white-space: pre-wrap; color: #bae6fd;">${escapeHtml(req.bdd || 'Critérios de aceite não documentados.')}</div>
+        </div>
+      </div>
+
+      <!-- Demanda Atual e Outras Demandas Vinculadas -->
+      <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 0.85rem; margin-top: 1rem;">
+        <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-secondary); margin-bottom: 0.5rem;">
+          🔗 Demandas Vinculadas a este Requisito (${linkedTasks.length}):
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          ${linkedTasks.length > 0 ? linkedTasks.map(t => {
+            const isCurrent = t.id === currentTaskId;
+            return `
+              <span class="task-role-tag ${t.role === 'frontend' ? 'role-front' : 'role-back'}" style="padding: 4px 8px; font-size: 0.78rem; ${isCurrent ? 'outline: 2px solid #818cf8; background: rgba(99, 102, 241, 0.35);' : ''}">
+                ${t.role === 'frontend' ? '🎨 Front' : '⚙️ Back'} <strong>#${t.id.slice(-5)}</strong>: ${escapeHtml(t.title)} ${isCurrent ? '<em>(Atual)</em>' : ''}
+              </span>
+            `;
+          }).join('') : '<span style="color: var(--text-muted); font-size: 0.82rem; font-style: italic;">Nenhuma outra demanda associada.</span>'}
+        </div>
+      </div>
+    </div>
+  `;
 };
 
 window.reloadCurrentTaskHistory = async function() {
@@ -2427,6 +2656,7 @@ window.openTaskModalForCreate = function(prefillReqId) {
     return;
   }
 
+  populateModalSelects();
   switchTaskModalTab('form');
   const tabHistoryBtn = document.getElementById('tab-btn-task-history');
   if (tabHistoryBtn) tabHistoryBtn.style.display = 'none';
@@ -2468,6 +2698,7 @@ window.openTaskModalForCreate = function(prefillReqId) {
   document.getElementById('btn-save-task').textContent = "Salvar Demanda";
   document.getElementById('btn-save-task').style.display = 'inline-flex';
   
+  toggleTaskReqPreview(false);
   openModal('modal-task');
 
   // Pré-vínculo do requisito quando disparado via atalho do card
@@ -2490,6 +2721,8 @@ window.openTaskModalForCreate = function(prefillReqId) {
   } else {
     document.getElementById('modal-task-title').textContent = "🚀 Cadastrar Nova Demanda";
   }
+
+  updateTaskRequirementPreview();
 
   // Foco imediato no título da demanda para máxima agilidade
   setTimeout(() => {
@@ -2523,6 +2756,8 @@ window.openTaskModalForEdit = function(taskId) {
   document.getElementById('task-title').value = task.title;
   document.getElementById('task-project').value = task.projectId;
   document.getElementById('task-requirement').value = task.reqId || "";
+  toggleTaskReqPreview(false);
+  updateTaskRequirementPreview();
   document.getElementById('task-role').value = task.role;
   document.getElementById('task-assignee').value = task.assigneeId || "";
   document.getElementById('task-priority').value = task.priority;
@@ -5867,6 +6102,23 @@ window.addEventListener('DOMContentLoaded', () => {
         if (projEl) projEl.value = r.projectId;
       }
     }
+    updateTaskRequirementPreview();
+    const paneReq = document.getElementById('pane-task-req');
+    if (paneReq && paneReq.style.display !== 'none') {
+      renderTaskRequirementTab();
+    }
+  });
+
+  document.getElementById('btn-toggle-req-spec-preview')?.addEventListener('click', () => {
+    toggleTaskReqPreview();
+  });
+
+  document.getElementById('btn-quick-expand-req')?.addEventListener('click', () => {
+    toggleTaskReqPreview();
+  });
+
+  document.getElementById('btn-close-req-preview')?.addEventListener('click', () => {
+    toggleTaskReqPreview(false);
   });
 
   // Recálculo automático do código do requisito ao trocar Projeto ou Tipo (RF / RNF)
