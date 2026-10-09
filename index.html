@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   
-  <link rel="stylesheet" href="style.css?v=1.0.2">
+  <link rel="stylesheet" href="style.css?v=1.0.3">
 </head>
 <body>
   <!-- ===================================================================
@@ -1988,30 +1988,39 @@
       <form id="form-new-req" class="modal-body">
         <input type="hidden" id="req-id-edit" value="">
         <div class="form-row">
-          <div class="form-group flex-2">
-            <label for="req-title">Título do Requisito *</label>
-            <input type="text" id="req-title" required placeholder="Ex: Autenticação Segura de Usuários com 2FA">
-          </div>
           <div class="form-group flex-1">
-            <label for="req-code">Código Identificador *</label>
-            <input type="text" id="req-code" required placeholder="Ex: RF-04 ou RNF-02">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
             <label for="req-project">Projeto *</label>
             <select id="req-project" required class="custom-select">
               <!-- Preenchido via script -->
             </select>
           </div>
-          <div class="form-group">
+          <div class="form-group flex-1">
             <label for="req-type">Tipo de Requisito *</label>
             <select id="req-type" class="custom-select">
               <option value="functional">Funcional (RF)</option>
               <option value="non-functional">Não-Funcional (RNF)</option>
             </select>
           </div>
-          <div class="form-group">
+          <div class="form-group flex-1">
+            <div class="form-label-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+              <label for="req-code" style="margin-bottom: 0;">Código Identificador *</label>
+              <button type="button" class="btn-code-lock-toggle" id="btn-toggle-req-code-lock" title="Alternar entre incremento automático e edição manual" style="background: none; border: none; font-size: 0.72rem; color: #38bdf8; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; padding: 0 4px; font-weight: 600;">
+                <span id="req-code-lock-icon">🔒</span> <span id="req-code-lock-label">Auto</span>
+              </button>
+            </div>
+            <div class="input-with-badge" style="position: relative;">
+              <input type="text" id="req-code" required placeholder="Ex: RF-01" class="custom-input font-mono" readonly style="background: rgba(255, 255, 255, 0.04); font-weight: 700; color: #a5b4fc; padding-right: 3.8rem;">
+              <span id="req-code-status-pill" class="badge-code-auto" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); pointer-events: none;">Auto</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label for="req-title">Título do Requisito *</label>
+            <input type="text" id="req-title" required placeholder="Ex: Autenticação Segura de Usuários com 2FA">
+          </div>
+          <div class="form-group flex-1">
             <label for="req-moscow">Prioridade MoSCoW</label>
             <select id="req-moscow" class="custom-select">
               <option value="Must">Obrigatório (Must Have)</option>
@@ -2457,6 +2466,6 @@
   <script src="vendor/jspdf.plugin.autotable.min.js"></script>
 
   <!-- Script Principal da Aplicação -->
-  <script src="script.js?v=1.0.2"></script>
+  <script src="script.js?v=1.0.3"></script>
 </body>
 </html>

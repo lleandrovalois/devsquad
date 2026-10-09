@@ -1857,6 +1857,128 @@ function renderRequirements() {
   });
 }
 
+// ==============================================================================
+// Controle de incremento e trava automática do Código do Requisito
+// ==============================================================================
+let isManualReqCode = false;
+
+function getNextRequirementCode(projectId, reqType) {
+  const prefix = reqType === 'non-functional' ? 'RNF' : 'RF';
+  if (!projectId) return `${prefix}-01`;
+
+  // Consulta requisitos cadastrados especificamente para o projeto
+  const projectReqs = (store.state.requirements || []).filter(r => r.projectId === projectId);
+  
+  let maxNum = 0;
+  let detectedPadding = 2; // Padrão RF-01, RF-08, etc.
+
+  projectReqs.forEach(r => {
+    const rawCode = (r.code || '').trim();
+    if (!rawCode) return;
+
+    // 1. Tentar casar com o prefixo do tipo (ex: RF-07, RF07, RF_07, RNF-02)
+    const prefixRegex = new RegExp(`^${prefix}[-_\\s]?(\\d+)`, 'i');
+    const match = rawCode.match(prefixRegex);
+
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > maxNum) {
+        maxNum = num;
+        if (match[1].length > detectedPadding) {
+          detectedPadding = match[1].length;
+        }
+      }
+    } else if (r.type === reqType) {
+      // 2. Se for do mesmo tipo mas código sem prefixo fixo, extrai qualquer sufixo numérico
+      const numMatch = rawCode.match(/(\d+)/);
+      if (numMatch) {
+        const num = parseInt(numMatch[1], 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+  });
+
+  const nextNum = maxNum + 1;
+  const padLength = Math.max(2, detectedPadding);
+  const formattedNum = String(nextNum).padStart(padLength, '0');
+  return `${prefix}-${formattedNum}`;
+}
+
+function updateAutoReqCode() {
+  if (isManualReqCode) return;
+  const editId = document.getElementById('req-id-edit')?.value;
+  if (editId) return; // Não sobrescreve código na edição de requisito existente
+
+  const projectId = document.getElementById('req-project')?.value;
+  const reqType = document.getElementById('req-type')?.value || 'functional';
+
+  if (!projectId) return;
+
+  const nextCode = getNextRequirementCode(projectId, reqType);
+  const codeInput = document.getElementById('req-code');
+  if (codeInput) {
+    codeInput.value = nextCode;
+  }
+}
+
+function setReqCodeMode(manual) {
+  isManualReqCode = manual;
+  const codeInput = document.getElementById('req-code');
+  const lockIcon = document.getElementById('req-code-lock-icon');
+  const lockLabel = document.getElementById('req-code-lock-label');
+  const pill = document.getElementById('req-code-status-pill');
+
+  if (manual) {
+    if (codeInput) {
+      codeInput.readOnly = false;
+      codeInput.style.background = 'transparent';
+      codeInput.style.cursor = 'text';
+      codeInput.style.color = 'var(--text-main)';
+    }
+    if (lockIcon) lockIcon.textContent = '🔓';
+    if (lockLabel) lockLabel.textContent = 'Manual';
+    if (pill) {
+      pill.textContent = 'Manual';
+      pill.style.background = 'rgba(245, 158, 11, 0.15)';
+      pill.style.color = '#f59e0b';
+      pill.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+    }
+  } else {
+    if (codeInput) {
+      codeInput.readOnly = true;
+      codeInput.style.background = 'rgba(255, 255, 255, 0.04)';
+      codeInput.style.cursor = 'not-allowed';
+      codeInput.style.color = '#a5b4fc';
+    }
+    if (lockIcon) lockIcon.textContent = '🔒';
+    if (lockLabel) lockLabel.textContent = 'Auto';
+    if (pill) {
+      pill.textContent = 'Auto';
+      pill.style.background = 'rgba(16, 185, 129, 0.15)';
+      pill.style.color = '#34d399';
+      pill.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+    }
+  }
+}
+
+function toggleReqCodeLock() {
+  const editId = document.getElementById('req-id-edit')?.value;
+  if (editId) return;
+
+  setReqCodeMode(!isManualReqCode);
+  if (!isManualReqCode) {
+    updateAutoReqCode();
+    showToast('Modo automático ativado: código sequencial gerado.');
+  } else {
+    document.getElementById('req-code')?.focus();
+    showToast('Modo manual ativado: você pode ajustar o código.');
+  }
+}
+window.toggleReqCodeLock = toggleReqCodeLock;
+window.updateAutoReqCode = updateAutoReqCode;
+
 // Funções de CRUD de Requisitos
 window.openReqModalForCreate = function() {
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
@@ -1871,7 +1993,18 @@ window.openReqModalForCreate = function() {
   document.getElementById('req-id-edit').value = "";
   document.getElementById('form-new-req').reset();
   document.getElementById('btn-save-req').textContent = "Registrar Requisito";
+  
   openModal('modal-requirement');
+
+  // Se houver um projeto selecionado no filtro geral, pré-seleciona ele
+  if (store.selectedProject && store.selectedProject !== 'all') {
+    const projSelect = document.getElementById('req-project');
+    if (projSelect) projSelect.value = store.selectedProject;
+  }
+
+  // Define modo automático bloqueado e calcula o próximo código sequencial
+  setReqCodeMode(false);
+  updateAutoReqCode();
 };
 
 window.openReqModalForEdit = function(reqId) {
@@ -1898,7 +2031,11 @@ window.openReqModalForEdit = function(reqId) {
   document.getElementById('btn-save-req').textContent = "Atualizar Requisito";
 
   openModal('modal-requirement');
+
+  // Na edição de requisito já existente, permite edição livre do código
+  setReqCodeMode(true);
 };
+
 
 window.confirmDeleteRequirement = function(reqId, reqCode, reqTitle) {
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
@@ -5730,6 +5867,19 @@ window.addEventListener('DOMContentLoaded', () => {
         if (projEl) projEl.value = r.projectId;
       }
     }
+  });
+
+  // Recálculo automático do código do requisito ao trocar Projeto ou Tipo (RF / RNF)
+  document.getElementById('req-project')?.addEventListener('change', () => {
+    updateAutoReqCode();
+  });
+
+  document.getElementById('req-type')?.addEventListener('change', () => {
+    updateAutoReqCode();
+  });
+
+  document.getElementById('btn-toggle-req-code-lock')?.addEventListener('click', () => {
+    toggleReqCodeLock();
   });
 
   // 3. FORMULÁRIO DE REQUISITO (CRUD)

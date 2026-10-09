@@ -2027,6 +2027,26 @@ html, body {
   animation: cardPulseGlow 2.5s ease;
 }
 
+.btn-code-lock-toggle {
+  transition: all var(--transition);
+  border-radius: var(--radius-sm);
+}
+
+.btn-code-lock-toggle:hover {
+  filter: brightness(1.25);
+  text-decoration: underline;
+}
+
+.badge-code-auto {
+  transition: all var(--transition);
+}
+
+.input-with-badge input[readonly] {
+  cursor: not-allowed;
+  user-select: all;
+}
+
+
 
 /* ==============================================================================
    ESTILOS DE AUTENTICAÇÃO: LOGIN & CADASTRO (FULLSCREEN OVERLAY)
