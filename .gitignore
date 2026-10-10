@@ -3,3 +3,4 @@ devsquad.db
 devsquad.db-wal
 devsquad.db-shm
 .tools/
+scratch/

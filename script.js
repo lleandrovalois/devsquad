@@ -160,7 +160,10 @@ class ALMStore {
       state.requirements = state.requirements.filter(r => !mockIds.has(r.id));
     }
     if (Array.isArray(state.tasks)) {
-      state.tasks = state.tasks.filter(t => !mockIds.has(t.id));
+      state.tasks = state.tasks.filter(t => !mockIds.has(t.id)).map(t => {
+        const ref = t.reqId || t.req_id || t.requirementId || t.reqCode || null;
+        return { ...t, reqId: ref, req_id: ref };
+      });
     }
     if (Array.isArray(state.testCases)) {
       state.testCases = state.testCases.filter(tc => !mockIds.has(tc.id));
@@ -200,7 +203,12 @@ class ALMStore {
           return true;
         });
       }
-      if (Array.isArray(data.tasks)) this.state.tasks = data.tasks;
+      if (Array.isArray(data.tasks)) {
+        this.state.tasks = data.tasks.map(t => {
+          const ref = t.reqId || t.req_id || t.requirementId || t.reqCode || null;
+          return { ...t, reqId: ref, req_id: ref };
+        });
+      }
       if (Array.isArray(data.testCases)) this.state.testCases = data.testCases;
       if (Array.isArray(data.goals)) this.state.goals = data.goals;
       if (Array.isArray(data.auditLogs)) this.auditLogs = data.auditLogs;
@@ -434,8 +442,39 @@ class ALMStore {
     return list;
   }
 
+  findRequirement(identifier) {
+    if (!identifier) return null;
+    const str = String(identifier).trim();
+    if (!str) return null;
+    const lower = str.toLowerCase();
+    const upper = str.toUpperCase();
+    const reqs = this.state.requirements || [];
+
+    // 1. Busca exata por ID (ex: 'req1791558280650')
+    let found = reqs.find(r => r.id === str);
+    if (found) return found;
+
+    // 2. Busca exata por Código (ex: 'WER', 'wer', 'RF-01')
+    found = reqs.find(r => r.code && r.code.toUpperCase() === upper);
+    if (found) return found;
+
+    // 3. Busca por Título completo
+    found = reqs.find(r => r.title && r.title.toLowerCase() === lower);
+    if (found) return found;
+
+    // 4. Busca se a string informada contém o código ou id (ex: '[WER] wer')
+    found = reqs.find(r => {
+      if (r.code && (upper.includes(`[${r.code.toUpperCase()}]`) || upper.includes(r.code.toUpperCase()))) return true;
+      if (r.id && str.includes(r.id)) return true;
+      return false;
+    });
+    if (found) return found;
+
+    return null;
+  }
+
   getRequirementById(id) {
-    return this.state.requirements.find(r => r.id === id);
+    return this.findRequirement(id);
   }
 
   addRequirement(data) {
@@ -530,11 +569,14 @@ class ALMStore {
         return null;
       }
     }
+    const resolvedReq = this.findRequirement(data.reqId || data.req_id || data.requirementId);
+    const reqRef = resolvedReq ? resolvedReq.id : (data.reqId || data.req_id || null);
     const newTask = {
       id: "t" + Date.now(),
       title: data.title,
-      projectId: data.projectId,
-      reqId: data.reqId || null,
+      projectId: data.projectId || (resolvedReq ? resolvedReq.projectId : null),
+      reqId: reqRef,
+      req_id: reqRef,
       role: data.role,
       assigneeId: data.assigneeId || null,
       priority: data.priority || 'Média',
@@ -559,7 +601,14 @@ class ALMStore {
     if (task) {
       if (data.title !== undefined) task.title = data.title;
       if (data.projectId !== undefined) task.projectId = data.projectId;
-      if (data.reqId !== undefined) task.reqId = data.reqId || null;
+      if (data.reqId !== undefined || data.req_id !== undefined) {
+        const raw = data.reqId !== undefined ? data.reqId : data.req_id;
+        const resolved = this.findRequirement(raw);
+        const val = resolved ? resolved.id : (raw || null);
+        task.reqId = val;
+        task.req_id = val;
+        data.reqId = val;
+      }
       if (data.role !== undefined) task.role = data.role;
       if (data.assigneeId !== undefined) task.assigneeId = data.assigneeId || null;
       if (data.priority !== undefined) task.priority = data.priority;
@@ -2336,9 +2385,18 @@ window.switchTaskModalTab = function(tabName) {
   }
 };
 
-window.updateTaskRequirementPreview = function() {
+window.updateTaskRequirementPreview = function(explicitReqOrId) {
   const reqSelect = document.getElementById('task-requirement');
-  const reqId = reqSelect ? reqSelect.value : null;
+  let reqRef = explicitReqOrId || (reqSelect ? reqSelect.value : null);
+
+  // Se não foi passado explicitamente e o select está vazio, busca da demanda em edição
+  if (!reqRef) {
+    const editTaskId = document.getElementById('task-id-edit')?.value;
+    if (editTaskId) {
+      const t = store.getTaskById(editTaskId);
+      if (t) reqRef = t.reqId || t.req_id || t.requirementId || t.reqCode || null;
+    }
+  }
 
   const btnToggle = document.getElementById('btn-toggle-req-spec-preview');
   const btnQuick = document.getElementById('btn-quick-expand-req');
@@ -2346,7 +2404,7 @@ window.updateTaskRequirementPreview = function() {
   const tabBadge = document.getElementById('task-req-code-tab-badge');
   const panel = document.getElementById('task-req-preview-panel');
 
-  if (!reqId) {
+  if (!reqRef) {
     if (btnToggle) btnToggle.style.display = 'none';
     if (btnQuick) btnQuick.style.display = 'none';
     if (tabBtnReq) tabBtnReq.style.display = 'none';
@@ -2354,13 +2412,21 @@ window.updateTaskRequirementPreview = function() {
     return;
   }
 
-  const req = (store.state.requirements || []).find(r => r.id === reqId);
+  const req = (typeof explicitReqOrId === 'object' && explicitReqOrId && explicitReqOrId.code)
+    ? explicitReqOrId
+    : store.findRequirement(reqRef);
+
   if (!req) {
     if (btnToggle) btnToggle.style.display = 'none';
     if (btnQuick) btnQuick.style.display = 'none';
     if (tabBtnReq) tabBtnReq.style.display = 'none';
     if (panel) panel.style.display = 'none';
     return;
+  }
+
+  // Sincroniza o select com o ID do requisito
+  if (reqSelect && reqSelect.value !== req.id) {
+    reqSelect.value = req.id;
   }
 
   // Ativa botões e aba dedicada
@@ -2452,17 +2518,29 @@ window.toggleTaskReqPreview = function(forceOpen) {
 
 window.renderTaskRequirementTab = function() {
   const reqSelect = document.getElementById('task-requirement');
-  const reqId = reqSelect ? reqSelect.value : null;
+  let reqRef = reqSelect ? reqSelect.value : null;
+
+  const editTaskId = document.getElementById('task-id-edit')?.value;
+  let currentTask = null;
+  if (editTaskId) {
+    currentTask = store.getTaskById(editTaskId);
+    if (!reqRef && currentTask) {
+      reqRef = currentTask.reqId || currentTask.req_id || currentTask.requirementId || currentTask.reqCode || null;
+    }
+  }
+
   const contentEl = document.getElementById('task-req-tab-content');
   if (!contentEl) return;
 
-  if (!reqId) {
+  const req = store.findRequirement(reqRef);
+
+  if (!req) {
     contentEl.innerHTML = `
       <div style="text-align: center; padding: 2.5rem 1.5rem; color: var(--text-muted);">
         <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">📋</div>
         <h4 style="color: var(--text-main); margin-bottom: 0.5rem; font-size: 1.1rem;">Nenhum Requisito Vinculado a Esta Demanda</h4>
         <p style="font-size: 0.85rem; max-width: 480px; margin: 0 auto 1.5rem auto; line-height: 1.5;">
-          Esta demanda está configurada como avulsa. Vincule um requisito no seletor de "Requisito Vinculado" para visualizar a especificação técnica completa aqui.
+          Esta demanda está configurada como avulsa. Vincule um requisito no seletor de "Requisito Vinculado" na aba anterior para visualizar a especificação técnica completa aqui.
         </p>
         <button type="button" class="btn btn-secondary btn-sm" onclick="switchTaskModalTab('form')">Voltar ao Formulário</button>
       </div>
@@ -2470,10 +2548,9 @@ window.renderTaskRequirementTab = function() {
     return;
   }
 
-  const req = (store.state.requirements || []).find(r => r.id === reqId);
-  if (!req) {
-    contentEl.innerHTML = `<div style="text-align: center; padding: 2rem; color: #f43f5e;">Requisito não localizado na base de dados.</div>`;
-    return;
+  // Sincroniza o select
+  if (reqSelect && reqSelect.value !== req.id) {
+    reqSelect.value = req.id;
   }
 
   const project = store.getProjectById ? store.getProjectById(req.projectId) : null;
@@ -2495,8 +2572,7 @@ window.renderTaskRequirementTab = function() {
 
   const isRnf = req.type === 'RNF' || (req.code && req.code.startsWith('RNF'));
   const typeLabel = isRnf ? 'Não-Funcional (RNF)' : 'Funcional (RF)';
-  const linkedTasks = (store.state.tasks || []).filter(t => t.reqId === req.id);
-  const currentTaskId = document.getElementById('task-id-edit')?.value;
+  const linkedTasks = (store.state.tasks || []).filter(t => (t.reqId === req.id || t.req_id === req.id || t.reqId === req.code || t.req_id === req.code));
 
   contentEl.innerHTML = `
     <div class="task-req-tab-card glass-panel" style="padding: 1.25rem; border: 1px solid rgba(99, 102, 241, 0.3); background: rgba(15, 23, 42, 0.65); border-radius: var(--radius-lg);">
@@ -2541,7 +2617,7 @@ window.renderTaskRequirementTab = function() {
         </div>
         <div style="display: flex; flex-wrap: wrap; gap: 6px;">
           ${linkedTasks.length > 0 ? linkedTasks.map(t => {
-            const isCurrent = t.id === currentTaskId;
+            const isCurrent = t.id === editTaskId;
             return `
               <span class="task-role-tag ${t.role === 'frontend' ? 'role-front' : 'role-back'}" style="padding: 4px 8px; font-size: 0.78rem; ${isCurrent ? 'outline: 2px solid #818cf8; background: rgba(99, 102, 241, 0.35);' : ''}">
                 ${t.role === 'frontend' ? '🎨 Front' : '⚙️ Back'} <strong>#${t.id.slice(-5)}</strong>: ${escapeHtml(t.title)} ${isCurrent ? '<em>(Atual)</em>' : ''}
@@ -2656,7 +2732,7 @@ window.openTaskModalForCreate = function(prefillReqId) {
     return;
   }
 
-  populateModalSelects();
+  openModal('modal-task');
   switchTaskModalTab('form');
   const tabHistoryBtn = document.getElementById('tab-btn-task-history');
   if (tabHistoryBtn) tabHistoryBtn.style.display = 'none';
@@ -2699,14 +2775,13 @@ window.openTaskModalForCreate = function(prefillReqId) {
   document.getElementById('btn-save-task').style.display = 'inline-flex';
   
   toggleTaskReqPreview(false);
-  openModal('modal-task');
 
-  // Pré-vínculo do requisito quando disparado via atalho do card
+  // Pré-vínculo do requisito quando disparado via atalho do card ou ID/código
   if (prefillReqId) {
-    const req = (store.state.requirements || []).find(r => r.id === prefillReqId);
+    const req = store.findRequirement(prefillReqId);
     const reqSelect = document.getElementById('task-requirement');
-    if (reqSelect) {
-      reqSelect.value = prefillReqId;
+    if (reqSelect && req) {
+      reqSelect.value = req.id;
     }
     if (req && req.projectId) {
       const projSelect = document.getElementById('task-project');
@@ -2718,11 +2793,11 @@ window.openTaskModalForCreate = function(prefillReqId) {
     if (modalTitleEl && req) {
       modalTitleEl.textContent = `🚀 Cadastrar Demanda para [${req.code}] ${req.title}`;
     }
+    updateTaskRequirementPreview(req);
   } else {
     document.getElementById('modal-task-title').textContent = "🚀 Cadastrar Nova Demanda";
+    updateTaskRequirementPreview();
   }
-
-  updateTaskRequirementPreview();
 
   // Foco imediato no título da demanda para máxima agilidade
   setTimeout(() => {
@@ -2741,26 +2816,38 @@ window.openTaskModalForEdit = function(taskId) {
   const task = store.getTaskById(taskId);
   if (!task) return;
 
-  populateModalSelects();
-
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
   const isDevOrQa = currentUser && (currentUser.role === 'dev' || currentUser.role === 'qa');
   const isDev = currentUser && currentUser.role === 'dev';
   const isAdmin = currentUser && currentUser.role === 'admin';
 
+  // 1. Abrir modal (popula selects) e alternar para aba inicial
+  openModal('modal-task');
   switchTaskModalTab('form');
   const tabHistoryBtn = document.getElementById('tab-btn-task-history');
   if (tabHistoryBtn) tabHistoryBtn.style.display = isAdmin ? 'inline-flex' : 'none';
 
+  // 2. Preencher campos principais da demanda
   document.getElementById('task-id-edit').value = task.id;
   document.getElementById('task-title').value = task.title;
-  document.getElementById('task-project').value = task.projectId;
-  document.getElementById('task-requirement').value = task.reqId || "";
+  if (task.projectId) {
+    document.getElementById('task-project').value = task.projectId;
+  }
+
+  // 3. Resolver e selecionar automaticamente o requisito vinculado correspondente
+  const reqRef = task.reqId || task.req_id || task.requirementId || task.reqCode || null;
+  const linkedReq = reqRef ? store.findRequirement(reqRef) : null;
+  const reqSelect = document.getElementById('task-requirement');
+  if (reqSelect) {
+    reqSelect.value = linkedReq ? linkedReq.id : (reqRef || "");
+  }
+
   toggleTaskReqPreview(false);
-  updateTaskRequirementPreview();
-  document.getElementById('task-role').value = task.role;
+  updateTaskRequirementPreview(linkedReq || reqRef);
+
+  document.getElementById('task-role').value = task.role || "frontend";
   document.getElementById('task-assignee').value = task.assigneeId || "";
-  document.getElementById('task-priority').value = task.priority;
+  document.getElementById('task-priority').value = task.priority || "Média";
   const compEditEl = document.getElementById('task-complexity');
   if (compEditEl) compEditEl.value = task.complexity || "Média";
   document.getElementById('task-hours').value = task.hours || 8;
@@ -2775,7 +2862,6 @@ window.openTaskModalForEdit = function(taskId) {
   const devNotesInput = document.getElementById('task-dev-notes');
   if (devNotesInput) {
     devNotesInput.value = task.devNotes || "";
-    // O dev, QA, PM ou admin sempre podem registrar ou editar notas do dev
     devNotesInput.disabled = false;
   }
 
@@ -2783,7 +2869,6 @@ window.openTaskModalForEdit = function(taskId) {
   const qaNotesInput = document.getElementById('task-qa-notes');
   if (qaNotesInput) {
     qaNotesInput.value = task.qaNotes || "";
-    // Desenvolvedores visualizam as notas de QA em modo leitura para integridade técnica
     qaNotesInput.disabled = isDev;
   }
 
@@ -2851,8 +2936,6 @@ window.openTaskModalForEdit = function(taskId) {
   if (isAdmin) {
     loadTaskAuditTimeline(task.id);
   }
-
-  openModal('modal-task');
 };
 
 window.confirmDeleteTask = function(taskId, taskTitle) {
@@ -4314,49 +4397,74 @@ function delay(ms) {
 
 function populateModalSelects() {
   const projects = store.getProjects();
-  const reqs = store.state.requirements;
-  const members = store.state.teamMembers;
+  const reqs = store.state.requirements || [];
+  const members = store.state.teamMembers || [];
 
   const projectFilterSelect = document.getElementById('project-filter-select');
   if (projectFilterSelect) {
-    const currentVal = store.selectedProject;
-    projectFilterSelect.innerHTML = `<option value="all">📁 Todos os Projetos</option>`;
-    projects.forEach(p => {
-      projectFilterSelect.innerHTML += `<option value="${p.id}" ${p.id === currentVal ? 'selected' : ''}>${p.name}</option>`;
-    });
+    const currentVal = projectFilterSelect.value || store.selectedProject || 'all';
+    projectFilterSelect.innerHTML = `<option value="all">📁 Todos os Projetos</option>` +
+      projects.map(p => `<option value="${p.id}" ${p.id === currentVal ? 'selected' : ''}>${p.name}</option>`).join('');
+    if (currentVal) projectFilterSelect.value = currentVal;
   }
 
   const taskProjectSelect = document.getElementById('task-project');
   if (taskProjectSelect) {
+    const curVal = taskProjectSelect.value;
     taskProjectSelect.innerHTML = projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    if (curVal && projects.some(p => p.id === curVal)) {
+      taskProjectSelect.value = curVal;
+    }
   }
 
   const taskReqSelect = document.getElementById('task-requirement');
   if (taskReqSelect) {
+    const curVal = taskReqSelect.value;
     taskReqSelect.innerHTML = `<option value="">Nenhum (Demanda Avulsa)</option>` + 
-      reqs.map(r => `<option value="${r.id}">[${r.code}] ${r.title}</option>`).join('');
+      reqs.map(r => `<option value="${r.id}" data-code="${r.code || ''}">[${r.code || 'REQ'}] ${r.title}</option>`).join('');
+    if (curVal) {
+      const match = reqs.find(r => r.id === curVal || (r.code && r.code.toUpperCase() === curVal.toUpperCase()));
+      if (match) taskReqSelect.value = match.id;
+      else taskReqSelect.value = curVal;
+    }
   }
 
   const taskAssigneeSelect = document.getElementById('task-assignee');
   if (taskAssigneeSelect) {
+    const curVal = taskAssigneeSelect.value;
     taskAssigneeSelect.innerHTML = `<option value="">Sem responsável</option>` + 
       members.map(m => `<option value="${m.id}">${m.name} (${m.role === 'frontend' ? 'Front-end' : 'Back-end'})</option>`).join('');
+    if (curVal && members.some(m => m.id === curVal)) {
+      taskAssigneeSelect.value = curVal;
+    }
   }
 
   const reqProjectSelect = document.getElementById('req-project');
   if (reqProjectSelect) {
+    const curVal = reqProjectSelect.value;
     reqProjectSelect.innerHTML = projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    if (curVal && projects.some(p => p.id === curVal)) {
+      reqProjectSelect.value = curVal;
+    }
   }
 
   const testReqSelect = document.getElementById('test-req-select');
   if (testReqSelect) {
+    const curVal = testReqSelect.value;
     testReqSelect.innerHTML = reqs.map(r => `<option value="${r.id}">[${r.code}] ${r.title}</option>`).join('');
+    if (curVal && reqs.some(r => r.id === curVal)) {
+      testReqSelect.value = curVal;
+    }
   }
 
   const testTaskSelect = document.getElementById('test-task-select');
   if (testTaskSelect) {
+    const curVal = testTaskSelect.value;
     testTaskSelect.innerHTML = `<option value="">Todas as demandas do requisito / Geral</option>` + 
-      store.state.tasks.map(t => `<option value="${t.id}">#${t.id.slice(-6)} - ${t.title}</option>`).join('');
+      (store.state.tasks || []).map(t => `<option value="${t.id}">#${t.id.slice(-6)} - ${t.title}</option>`).join('');
+    if (curVal && (store.state.tasks || []).some(t => t.id === curVal)) {
+      testTaskSelect.value = curVal;
+    }
   }
 }
 
