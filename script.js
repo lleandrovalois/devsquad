@@ -88,6 +88,10 @@ class DevSquadAPI {
           headers['x-user-id'] = u.id;
           headers['x-user-role'] = u.role;
           headers['x-user-name'] = encodeURIComponent(u.name || 'Usuário');
+        } else {
+          headers['x-user-id'] = 'usr_admin_demo';
+          headers['x-user-role'] = 'admin';
+          headers['x-user-name'] = encodeURIComponent('Administrador');
         }
       }
       const options = {
@@ -212,6 +216,25 @@ class ALMStore {
       if (Array.isArray(data.testCases)) this.state.testCases = data.testCases;
       if (Array.isArray(data.goals)) this.state.goals = data.goals;
       if (Array.isArray(data.auditLogs)) this.auditLogs = data.auditLogs;
+      if (Array.isArray(data.careers) && typeof careerTracksData !== 'undefined') {
+        data.careers.forEach(c => {
+          careerTracksData[c.id] = {
+            id: c.id,
+            roleName: c.roleName,
+            discipline: c.discipline,
+            icon: c.icon,
+            mission: c.mission,
+            levels: c.levels,
+            isCustom: !!c.isCustom
+          };
+          if (typeof syncCareerSelects === 'function') {
+            syncCareerSelects(c);
+          }
+        });
+        if (typeof renderCareerNav === 'function') {
+          renderCareerNav();
+        }
+      }
       this.saveState();
 
       if (Array.isArray(data.users) && typeof authStore !== 'undefined') {
@@ -369,14 +392,15 @@ class ALMStore {
     } else if (typeof memberData.skills === 'string') {
       try { parsedSkills = JSON.parse(memberData.skills); } catch(e) { parsedSkills = memberData.skills.split(',').map(s => s.trim()).filter(Boolean); }
     }
+    const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(memberData.role || 'backend') : null;
     const newMember = {
       id: memberData.id || ("m" + Date.now()),
       name: cleanName,
-      role: memberData.role || 'frontend',
+      role: memberData.role || 'backend',
       seniority: memberData.seniority || 'Pleno',
       skills: parsedSkills,
       capacity: parseInt(memberData.capacity, 10) || 40,
-      avatarBg: memberData.avatarBg || (memberData.role === 'frontend' ? '#0284c7' : '#059669')
+      avatarBg: memberData.avatarBg || (spec && spec.color ? spec.color : '#6366f1')
     };
     this.state.teamMembers.push(newMember);
     this.saveState();
@@ -390,7 +414,8 @@ class ALMStore {
       if (memberData.name !== undefined) member.name = memberData.name;
       if (memberData.role !== undefined) {
         member.role = memberData.role;
-        member.avatarBg = memberData.role === 'frontend' ? '#0284c7' : '#059669';
+        const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(memberData.role) : null;
+        member.avatarBg = memberData.avatarBg || (spec && spec.color ? spec.color : '#6366f1');
       }
       if (memberData.seniority !== undefined) member.seniority = memberData.seniority;
       if (memberData.skills !== undefined) {
@@ -1288,7 +1313,7 @@ class UserAuthStore {
       email: cleanEmail,
       password: password,
       role: role || 'dev',
-      devRole: (role === 'admin' || role === 'pm' || role === 'qa') ? null : (devRole || 'backend'),
+      devRole: (role === 'admin' || role === 'pm') ? null : (devRole || (role === 'qa' ? 'qa' : 'backend')),
       seniority: seniority || 'Pleno',
       skills: parsedSkills,
       avatarBg: randomBg,
@@ -1302,8 +1327,8 @@ class UserAuthStore {
       await api.apiRequest('/api/auth/register', 'POST', newUser);
     }
 
-    // Sincronização automática com a equipe de desenvolvimento se for Dev
-    if (newUser.role === 'dev' && typeof store !== 'undefined' && store.state && Array.isArray(store.state.teamMembers)) {
+    // Sincronização automática com a equipe de desenvolvimento se for Dev ou QA
+    if ((newUser.role === 'dev' || newUser.role === 'qa') && typeof store !== 'undefined' && store.state && Array.isArray(store.state.teamMembers)) {
       const cleanDevName = newUser.name.trim().toLowerCase();
       const existingInTeam = store.state.teamMembers.find(
         m => (m.name || '').trim().toLowerCase() === cleanDevName
@@ -1311,7 +1336,7 @@ class UserAuthStore {
       if (!existingInTeam) {
         store.addMember({
           name: newUser.name,
-          role: newUser.devRole || 'frontend',
+          role: newUser.devRole || (newUser.role === 'qa' ? 'qa' : 'backend'),
           seniority: newUser.seniority,
           skills: newUser.skills,
           capacity: 40,
@@ -1338,7 +1363,9 @@ class UserAuthStore {
     if (name) user.name = name.trim();
     if (role) {
       user.role = role;
-      user.devRole = (role === 'admin' || role === 'pm' || role === 'qa') ? null : (devRole || 'backend');
+      user.devRole = (role === 'admin' || role === 'pm') ? null : (devRole || user.devRole || (role === 'qa' ? 'qa' : 'backend'));
+    } else if (devRole !== undefined) {
+      user.devRole = devRole;
     }
     if (seniority) user.seniority = seniority;
     if (skills) {
@@ -1353,20 +1380,20 @@ class UserAuthStore {
       await api.apiRequest(`/api/users/${id}`, 'PUT', user);
     }
 
-    // Sincroniza na equipe se for perfil dev
-    if (user.role === 'dev' && typeof store !== 'undefined' && store.state && Array.isArray(store.state.teamMembers)) {
+    // Sincroniza na equipe se for perfil dev ou qa
+    if ((user.role === 'dev' || user.role === 'qa') && typeof store !== 'undefined' && store.state && Array.isArray(store.state.teamMembers)) {
       const teamMember = store.state.teamMembers.find(m => m.id === id || (m.name || '').toLowerCase() === user.name.toLowerCase());
       if (teamMember) {
         store.updateMember(teamMember.id, {
           name: user.name,
-          role: user.devRole || 'backend',
+          role: user.devRole || teamMember.role || (user.role === 'qa' ? 'qa' : 'backend'),
           seniority: user.seniority,
           skills: user.skills
         });
       } else {
         store.addMember({
           name: user.name,
-          role: user.devRole || 'backend',
+          role: user.devRole || (user.role === 'qa' ? 'qa' : 'backend'),
           seniority: user.seniority,
           skills: user.skills,
           capacity: 40,
@@ -1493,7 +1520,8 @@ function renderDashboard() {
     const workload = store.calculateDevWorkload(member.id);
     if (workload.isOverloaded) totalOverloadedCount++;
 
-    const roleLabel = member.role === 'frontend' ? 'Front-end' : 'Back-end';
+    const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(member.role) : null;
+    const roleLabel = spec ? spec.label : (member.role === 'frontend' ? 'Front-end' : 'Back-end');
     const statusColor = workload.percentage > 100 ? '#f43f5e' : (workload.percentage > 80 ? '#f59e0b' : '#10b981');
 
     const overloadBadge = workload.isOverloaded 
@@ -1636,12 +1664,13 @@ function renderDashboard() {
       done: 'Concluído'
     };
 
+    const taskSpec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(task.role) : { tagClass: 'role-back', icon: '💻', shortLabel: 'Dev' };
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><strong>${req ? req.code : 'Avulso'}</strong> - ${req ? req.title : task.title}</td>
       <td><span class="badge-subtle">${project ? project.name : '-'}</span></td>
       <td>${task.title} ${hoursBadge} <br><small style="color: var(--text-muted);">Responsável: ${assignee ? assignee.name : 'Não Atribuído'}</small></td>
-      <td><span class="task-role-tag ${task.role === 'frontend' ? 'role-front' : 'role-back'}">${task.role === 'frontend' ? 'Front-end' : 'Back-end'}</span></td>
+      <td><span class="task-role-tag ${taskSpec.tagClass}">${taskSpec.icon} ${taskSpec.shortLabel || taskSpec.label}</span></td>
       <td><span class="status-pill status-${task.status === 'done' ? 'pass' : 'pending'}">${statusLabels[task.status] || task.status}</span></td>
       <td>
         <span class="status-pill clickable ${cov.cssClass}" 
@@ -1890,11 +1919,14 @@ function renderRequirements() {
             ` : ''}
           </div>
           <div class="req-linked-tasks-list" style="display: flex; flex-wrap: wrap; gap: 6px;">
-            ${linkedTasks.length > 0 ? linkedTasks.map(t => `
-              <span class="task-role-tag ${t.role === 'frontend' ? 'role-front' : 'role-back'} linked-task-chip" onclick="openTaskModalForEdit('${t.id}')" title="Demanda #${t.id}: ${escapeHtml(t.title)} (Clique para inspecionar)" style="cursor: pointer;">
-                ${t.role === 'frontend' ? '🎨 Front' : '⚙️ Back'} <strong>#${t.id.slice(-5)}</strong>: ${escapeHtml(t.title)}
-              </span>
-            `).join('') : '<span style="color: var(--text-muted); font-size: 0.82rem; font-style: italic;">Nenhuma demanda vinculada</span>'}
+            ${linkedTasks.length > 0 ? linkedTasks.map(t => {
+              const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(t.role) : { tagClass: 'role-back', icon: '💻', shortLabel: 'Dev' };
+              return `
+                <span class="task-role-tag ${spec.tagClass} linked-task-chip" onclick="openTaskModalForEdit('${t.id}')" title="Demanda #${t.id}: ${escapeHtml(t.title)} (Clique para inspecionar)" style="cursor: pointer;">
+                  ${spec.icon} ${spec.shortLabel || spec.label} <strong>#${t.id.slice(-5)}</strong>: ${escapeHtml(t.title)}
+                </span>
+              `;
+            }).join('') : '<span style="color: var(--text-muted); font-size: 0.82rem; font-style: italic;">Nenhuma demanda vinculada</span>'}
           </div>
         </div>
         <div class="req-linked-tests-block" style="margin-left: auto; align-self: flex-start;">
@@ -2138,8 +2170,9 @@ function renderKanban() {
     const project = store.getProjectById(task.projectId);
     const assignee = store.getMemberById(task.assigneeId);
     const priorityClass = task.priority === 'Alta' ? 'pri-alta' : (task.priority === 'Média' ? 'pri-media' : 'pri-baixa');
-    const roleBorderClass = task.role === 'frontend' ? 'task-front' : 'task-back';
-    const roleLabel = task.role === 'frontend' ? 'Front-end' : 'Back-end';
+    const taskSpec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(task.role) : { borderClass: 'task-back', tagClass: 'role-back', icon: '💻', label: 'Geral', shortLabel: 'Dev' };
+    const roleBorderClass = taskSpec.borderClass;
+    const roleLabel = taskSpec.label;
 
     const card = document.createElement('div');
     card.className = `task-card ${roleBorderClass}`;
@@ -2223,7 +2256,7 @@ function renderKanban() {
     card.innerHTML = `
       <div class="task-tags-row">
         <div class="task-tags-left">
-          <span class="task-role-tag ${task.role === 'frontend' ? 'role-front' : 'role-back'}">${roleLabel}</span>
+          <span class="task-role-tag ${taskSpec.tagClass}">${taskSpec.icon} ${taskSpec.shortLabel || taskSpec.label}</span>
           <span class="task-priority-tag ${priorityClass}">${task.priority}</span>
           <span class="task-complexity-tag ${task.complexity === 'Alta' ? 'complexity-high' : (task.complexity === 'Baixa' ? 'complexity-low' : 'complexity-med')}" title="Complexidade Técnica">⚡ ${task.complexity || 'Média'}</span>
         </div>
@@ -2373,15 +2406,25 @@ window.switchTaskModalTab = function(tabName) {
 
   if (tabName === 'history') {
     btnHist?.classList.add('active');
-    if (paneHist) paneHist.style.display = 'block';
+    if (paneHist) {
+      paneHist.style.display = 'flex';
+      paneHist.scrollTop = 0;
+    }
   } else if (tabName === 'requirement') {
     btnReq?.classList.add('active');
-    if (paneReq) paneReq.style.display = 'block';
+    if (paneReq) {
+      paneReq.style.display = 'flex';
+      paneReq.scrollTop = 0;
+    }
     renderTaskRequirementTab();
   } else {
     // Padrão: aba do formulário da demanda
     btnForm?.classList.add('active');
-    if (paneForm) paneForm.style.display = 'block';
+    if (paneForm) {
+      paneForm.style.display = 'flex';
+      const formEl = document.getElementById('form-new-task');
+      if (formEl) formEl.scrollTop = 0;
+    }
   }
 };
 
@@ -2618,9 +2661,10 @@ window.renderTaskRequirementTab = function() {
         <div style="display: flex; flex-wrap: wrap; gap: 6px;">
           ${linkedTasks.length > 0 ? linkedTasks.map(t => {
             const isCurrent = t.id === editTaskId;
+            const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(t.role) : { tagClass: 'role-back', icon: '💻', shortLabel: 'Dev' };
             return `
-              <span class="task-role-tag ${t.role === 'frontend' ? 'role-front' : 'role-back'}" style="padding: 4px 8px; font-size: 0.78rem; ${isCurrent ? 'outline: 2px solid #818cf8; background: rgba(99, 102, 241, 0.35);' : ''}">
-                ${t.role === 'frontend' ? '🎨 Front' : '⚙️ Back'} <strong>#${t.id.slice(-5)}</strong>: ${escapeHtml(t.title)} ${isCurrent ? '<em>(Atual)</em>' : ''}
+              <span class="task-role-tag ${spec.tagClass}" style="padding: 4px 8px; font-size: 0.78rem; ${isCurrent ? 'outline: 2px solid #818cf8; background: rgba(99, 102, 241, 0.35);' : ''}">
+                ${spec.icon} ${spec.shortLabel || spec.label} <strong>#${t.id.slice(-5)}</strong>: ${escapeHtml(t.title)} ${isCurrent ? '<em>(Atual)</em>' : ''}
               </span>
             `;
           }).join('') : '<span style="color: var(--text-muted); font-size: 0.82rem; font-style: italic;">Nenhuma outra demanda associada.</span>'}
@@ -3034,9 +3078,10 @@ function renderTeam() {
 
   members.forEach(member => {
     const workload = store.calculateDevWorkload(member.id);
-    const roleIcon = member.role === 'frontend' ? '🎨' : '⚙️';
-    const roleColor = member.role === 'frontend' ? 'var(--front-accent)' : 'var(--back-accent)';
-    const roleLabel = member.role === 'frontend' ? 'FRONT-END' : 'BACK-END';
+    const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(member.role) : { icon: '💻', color: 'var(--accent-primary)', label: 'Dev' };
+    const roleIcon = spec.icon;
+    const roleColor = spec.color;
+    const roleLabel = (spec.shortLabel || spec.label).toUpperCase();
     const statusBg = workload.percentage > 100 ? '#f43f5e' : (workload.percentage > 80 ? '#f59e0b' : '#10b981');
 
     const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
@@ -3313,7 +3358,10 @@ function renderGovernance() {
         actionsHtml = `<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">🔒 Restrito</span>`;
       }
 
-      const devRoleBadge = u.devRole ? ` <span class="task-role-tag ${u.devRole === 'backend' ? 'role-back' : 'role-front'}" style="margin-left: 4px;">${u.devRole === 'backend' ? 'Back' : 'Front'}</span>` : '';
+      const devRoleBadge = u.devRole ? (() => {
+        const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(u.devRole) : { tagClass: 'role-back', icon: '💻', shortLabel: u.devRole };
+        return ` <span class="task-role-tag ${spec.tagClass}" style="margin-left: 4px;">${spec.icon} ${spec.shortLabel || spec.label}</span>`;
+      })() : '';
 
       tr.innerHTML = `
         <td>
@@ -3375,8 +3423,8 @@ function renderPerformance() {
     }
 
     devSelect.innerHTML = members.map(m => {
-      const roleIcon = m.role === 'frontend' ? '🎨' : '⚙️';
-      return `<option value="${m.id}" ${m.id === window.selectedPerfDevId ? 'selected' : ''}>${m.name} (${roleIcon} ${m.seniority})</option>`;
+      const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(m.role) : { icon: '💻', shortLabel: 'Dev' };
+      return `<option value="${m.id}" ${m.id === window.selectedPerfDevId ? 'selected' : ''}>${m.name} (${spec.icon} ${spec.shortLabel || spec.label} • ${m.seniority})</option>`;
     }).join('');
 
     if (!devSelect.dataset.listener) {
@@ -3425,9 +3473,9 @@ function renderPerformance() {
 
   const heroRole = document.getElementById('perf-hero-role-badge');
   if (heroRole) {
-    const isFront = dev.role === 'frontend';
-    heroRole.className = `task-role-tag ${isFront ? 'role-front' : 'role-back'}`;
-    heroRole.textContent = isFront ? '🎨 Front-end' : '⚙️ Back-end';
+    const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(dev.role) : { tagClass: 'role-back', icon: '💻', label: 'Desenvolvedor' };
+    heroRole.className = `task-role-tag ${spec.tagClass}`;
+    heroRole.textContent = `${spec.icon} ${spec.label}`;
   }
 
   const heroSkills = document.getElementById('perf-hero-skills');
@@ -4228,7 +4276,7 @@ window.openUserModalForEdit = function(userId) {
   document.getElementById('admin-user-email').value = user.email;
   document.getElementById('admin-user-email').disabled = true; // Email fixo
   document.getElementById('admin-user-role').value = user.role || 'dev';
-  document.getElementById('admin-user-devrole').value = user.devRole || 'backend';
+  document.getElementById('admin-user-devrole').value = user.devRole || (user.role === 'qa' ? 'qa' : 'backend');
   document.getElementById('admin-user-seniority').value = user.seniority || 'Pleno';
   document.getElementById('admin-user-password').value = "";
   document.getElementById('admin-user-password').required = false;
@@ -4237,8 +4285,8 @@ window.openUserModalForEdit = function(userId) {
   document.getElementById('hint-admin-user-password').style.display = 'block';
   document.getElementById('admin-user-skills').value = Array.isArray(user.skills) ? user.skills.join(', ') : (user.skills || '');
 
-  const isDev = user.role === 'dev';
-  document.getElementById('group-admin-user-devrole').style.display = isDev ? 'block' : 'none';
+  const showDevRole = user.role === 'dev' || user.role === 'qa' || !!user.devRole;
+  document.getElementById('group-admin-user-devrole').style.display = showDevRole ? 'block' : 'none';
   document.getElementById('btn-save-admin-user').textContent = "Atualizar Usuário";
 
   openModal('modal-admin-user');
@@ -4322,13 +4370,12 @@ async function runAutomatedTestSuite() {
       }
     },
     {
-      name: "4. Equilíbrio de Especialidades da Equipe (Front-end vs Back-end)",
+      name: "4. Equilíbrio de Especialidades da Equipe Multidisciplinar",
       run: () => {
         const members = store.state.teamMembers;
-        const front = members.filter(m => m.role === 'frontend').length;
-        const back = members.filter(m => m.role === 'backend').length;
-        if (front === 0 || back === 0) throw new Error("A equipe deve ter no mínimo 1 desenvolvedor Front-end e 1 Back-end.");
-        return `Equipe balanceada: ${front} Front-ends e ${back} Back-ends ativos.`;
+        if (members.length === 0) throw new Error("A equipe deve ter membros cadastrados.");
+        const roles = new Set(members.map(m => m.role));
+        return `Equipe multidisciplinar ativa com ${members.length} colaboradores e ${roles.size} especialidades técnicas.`;
       }
     },
     {
@@ -4433,7 +4480,10 @@ function populateModalSelects() {
   if (taskAssigneeSelect) {
     const curVal = taskAssigneeSelect.value;
     taskAssigneeSelect.innerHTML = `<option value="">Sem responsável</option>` + 
-      members.map(m => `<option value="${m.id}">${m.name} (${m.role === 'frontend' ? 'Front-end' : 'Back-end'})</option>`).join('');
+      members.map(m => {
+        const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(m.role) : { icon: '💻', shortLabel: 'Dev' };
+        return `<option value="${m.id}">${m.name} (${spec.icon} ${spec.shortLabel || spec.label})</option>`;
+      }).join('');
     if (curVal && members.some(m => m.id === curVal)) {
       taskAssigneeSelect.value = curVal;
     }
@@ -5384,7 +5434,8 @@ function updateSidebarCounters() {
   }
   const careerCounter = document.getElementById('counter-nav-career');
   if (careerCounter) {
-    careerCounter.textContent = '5 Trilhas';
+    const trackCount = typeof careerTracksData !== 'undefined' ? Object.keys(careerTracksData).length : 5;
+    careerCounter.textContent = `${trackCount} Trilhas`;
   }
 }
 
@@ -5502,7 +5553,10 @@ function applyRolePermissions(user) {
   if (btnReq) btnReq.style.display = perms.canCreateReq ? 'inline-flex' : 'none';
   if (btnMember) btnMember.style.display = perms.canManageTeam ? 'inline-flex' : 'none';
   if (btnTest) btnTest.style.display = perms.canCreateTest ? 'inline-flex' : 'none';
-  if (btnRunTests) btnRunTests.style.display = perms.canRunTests ? 'inline-flex' : 'none';
+  const btnCareerAdmin = document.getElementById('btn-open-career-modal');
+  if (btnCareerAdmin) {
+    btnCareerAdmin.style.display = (roleKey === 'admin') ? 'inline-flex' : 'none';
+  }
 
   const btnNewMenu = document.getElementById('btn-open-new-menu');
   if (btnNewMenu) {
@@ -5515,6 +5569,12 @@ function refreshAllUI() {
   updateSidebarCounters();
   if (typeof authStore !== 'undefined') {
     applyRolePermissions(authStore.getCurrentUser());
+  }
+  if (typeof renderCareerNav === 'function') {
+    renderCareerNav();
+  }
+  if (typeof populateSimulatorRoleOptions === 'function') {
+    populateSimulatorRoleOptions();
   }
   switchView(store.activeView);
 }
@@ -5558,6 +5618,117 @@ function switchAuthTab(tab) {
   document.getElementById('login-email')?.focus();
 }
 
+function getSpecialtyInfo(roleKey) {
+  const key = (roleKey || '').toLowerCase();
+  switch (key) {
+    case 'frontend':
+    case 'front':
+      return { 
+        key: 'frontend', 
+        label: 'Front-end', 
+        shortLabel: 'Front', 
+        icon: '🎨', 
+        tagClass: 'role-front', 
+        borderClass: 'task-front', 
+        color: 'var(--front-accent, #06b6d4)' 
+      };
+    case 'backend':
+    case 'back':
+      return { 
+        key: 'backend', 
+        label: 'Back-end', 
+        shortLabel: 'Back', 
+        icon: '⚙️', 
+        tagClass: 'role-back', 
+        borderClass: 'task-back', 
+        color: 'var(--back-accent, #10b981)' 
+      };
+    case 'fullstack':
+    case 'full':
+      return { 
+        key: 'fullstack', 
+        label: 'Full-Stack', 
+        shortLabel: 'Full-Stack', 
+        icon: '🌐', 
+        tagClass: 'role-fullstack', 
+        borderClass: 'task-fullstack', 
+        color: 'var(--fullstack-accent, #818cf8)' 
+      };
+    case 'dba':
+    case 'database':
+    case 'dados':
+      return { 
+        key: 'dba', 
+        label: 'DBA / Banco de Dados', 
+        shortLabel: 'DBA', 
+        icon: '🗄️', 
+        tagClass: 'role-dba', 
+        borderClass: 'task-dba', 
+        color: 'var(--dba-accent, #f472b6)' 
+      };
+    case 'analyst':
+    case 'requisitos':
+    case 'requirements':
+    case 'produto':
+      return { 
+        key: 'analyst', 
+        label: 'Analista de Requisitos / Produto', 
+        shortLabel: 'Requisitos', 
+        icon: '📋', 
+        tagClass: 'role-analyst', 
+        borderClass: 'task-analyst', 
+        color: 'var(--analyst-accent, #a78bfa)' 
+      };
+    case 'qa':
+    case 'testing':
+    case 'testes':
+      return { 
+        key: 'qa', 
+        label: 'QA / Testes', 
+        shortLabel: 'QA', 
+        icon: '🧪', 
+        tagClass: 'role-qa', 
+        borderClass: 'task-qa', 
+        color: 'var(--qa-accent, #fbbf24)' 
+      };
+    case 'devops':
+    case 'infra':
+    case 'sre':
+      return { 
+        key: 'devops', 
+        label: 'DevOps / Infra', 
+        shortLabel: 'DevOps', 
+        icon: '🚀', 
+        tagClass: 'role-devops', 
+        borderClass: 'task-devops', 
+        color: 'var(--devops-accent, #fb923c)' 
+      };
+    default:
+      if (typeof careerTracksData !== 'undefined' && careerTracksData[key]) {
+        const c = careerTracksData[key];
+        return { 
+          key: c.id || key, 
+          label: c.roleName, 
+          shortLabel: c.discipline || c.roleName, 
+          icon: c.icon || '💻', 
+          tagClass: 'role-back', 
+          borderClass: 'task-back', 
+          color: 'var(--accent-primary, #6366f1)' 
+        };
+      }
+      return { 
+        key: roleKey || 'backend', 
+        label: roleKey || 'Geral', 
+        shortLabel: roleKey || 'Dev', 
+        icon: '💻', 
+        tagClass: 'role-back', 
+        borderClass: 'task-back', 
+        color: 'var(--accent-primary, #6366f1)' 
+      };
+  }
+}
+window.getSpecialtyInfo = getSpecialtyInfo;
+
 function updateTopbarUserUI(user) {
   if (!user) return;
   const initials = getInitials(user.name);
@@ -5580,15 +5751,13 @@ function updateTopbarUserUI(user) {
   } else if (user.role === 'pm') {
     roleLabel = '📊 Gestor (PM)';
     badgeClass = 'tag-pm';
-  } else if (user.role === 'qa') {
+  } else if (user.role === 'qa' && !user.devRole) {
     roleLabel = '🧪 QA Lead';
     badgeClass = 'tag-qa';
-  } else if (user.devRole === 'backend') {
-    roleLabel = '⚙️ Dev Back-end';
-    badgeClass = 'tag-back';
-  } else if (user.devRole === 'frontend') {
-    roleLabel = '🎨 Dev Front-end';
-    badgeClass = 'tag-front';
+  } else if (user.devRole) {
+    const spec = getSpecialtyInfo(user.devRole);
+    roleLabel = `${spec.icon} ${spec.label}`;
+    badgeClass = spec.tagClass;
   }
 
   if (topbarAvatar) {
@@ -5688,7 +5857,11 @@ function setupAuthEventListeners() {
     adminRoleSelect.addEventListener('change', () => {
       const val = adminRoleSelect.value;
       if (groupAdminDevRole) {
-        groupAdminDevRole.style.display = val === 'dev' ? 'block' : 'none';
+        const showDevRole = val === 'dev' || val === 'qa';
+        groupAdminDevRole.style.display = showDevRole ? 'block' : 'none';
+        if (val === 'qa' && document.getElementById('admin-user-devrole')) {
+          document.getElementById('admin-user-devrole').value = 'qa';
+        }
       }
       if (adminSenioritySelect) {
         if (val === 'admin') {
@@ -5742,7 +5915,7 @@ function setupAuthEventListeners() {
       const name = document.getElementById('admin-user-name')?.value.trim();
       const email = document.getElementById('admin-user-email')?.value.trim();
       const role = document.getElementById('admin-user-role')?.value;
-      const devRole = role === 'dev' ? document.getElementById('admin-user-devrole')?.value : null;
+      const devRole = (role === 'dev' || role === 'qa') ? document.getElementById('admin-user-devrole')?.value : null;
       const seniority = document.getElementById('admin-user-seniority')?.value;
       const skills = document.getElementById('admin-user-skills')?.value;
       const password = document.getElementById('admin-user-password')?.value;
@@ -5963,6 +6136,18 @@ window.addEventListener('DOMContentLoaded', () => {
     backdrop.addEventListener('click', (e) => {
       if (e.target === backdrop) backdrop.classList.remove('show');
     });
+  });
+
+  // Suporte de rolagem fluida via roda do mouse ou trackpad sobre o cabeçalho e abas do modal
+  document.querySelectorAll('.modal-dialog').forEach(dialog => {
+    dialog.addEventListener('wheel', (e) => {
+      const activeScrollable = dialog.querySelector('.modal-tab-pane:not([style*="display: none"]) > .modal-body')
+        || dialog.querySelector('.modal-tab-pane:not([style*="display: none"])')
+        || dialog.querySelector('.modal-body');
+      if (activeScrollable && !activeScrollable.contains(e.target)) {
+        activeScrollable.scrollTop += e.deltaY;
+      }
+    }, { passive: true });
   });
 
   // Alternador de Tema
@@ -6491,6 +6676,9 @@ window.addEventListener('DOMContentLoaded', () => {
     refreshAllUI();
     showToast('Seu perfil foi atualizado com sucesso! ✨');
   });
+
+  // 9. FORMULÁRIO DE CADASTRO DE NOVA ESTRUTURA E TRILHA DE CARREIRA
+  document.getElementById('form-career-track')?.addEventListener('submit', handleCareerTrackSubmit);
 });
 
 window.openMyProfileModal = function() {
@@ -6507,13 +6695,16 @@ window.openMyProfileModal = function() {
   if (nameInput) nameInput.value = currentUser.name || '';
   if (emailInput) emailInput.value = currentUser.email || '';
   if (roleInput) {
-    const roleLabels = {
-      admin: '👑 Administrador',
-      pm: '📊 Gerente de Projetos (PM)',
-      dev: `💻 Desenvolvedor (${currentUser.devRole === 'backend' ? 'Back-end' : 'Front-end'})`,
-      qa: '🧪 QA Lead / Homologador'
-    };
-    roleInput.value = roleLabels[currentUser.role] || currentUser.role;
+    if (currentUser.role === 'admin') {
+      roleInput.value = '👑 Administrador';
+    } else if (currentUser.role === 'pm') {
+      roleInput.value = '📊 Gerente de Projetos (PM)';
+    } else if (currentUser.role === 'qa' && !currentUser.devRole) {
+      roleInput.value = '🧪 QA Lead / Homologador';
+    } else {
+      const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(currentUser.devRole || (currentUser.role === 'qa' ? 'qa' : 'backend')) : null;
+      roleInput.value = spec ? `${spec.icon} ${spec.label} (${currentUser.role === 'qa' ? 'QA' : 'Dev'})` : (currentUser.role || 'Membro');
+    }
   }
   if (seniorityInput) seniorityInput.value = currentUser.seniority || '';
   if (skillsInput) skillsInput.value = Array.isArray(currentUser.skills) ? currentUser.skills.join(', ') : (currentUser.skills || '');
@@ -7066,7 +7257,10 @@ window.renderCareer = renderCareer;
 window.selectCareerRole = function(roleKey) {
   if (!careerTracksData[roleKey]) return;
   activeCareerRole = roleKey;
-  activeCareerLevel = careerTracksData[roleKey].levels[0].key;
+  activeCareerLevel = (careerTracksData[roleKey].levels && careerTracksData[roleKey].levels[0])
+    ? careerTracksData[roleKey].levels[0].key
+    : 'junior';
+  if (typeof renderCareerNav === 'function') renderCareerNav();
   renderCareer();
 };
 
@@ -7158,6 +7352,25 @@ function getSimulatorCriteriaFor(roleValue, targetSeniorityKey) {
       desc: `${g.description || ''} • Meta Mínima: ${g.targetValue} ${g.targetUnit || ''}`,
       weight: g.weight || 2
     }));
+  }
+
+  // Se o cargo atual corresponder a uma trilha e nível cadastrados com triggers formais
+  if (roleValue && typeof careerTracksData !== 'undefined') {
+    const parts = roleValue.split('_');
+    const trackId = parts[0];
+    const levelKey = parts.slice(1).join('_');
+    if (trackId && careerTracksData[trackId]) {
+      const track = careerTracksData[trackId];
+      const currentLevel = (track.levels || []).find(l => l.key === levelKey) || track.levels[0];
+      if (currentLevel && Array.isArray(currentLevel.triggers) && currentLevel.triggers.length > 0) {
+        return currentLevel.triggers.map((trig, idx) => ({
+          id: `crit_${trackId}_${currentLevel.key}_${idx}`,
+          title: trig,
+          desc: `Critério da Trilha ${track.roleName} (${currentLevel.name}) • Meta: ${currentLevel.metrics?.tasks || 'Consistência de entregas'}`,
+          weight: idx === 0 ? 3 : 2
+        }));
+      }
+    }
   }
 
   if (targetSeniorityKey === 'pleno') {
@@ -7309,5 +7522,517 @@ window.syncMyDevMetricsToSimulator = function() {
 
   updateSimulatorChecklist();
   showToast(`Métricas reais de ${myMember.name} sincronizadas com o simulador! 🚀`);
+};
+
+// ==============================================================================
+// 12. GESTÃO E CADASTRO DINÂMICO DE ESTRUTURAS E TRILHAS DE CARREIRA
+// ==============================================================================
+
+window.renderCareerNav = function() {
+  const container = document.getElementById('career-role-nav-container');
+  if (!container || typeof careerTracksData === 'undefined') return;
+
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  const tracks = Object.values(careerTracksData);
+
+  container.innerHTML = tracks.map(track => {
+    const firstLevel = track.levels?.[0]?.name ? track.levels[0].name.split(' ')[0] : 'L1';
+    const lastLevel = track.levels && track.levels.length > 1
+      ? track.levels[track.levels.length - 1].name.split(' ')[0]
+      : (track.levels?.[0]?.name ? track.levels[0].name.split(' ')[0] : 'Lead');
+    const badgeText = `${firstLevel} ➔ ${lastLevel}`;
+    const isActive = track.id === activeCareerRole;
+
+    return `
+      <button class="career-role-tab ${isActive ? 'active' : ''}" data-role="${track.id}" onclick="selectCareerRole('${track.id}')">
+        <span>${track.icon || '💻'}</span>
+        <span>${track.roleName}</span>
+        <span class="career-tab-badge">${badgeText}</span>
+        ${track.isCustom ? `<span style="font-size:0.62rem; background:rgba(99,102,241,0.25); color:#a5b4fc; padding:2px 6px; border-radius:4px; margin-left:4px;" title="Estrutura de carreira customizada">Custom</span>` : ''}
+        ${track.isCustom && isAdmin ? `
+          <span class="btn-delete-track" onclick="deleteCareerTrack('${track.id}', event)" title="Excluir carreira personalizada" style="color: #f43f5e; margin-left: 6px; font-size: 0.75rem; padding: 0 4px; border-radius: 3px;" onmouseover="this.style.background='rgba(244,63,94,0.2)'" onmouseout="this.style.background='transparent'">✕</span>
+        ` : ''}
+      </button>
+    `;
+  }).join('');
+
+  const careerCounter = document.getElementById('counter-nav-career');
+  if (careerCounter) {
+    careerCounter.textContent = `${tracks.length} Trilhas`;
+  }
+};
+
+window.populateSimulatorRoleOptions = function() {
+  const simSelect = document.getElementById('sim-role-select');
+  if (!simSelect || typeof careerTracksData === 'undefined') return;
+
+  const currentVal = simSelect.value;
+  let optionsHtml = '';
+
+  Object.values(careerTracksData).forEach(track => {
+    (track.levels || []).forEach(lvl => {
+      const val = `${track.id}_${lvl.key}`;
+      optionsHtml += `<option value="${val}">${track.icon || '💻'} ${lvl.name}</option>`;
+    });
+  });
+
+  if (optionsHtml) {
+    simSelect.innerHTML = optionsHtml;
+    if (currentVal && Array.from(simSelect.options).some(o => o.value === currentVal)) {
+      simSelect.value = currentVal;
+    }
+  }
+};
+
+window.syncCareerSelects = function(track) {
+  if (!track || !track.id) return;
+  const roleId = track.id;
+  const roleLabel = `${track.icon || '💻'} ${track.roleName}`;
+
+  // 1. Select de Especialidade no Cadastro/Edição de Usuários (Admin)
+  const adminDevRoleSelect = document.getElementById('admin-user-devrole');
+  if (adminDevRoleSelect && !adminDevRoleSelect.querySelector(`option[value="${roleId}"]`)) {
+    const opt = document.createElement('option');
+    opt.value = roleId;
+    opt.textContent = roleLabel;
+    adminDevRoleSelect.appendChild(opt);
+  }
+
+  // 2. Select de Especialidade no Cadastro/Edição de Membros da Equipe
+  const memberRoleSelect = document.getElementById('member-role');
+  if (memberRoleSelect && !memberRoleSelect.querySelector(`option[value="${roleId}"]`)) {
+    const opt = document.createElement('option');
+    opt.value = roleId;
+    opt.textContent = roleLabel;
+    memberRoleSelect.appendChild(opt);
+  }
+
+  // 3. Select de Especialidade Técnica na Criação de Demandas/Tarefas
+  const taskRoleSelect = document.getElementById('task-role');
+  if (taskRoleSelect && !taskRoleSelect.querySelector(`option[value="${roleId}"]`)) {
+    const opt = document.createElement('option');
+    opt.value = roleId;
+    opt.textContent = roleLabel;
+    taskRoleSelect.appendChild(opt);
+  }
+
+  // 4. Filtro de Especialidade no Kanban
+  const kanbanFilter = document.getElementById('kanban-role-filter');
+  if (kanbanFilter && !kanbanFilter.querySelector(`button[data-role="${roleId}"]`)) {
+    const btn = document.createElement('button');
+    btn.className = 'segment-btn';
+    btn.dataset.role = roleId;
+    btn.textContent = `${track.icon || '💻'} ${track.discipline || track.roleName}`;
+    btn.addEventListener('click', () => {
+      kanbanFilter.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      store.kanbanRoleFilter = roleId;
+      if (typeof window.renderKanban === 'function') window.renderKanban();
+    });
+    kanbanFilter.appendChild(btn);
+  }
+
+  // 5. Filtro de Especialidade na Equipe
+  const teamFilter = document.getElementById('team-role-filter');
+  if (teamFilter && !teamFilter.querySelector(`button[data-team-role="${roleId}"]`)) {
+    const btn = document.createElement('button');
+    btn.className = 'segment-btn';
+    btn.dataset.teamRole = roleId;
+    btn.textContent = `${track.icon || '💻'} ${track.discipline || track.roleName}`;
+    btn.addEventListener('click', () => {
+      teamFilter.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      store.teamRoleFilter = roleId;
+      if (typeof window.renderTeam === 'function') window.renderTeam();
+    });
+    teamFilter.appendChild(btn);
+  }
+
+  // 6. Atualizar opções do Simulador de Promoção
+  populateSimulatorRoleOptions();
+};
+
+window.openNewCareerModal = function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (currentUser && currentUser.role !== 'admin') {
+    showToast('⚠️ Apenas Administradores do Sistema têm permissão para cadastrar novas estruturas de carreira.', 'error');
+    return;
+  }
+
+  const form = document.getElementById('form-career-track');
+  if (form) form.reset();
+
+  const titleEl = document.getElementById('modal-career-title');
+  if (titleEl) titleEl.textContent = '🧭 Cadastrar Nova Estrutura & Trilha de Carreira';
+
+  const editIdEl = document.getElementById('career-id-edit');
+  if (editIdEl) editIdEl.value = '';
+
+  const container = document.getElementById('career-levels-form-container');
+  if (container) {
+    container.innerHTML = '';
+    // Adiciona 3 níveis padrão para agilizar o cadastro de nova carreira
+    addCareerLevelFormRow({
+      name: 'Nível Júnior',
+      nextLevel: 'Nível Pleno',
+      tag: 'Iniciação & Execução Guiada',
+      focus: 'Execução de demandas com acompanhamento técnico, resolução de bugs e suporte a entregas da squad.',
+      hardSkills: 'Versionamento Git, Ferramentas Essenciais, Boas Práticas, Testes Básicos',
+      softSkills: 'Comunicação transparente nas cerimônias, Curiosidade ativa, Colaboração',
+      metrics: {
+        tasks: '4+ demandas',
+        complexity: '2+ Médias e 1+ Alta',
+        qaRate: '≥ 75% aprovação em QA'
+      },
+      triggers: 'Homologação consistente de demandas sem reescrita de código\nAprovação em QA igual ou superior a 75%\nAlinhamento com as regras de governança e estimativas'
+    });
+    addCareerLevelFormRow({
+      name: 'Nível Pleno',
+      nextLevel: 'Nível Sênior',
+      tag: 'Autonomia & Soluções Completas',
+      focus: 'Desenvolvimento e entrega autônoma de funcionalidades completas de ponta a ponta, com domínio de arquitetura e qualidade.',
+      hardSkills: 'Arquitetura de Soluções, Performance & Otimização, Testes Automatizados, Integração Contínua (CI/CD)',
+      softSkills: 'Comunicação propositiva com Produto e QA, Resolução autônoma de bloqueios, Mentoria a juniores',
+      metrics: {
+        tasks: '6+ demandas no ciclo',
+        complexity: '3+ Altas (25%+ do volume)',
+        qaRate: '≥ 85% aprovação em QA'
+      },
+      triggers: 'Domínio comprovado de demandas de Alta Complexidade\nTaxa de aprovação direta em QA superior a 85%\nMentoria e suporte técnico ativo para membros juniores'
+    });
+    addCareerLevelFormRow({
+      name: 'Nível Sênior',
+      nextLevel: 'Liderança / Especialista Staff',
+      tag: 'Liderança Técnica & Excelência',
+      focus: 'Definição arquitetural, mitigação de riscos críticos, governança de código e elevação da barra técnica do time.',
+      hardSkills: 'Sistemas Escaláveis & Resilientes, Segurança e Confiabilidade, Governança Técnica, Design Patterns Corporativos',
+      softSkills: 'Liderança técnica situacional, Visão estratégica de negócio, Facilitação técnica em decisões complexas',
+      metrics: {
+        tasks: '8+ demandas estratégicas',
+        complexity: '50%+ Alta Complexidade',
+        qaRate: '≥ 90% aprovação em QA'
+      },
+      triggers: 'Liderança arquitetural em iniciativas críticas com zero incidentes impeditivos\nSustentação de altíssima qualidade técnica (> 90% aprovação em QA)\nFormação técnica comprovada de plenos e juniores'
+    });
+  }
+
+  openModal('modal-career-track');
+};
+
+window.addCareerLevelFormRow = function(data = {}) {
+  const container = document.getElementById('career-levels-form-container');
+  if (!container) return;
+
+  const currentCount = container.querySelectorAll('.career-level-form-card').length;
+  const nextIdx = currentCount + 1;
+
+  const card = document.createElement('div');
+  card.className = 'career-level-form-card';
+  card.dataset.levelIndex = nextIdx;
+
+  const hardSkillsVal = Array.isArray(data.hardSkills) ? data.hardSkills.join(', ') : (data.hardSkills || '');
+  const softSkillsVal = Array.isArray(data.softSkills) ? data.softSkills.join(', ') : (data.softSkills || '');
+  const triggersVal = Array.isArray(data.triggers) ? data.triggers.join('\n') : (data.triggers || '');
+
+  card.innerHTML = `
+    <div class="career-level-form-header">
+      <div style="display: flex; align-items: center; gap: 0.65rem;">
+        <span class="career-level-number-badge">Nível ${nextIdx}</span>
+        <strong class="level-card-title">${data.name || `Nível ${nextIdx}`}</strong>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm btn-remove-level" onclick="removeCareerLevelFormRow(this)" title="Remover este nível" style="color: #f43f5e; padding: 3px 8px; font-size: 0.8rem;">
+        🗑️ Remover
+      </button>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group flex-2">
+        <label>Título do Nível *</label>
+        <input type="text" class="custom-input level-name-input" required placeholder="Ex: Engenheiro(a) de Dados Pleno" value="${data.name || ''}" oninput="updateLevelCardTitle(this)">
+      </div>
+      <div class="form-group flex-2">
+        <label>Próximo Nível (Alvo da Promoção)</label>
+        <input type="text" class="custom-input level-next-input" placeholder="Ex: Engenheiro(a) de Dados Sênior" value="${data.nextLevel || ''}">
+      </div>
+      <div class="form-group flex-1">
+        <label>Resumo / Foco Curto</label>
+        <input type="text" class="custom-input level-tag-input" placeholder="Ex: Autonomia & Soluções" value="${data.tag || ''}">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Missão & Escopo de Atuação do Nível *</label>
+      <textarea class="custom-input level-focus-input" required rows="2" placeholder="O que este profissional desenvolve e qual sua autonomia neste nível?">${data.focus || data.missionDetail || ''}</textarea>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group flex-1">
+        <label>Competências Técnicas Necessárias (Hard Skills) * <span style="font-size:0.72rem; color:var(--text-muted);">(Separadas por vírgula)</span></label>
+        <textarea class="custom-input level-hardskills-input" required rows="2" placeholder="Ex: SQL Avançado, Python, Airflow, Spark, Modelagem Dimensional, Git">${hardSkillsVal}</textarea>
+      </div>
+      <div class="form-group flex-1">
+        <label>Soft Skills & Atitudes Esperadas <span style="font-size:0.72rem; color:var(--text-muted);">(Separadas por vírgula)</span></label>
+        <textarea class="custom-input level-softskills-input" rows="2" placeholder="Ex: Comunicação clara nas dailies, Proatividade, Resolução analítica de problemas">${softSkillsVal}</textarea>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group flex-1">
+        <label style="font-size: 0.78rem;">Meta de Demandas</label>
+        <input type="text" class="custom-input-sm level-metric-tasks" placeholder="Ex: 4+ demandas" value="${data.metrics?.tasks || '4+ demandas'}">
+      </div>
+      <div class="form-group flex-1">
+        <label style="font-size: 0.78rem;">Complexidade Alvo</label>
+        <input type="text" class="custom-input-sm level-metric-comp" placeholder="Ex: 2+ Médias e 1+ Alta" value="${data.metrics?.complexity || '2+ Médias e 1+ Alta'}">
+      </div>
+      <div class="form-group flex-1">
+        <label style="font-size: 0.78rem;">Taxa de Aprovação em QA</label>
+        <input type="text" class="custom-input-sm level-metric-qa" placeholder="Ex: ≥ 80% aprovação" value="${data.metrics?.qaRate || '≥ 80% aprovação em QA'}">
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-bottom: 0;">
+      <label style="font-size: 0.78rem;">Gatilhos & Checklist Formal de Promoção <span style="font-size:0.72rem; color:var(--text-muted);">(1 critério por linha)</span></label>
+      <textarea class="custom-input-sm level-triggers-input" rows="2" placeholder="Ex: Entrega consistente de pipelines de dados em produção&#10;Zero incidentes de perda de dados ou quebra de schemas&#10;Aprovação direta em QA superior a 80%">${triggersVal}</textarea>
+    </div>
+  `;
+
+  container.appendChild(card);
+  reindexCareerLevelFormRows();
+};
+
+window.removeCareerLevelFormRow = function(buttonEl) {
+  const container = document.getElementById('career-levels-form-container');
+  if (!container) return;
+  const cards = container.querySelectorAll('.career-level-form-card');
+  if (cards.length <= 1) {
+    showToast('A carreira deve possuir ao menos 1 nível hierárquico.', 'warn');
+    return;
+  }
+  const card = buttonEl.closest('.career-level-form-card');
+  if (card) {
+    card.remove();
+    reindexCareerLevelFormRows();
+  }
+};
+
+window.reindexCareerLevelFormRows = function() {
+  const container = document.getElementById('career-levels-form-container');
+  if (!container) return;
+  const cards = container.querySelectorAll('.career-level-form-card');
+  cards.forEach((card, idx) => {
+    const badge = card.querySelector('.career-level-number-badge');
+    if (badge) badge.textContent = `Nível ${idx + 1}`;
+    card.dataset.levelIndex = idx + 1;
+  });
+};
+
+window.updateLevelCardTitle = function(input) {
+  const card = input.closest('.career-level-form-card');
+  if (card) {
+    const titleEl = card.querySelector('.level-card-title');
+    if (titleEl) {
+      titleEl.textContent = input.value.trim() || 'Nível Hierárquico';
+    }
+  }
+};
+
+window.handleCareerTrackSubmit = async function(e) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (currentUser && currentUser.role !== 'admin') {
+    showToast('⚠️ Apenas Administradores do Sistema têm permissão para cadastrar novas carreiras.', 'error');
+    return;
+  }
+
+  const roleName = document.getElementById('career-name')?.value.trim();
+  const discipline = document.getElementById('career-discipline')?.value.trim();
+  const icon = document.getElementById('career-icon')?.value.trim() || '🧭';
+  const slug = document.getElementById('career-linked-specialty')?.value.trim();
+  const mission = document.getElementById('career-mission')?.value.trim();
+
+  if (!roleName) {
+    showToast('Informe o nome da nova carreira.', 'warn');
+    document.getElementById('career-name')?.focus();
+    return;
+  }
+  if (!discipline) {
+    showToast('Informe a área/disciplina técnica da carreira.', 'warn');
+    document.getElementById('career-discipline')?.focus();
+    return;
+  }
+  if (!mission) {
+    showToast('Informe a descrição e missão da carreira.', 'warn');
+    document.getElementById('career-mission')?.focus();
+    return;
+  }
+
+  const levelCards = Array.from(document.querySelectorAll('#career-levels-form-container .career-level-form-card'));
+  if (levelCards.length === 0) {
+    showToast('Adicione ao menos um nível hierárquico com suas competências.', 'warn');
+    return;
+  }
+
+  const levels = [];
+  for (let idx = 0; idx < levelCards.length; idx++) {
+    const card = levelCards[idx];
+    const name = card.querySelector('.level-name-input')?.value.trim();
+    const hardSkillsStr = card.querySelector('.level-hardskills-input')?.value.trim();
+
+    if (!name) {
+      showToast(`O nível ${idx + 1} deve ter um título preenchido.`, 'warn');
+      card.querySelector('.level-name-input')?.focus();
+      return;
+    }
+    if (!hardSkillsStr) {
+      showToast(`O nível ${idx + 1} ("${name}") deve ter competências técnicas (Hard Skills) preenchidas.`, 'warn');
+      card.querySelector('.level-hardskills-input')?.focus();
+      return;
+    }
+
+    const nextLevel = card.querySelector('.level-next-input')?.value.trim() || 
+      (idx < levelCards.length - 1 ? (levelCards[idx + 1].querySelector('.level-name-input')?.value.trim() || `Nível ${idx + 2}`) : 'Liderança / Especialista');
+    const tag = card.querySelector('.level-tag-input')?.value.trim() || 'Evolução Profissional';
+    const focus = card.querySelector('.level-focus-input')?.value.trim() || `Atuação e entregas de ${name}`;
+    const softSkillsStr = card.querySelector('.level-softskills-input')?.value.trim() || '';
+    const metricTasks = card.querySelector('.level-metric-tasks')?.value.trim() || '4+ demandas';
+    const metricComp = card.querySelector('.level-metric-comp')?.value.trim() || 'Média e Alta';
+    const metricQa = card.querySelector('.level-metric-qa')?.value.trim() || '≥ 80% aprovação';
+    const triggersStr = card.querySelector('.level-triggers-input')?.value.trim() || '';
+
+    const hardSkills = hardSkillsStr.split(',').map(s => s.trim()).filter(Boolean);
+    const softSkills = softSkillsStr ? softSkillsStr.split(',').map(s => s.trim()).filter(Boolean) : ['Comunicação', 'Colaboração', 'Proatividade'];
+    const triggers = triggersStr ? triggersStr.split('\n').map(s => s.trim()).filter(Boolean) : [
+      `Entrega consistente de demandas no nível ${name}`,
+      `Conformidade com os padrões de arquitetura e qualidade da squad`
+    ];
+
+    const lvlKey = name.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '') || `lvl_${idx + 1}`;
+
+    levels.push({
+      key: lvlKey,
+      name,
+      nextLevel,
+      tag,
+      focus,
+      missionDetail: focus,
+      hardSkills,
+      softSkills,
+      metrics: {
+        tasks: metricTasks,
+        complexity: metricComp,
+        qaRate: metricQa,
+        hoursVariance: 'Desvio ≤ 25%'
+      },
+      triggers
+    });
+  }
+
+  const payload = {
+    roleName,
+    discipline,
+    icon,
+    slug: slug || undefined,
+    mission,
+    levels
+  };
+
+  const saveBtn = document.getElementById('btn-save-career');
+  const originalBtnHtml = saveBtn ? saveBtn.innerHTML : '';
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span>⏳</span> <span>Salvando Trilha...</span>';
+  }
+
+  try {
+    let savedTrack = null;
+    if (typeof api !== 'undefined' && api.isOnline) {
+      const res = await api.apiRequest('/api/careers', 'POST', payload);
+      if (res && res.success && res.track) {
+        savedTrack = res.track;
+      } else {
+        throw new Error((res && res.message) || 'Erro ao registrar carreira no backend');
+      }
+    } else {
+      // Modo offline / fallback local
+      const generatedId = (payload.slug || payload.roleName.toLowerCase())
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '') || ('career_' + Date.now());
+      savedTrack = {
+        id: generatedId,
+        roleName: payload.roleName,
+        discipline: payload.discipline,
+        icon: payload.icon,
+        mission: payload.mission,
+        levels: payload.levels,
+        isCustom: true,
+        createdAt: new Date().toISOString()
+      };
+    }
+
+    // 1. Atualizar base de dados em memória
+    careerTracksData[savedTrack.id] = savedTrack;
+
+    // 2. Disponibilizar imediatamente para vinculação de colaboradores e demandas
+    syncCareerSelects(savedTrack);
+
+    // 3. Atualizar navegação de carreiras e contador
+    renderCareerNav();
+
+    // 4. Selecionar a nova trilha imediatamente no painel de carreiras
+    activeCareerRole = savedTrack.id;
+    activeCareerLevel = (savedTrack.levels && savedTrack.levels[0]) ? savedTrack.levels[0].key : 'junior';
+    renderCareer();
+
+    // 5. Fechar modal e limpar formulário
+    closeModal('modal-career-track');
+    document.getElementById('form-career-track')?.reset();
+
+    showToast(`✅ Nova carreira "${savedTrack.roleName}" cadastrada e disponibilizada imediatamente!`, 'success');
+  } catch (err) {
+    console.error('Erro ao salvar carreira:', err);
+    showToast(`❌ Falha ao cadastrar carreira: ${err.message || 'Erro inesperado'}`, 'error');
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = originalBtnHtml;
+    }
+  }
+};
+
+window.deleteCareerTrack = async function(trackId, event) {
+  if (event) event.stopPropagation();
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('⚠️ Apenas Administradores podem excluir estruturas de carreira.', 'error');
+    return;
+  }
+  const track = careerTracksData[trackId];
+  if (!track) return;
+  if (!track.isCustom) {
+    showToast('ℹ️ Trilhas padrão da plataforma não podem ser removidas.', 'warn');
+    return;
+  }
+  if (!confirm(`Deseja realmente remover a trilha "${track.roleName}"?`)) {
+    return;
+  }
+
+  if (typeof api !== 'undefined' && api.isOnline) {
+    await api.apiRequest(`/api/careers/${trackId}`, 'DELETE');
+  }
+  delete careerTracksData[trackId];
+  activeCareerRole = 'frontend';
+  activeCareerLevel = 'junior';
+  renderCareerNav();
+  renderCareer();
+  showToast(`Trilha "${track.roleName}" removida com sucesso.`, 'info');
 };
 

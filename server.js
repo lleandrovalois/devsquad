@@ -164,6 +164,19 @@ db.exec(`
     created_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_goals_seniority ON promotion_goals(target_seniority);
+
+  CREATE TABLE IF NOT EXISTS career_tracks (
+    id TEXT PRIMARY KEY,
+    role_name TEXT NOT NULL,
+    discipline TEXT NOT NULL,
+    icon TEXT DEFAULT '🧭',
+    mission TEXT NOT NULL,
+    levels TEXT NOT NULL,
+    is_custom INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_career_tracks_created ON career_tracks(created_at DESC);
 `);
 
 // Migrações seguras de colunas em bases já existentes
@@ -300,6 +313,215 @@ function seedDefaultGoals(force = false) {
   }
 }
 
+function seedDefaultCareers(force = false) {
+  if (force) {
+    db.prepare('DELETE FROM career_tracks WHERE is_custom = 0').run();
+  }
+  const count = db.prepare('SELECT count(*) as count FROM career_tracks').get().count;
+  if (count === 0 || force) {
+    console.log('🌱 Inicializando Estruturas e Trilhas Padrão de Carreira no SQLite...');
+    const insertTrack = db.prepare(`
+      INSERT INTO career_tracks (id, role_name, discipline, icon, mission, levels, is_custom, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const now = new Date().toISOString();
+    const defaultCareers = [
+      {
+        id: "frontend",
+        roleName: "Desenvolvedor(a) Front-end",
+        icon: "🎨",
+        discipline: "Front-end Engineering",
+        mission: "Criar interfaces responsivas, rápidas, acessíveis e robustas, conectando regras de negócio a experiências de usuário fluidas e confiáveis.",
+        levels: [
+          {
+            key: "junior",
+            name: "Front-end Júnior",
+            nextLevel: "Front-end Pleno",
+            tag: "Iniciação & Execução Guiada",
+            focus: "Construção de componentes, correção de bugs de interface e consumo de APIs.",
+            missionDetail: "Atua na implementação de componentes reutilizáveis, telas responsivas e consumo de endpoints REST definidos nos Requisitos/BDD.",
+            hardSkills: ["HTML5 Semântico", "CSS3 / Flexbox / Grid", "JavaScript Moderno (ES6+)", "Consumo de APIs REST (Fetch/JSON)", "Git Básico", "Responsividade Mobile-first"],
+            softSkills: ["Curiosidade técnica ativa", "Comunicação transparente nas dailies", "Atenção a feedbacks em Code Reviews"],
+            metrics: { tasks: "4+ demandas", complexity: "2+ Médias e 1+ Alta", qaRate: "≥ 75% aprovação em QA", hoursVariance: "Desvio ≤ 25%" },
+            triggers: ["Entrega consistente de demandas de Média Complexidade", "Capacidade de assumir 1 demanda de Alta Complexidade", "Aprovação em testes de QA ≥ 75%"]
+          },
+          {
+            key: "pleno",
+            name: "Front-end Pleno",
+            nextLevel: "Front-end Sênior",
+            tag: "Autonomia & Domínio de Soluções",
+            focus: "Arquitetura clientside, performance Web Vitals, testes de componentes e Design System.",
+            missionDetail: "Lidera a implementação de features completas de ponta a ponta com autonomia e conformidade arquitetural.",
+            hardSkills: ["Arquitetura de Estado (Global & Local)", "Core Web Vitals (LCP, FID/INP, CLS)", "Acessibilidade Web (WCAG)", "Design Systems & Tokenização", "Testes de Componentes"],
+            softSkills: ["Comunicação propositiva com Produto e QA", "Capacidade de dar mentorias a juniores", "Resolução independente de problemas"],
+            metrics: { tasks: "6+ demandas", complexity: "3+ Altas (25%+ do volume)", qaRate: "≥ 85% aprovação em QA", hoursVariance: "Desvio ≤ 20%" },
+            triggers: ["Domínio de Alta Complexidade com 3+ entregas críticas", "Mínimo de 25% de demandas de alta criticidade", "Aprovação em QA > 85%"]
+          },
+          {
+            key: "senior",
+            name: "Front-end Sênior",
+            nextLevel: "Tech Lead Front-end",
+            tag: "Excelência Técnica & Mentoria",
+            focus: "Decisões arquiteturais, segurança front-end, tooling de build e governança de qualidade.",
+            missionDetail: "Referência técnica da disciplina na squad. Define padrões de código, antecipa riscos arquiteturais e combate o débito técnico.",
+            hardSkills: ["Decisões Arquiteturais Avançadas", "Segurança Front-end (XSS, CSP)", "Tooling de Build & Bundlers", "Otimização Extrema de Performance", "Code Reviews Formativos"],
+            softSkills: ["Liderança técnica e influência positiva", "Resiliência na resolução de incidentes", "Habilidade de traduzir negócio em arquitetura"],
+            metrics: { tasks: "Volume de alto impacto", complexity: "5+ Demandas Altas", qaRate: "≥ 90% aprovação em QA", readinessScore: "Score ≥ 85%" },
+            triggers: ["Liderança em 5+ demandas de Alta Complexidade", "Taxa de aprovação em QA ≥ 90%", "Revisões de código de alto padrão formativo"]
+          },
+          {
+            key: "lead",
+            name: "Tech Lead Front-end / Staff",
+            nextLevel: "Principal / Engineering Manager",
+            tag: "Liderança de Engenharia & Impacto",
+            focus: "Estratégia tecnológica, governança de squads, alinhamento executivo e desenvolvimento de talentos.",
+            missionDetail: "Guia a evolução tecnológica transversal da plataforma, alinhando governança de engenharia aos objetivos estratégicos do negócio.",
+            hardSkills: ["Arquitetura Corporativa Front-end", "Estratégia de Plataforma & Microfrontends", "Auditoria de Segurança & Compliance", "Definição de Métricas de Engenharia"],
+            softSkills: ["Visão de negócio e impacto", "Gestão de conflitos e negociação", "Inspiração e atração de talentos"],
+            metrics: { tasks: "Governança transversal", complexity: "Impacto arquitetural estratégico", qaRate: "≥ 95% aprovação em QA", readinessScore: "Score ≥ 90%" },
+            triggers: ["Definição de diretrizes arquiteturais adotadas por múltiplas squads", "Zero incidentes críticos de arquitetura", "Formação e promoção comprovada de desenvolvedores plenos e sêniores"]
+          }
+        ]
+      },
+      {
+        id: "backend",
+        roleName: "Desenvolvedor(a) Back-end",
+        icon: "⚙️",
+        discipline: "Back-end & Systems Engineering",
+        mission: "Projetar e construir serviços confiáveis, regras de negócio determinísticas, APIs de alto desempenho e persistência de dados com integridade transacional ACID.",
+        levels: [
+          {
+            key: "junior",
+            name: "Back-end Júnior",
+            nextLevel: "Back-end Pleno",
+            tag: "Iniciação & Execução Guiada",
+            focus: "Criação de endpoints REST, migrations relacionais e testes unitários.",
+            missionDetail: "Desenvolve rotas de API, regras de validação de dados e queries SQL otimizadas com orientação técnica.",
+            hardSkills: ["Node.js / Go / Python", "SQL Relacional & Índices", "APIs RESTful & HTTP Status", "Git & Conventional Commits", "Testes Unitários"],
+            softSkills: ["Curiosidade técnica ativa", "Transparência de bloqueios", "Disciplina em code review"],
+            metrics: { tasks: "4+ demandas", complexity: "2+ Médias e 1+ Alta", qaRate: "≥ 75% aprovação em QA", hoursVariance: "Desvio ≤ 25%" },
+            triggers: ["Entrega consistente de endpoints e queries sem gargalos", "Resolução de pelo menos 1 demanda de Alta Complexidade", "Aprovação em QA ≥ 75%"]
+          },
+          {
+            key: "pleno",
+            name: "Back-end Pleno",
+            nextLevel: "Back-end Sênior",
+            tag: "Autonomia & Confiabilidade de Serviços",
+            focus: "Arquitetura de microsserviços, cache distribuído, transações ACID e mensageria.",
+            missionDetail: "Projeta fluxos de ponta a ponta, modelagem de banco de dados e estratégias de resiliência e concorrência.",
+            hardSkills: ["Modelagem Relacional Avançada", "Transações ACID & Concorrência", "Redis / Cache & Invalidação", "Docker & Containers", "Testes de Integração"],
+            softSkills: ["Autonomia técnica", "Comunicação com QA e Front-end", "Resolução pragmática de problemas"],
+            metrics: { tasks: "6+ demandas", complexity: "3+ Altas (25%+ do volume)", qaRate: "≥ 85% aprovação em QA", hoursVariance: "Desvio ≤ 20%" },
+            triggers: ["Modelagem de banco de dados e fluxos complexos sem falhas", "Pelo menos 25% de demandas críticas", "Aprovação em QA > 85%"]
+          },
+          {
+            key: "senior",
+            name: "Back-end Sênior",
+            nextLevel: "Tech Lead Back-end",
+            tag: "Arquitetura Distribuída & Escalabilidade",
+            focus: "Sistemas distribuídos, alta disponibilidade, observabilidade e segurança de dados.",
+            missionDetail: "Lidera as decisões arquiteturais de back-end, combate débito técnico e atua como mentor de engenharia.",
+            hardSkills: ["Sistemas Distribuídos & Event-driven", "Observabilidade (OpenTelemetry, Tracing)", "Segurança de APIs & OAuth/JWT", "Tuning de Banco de Dados & Query Plans"],
+            softSkills: ["Liderança por influência", "Capacidade analítica aprofundada", "Mentoria ativa"],
+            metrics: { tasks: "Volume crítico", complexity: "5+ Demandas Altas", qaRate: "≥ 90% aprovação em QA", readinessScore: "Score ≥ 85%" },
+            triggers: ["Liderança em 5+ demandas críticas e arquiteturais", "Zero falhas graves de concorrência ou integridade", "Formação de novos plenos"]
+          }
+        ]
+      },
+      {
+        id: "qa",
+        roleName: "Analista de Qualidade / QA Engineer",
+        icon: "🧪",
+        discipline: "Quality Engineering & Testing",
+        mission: "Assegurar que cada entrega atenda aos mais altos padrões de funcionalidade, usabilidade e segurança antes de alcançar o usuário final.",
+        levels: [
+          {
+            key: "junior",
+            name: "QA Analyst Júnior",
+            nextLevel: "QA Engineer Pleno",
+            tag: "Execução de Testes & Validação Funcional",
+            focus: "Execução de casos de teste, escrita de cenários BDD e reporte de bugs claros.",
+            missionDetail: "Valida critérios de aceitação, registra bugs com evidências reprodutíveis e atua na homologação formal de demandas.",
+            hardSkills: ["Cenários BDD (Dado/Quando/Então)", "Testes Funcionais & Regressão", "Postman / Testes de API", "Critérios de Aceite"],
+            softSkills: ["Atenção rigorosa aos detalhes", "Comunicação empática com desenvolvedores", "Pensamento crítico orientado ao usuário"],
+            metrics: { tasks: "15+ casos de teste executados", complexity: "Validação em múltiplas demandas", qaRate: "Acurácia de reporte > 85%", hoursVariance: "Desvio ≤ 20%" },
+            triggers: ["Execução consistente de testes sem deixar escapar bugs críticos", "Validação formal de requisitos BDD", "Reportes com passos de reprodução perfeitos"]
+          },
+          {
+            key: "pleno",
+            name: "QA Engineer Pleno",
+            nextLevel: "Senior QA / QA Lead",
+            tag: "Automação & Qualidade Shift-Left",
+            focus: "Automação de testes E2E/API, esteiras CI/CD de qualidade e testes não-funcionais.",
+            missionDetail: "Implementa suítes automatizadas de teste, antecipa riscos na fase de especificação e garante estabilidade nas releases.",
+            hardSkills: ["Automação de Testes (Playwright/Cypress)", "Automação de APIs REST", "Integração Contínua (CI/CD Quality Gates)", "Testes de Performance Básicos"],
+            softSkills: ["Disseminação de boas práticas de qualidade", "Proatividade em refinamentos", "Autonomia em automações"],
+            metrics: { tasks: "Suíte automatizada ativa", complexity: "Testes automatizados em releases", qaRate: "Cobertura de testes > 75%", hoursVariance: "Desvio ≤ 15%" },
+            triggers: ["Redução comprovada de bugs que chegam à homologação", "Implementação de automação de testes estável", "Participação ativa na validação de critérios de requisitos"]
+          }
+        ]
+      },
+      {
+        id: "pm",
+        roleName: "Product Manager (PM / Scrum Master)",
+        icon: "📊",
+        discipline: "Product Management & Agile Delivery",
+        mission: "Maximizar o valor entregue pela squad, conectando os anseios do negócio e usuários a um fluxo contínuo, previsível e sustentável de engenharia.",
+        levels: [
+          {
+            key: "junior",
+            name: "Associate PM / Scrum Master",
+            nextLevel: "Product Manager Pleno",
+            tag: "Facilitação Ágil & Escrita de Requisitos",
+            focus: "Especificação de requisitos BDD claros, facilitação de cerimônias e acompanhamento de métricas do Kanban.",
+            missionDetail: "Garante que a squad tenha histórias refinadas, critérios de aceite objetivos e desbloqueio ágil de impedimentos.",
+            hardSkills: ["Especificação BDD & User Stories", "Métricas Ágeis (Throughput, Lead Time)", "Gestão de Backlog & Priorização", "Facilitação de Rituais (Dailies, Retros)"],
+            softSkills: ["Comunicação transparente", "Escuta ativa e empatia", "Organização e disciplina"],
+            metrics: { tasks: "Backlog refinado para 2 sprints", complexity: "Requisitos BDD 100% especificados", qaRate: "Zero bloqueios por falta de especificação", hoursVariance: "Previsibilidade da squad > 80%" },
+            triggers: ["Requisitos BDD completos e validados por tech leads", "Redução de ruído e retrabalho nas demandas", "Facilitação pontual das cerimônias da squad"]
+          }
+        ]
+      },
+      {
+        id: "techlead",
+        roleName: "Tech Lead & Liderança Técnica",
+        icon: "👑",
+        discipline: "Technical Leadership & Software Governance",
+        mission: "Multiplicar o impacto da engenharia, equilibrando excelência arquitetural, governança de dados, desbloqueio de pessoas e velocidade de entrega.",
+        levels: [
+          {
+            key: "lead",
+            name: "Tech Lead",
+            nextLevel: "Staff Engineer / Engineering Manager",
+            tag: "Multiplicação Técnica & Excelência da Squad",
+            focus: "Direcionamento arquitetural da squad, mentoria técnica, revisão de código e alinhamento com Produto.",
+            missionDetail: "Garante a sustentabilidade técnica dos sistemas da squad, orienta desenvolvedores juniores e plenos, e viabiliza soluções robustas.",
+            hardSkills: ["Arquitetura de Software & Microsserviços", "Code Review Formativo", "Gestão de Débito Técnico", "Observabilidade & SRE"],
+            softSkills: ["Mentoria e desenvolvimento de talentos", "Comunicação assertiva e influência", "Resolução ágil de impedimentos"],
+            metrics: { tasks: "Liderança de iniciativas complexas", complexity: "Arquitetura e governança transversal", qaRate: "Aprovação em QA > 90%", hoursVariance: "Estabilidade de prazos" },
+            triggers: ["Evolução e promoção de membros da squad", "Arquitetura sem retrabalho crítico", "Governança e qualidade técnica reconhecidas"]
+          }
+        ]
+      }
+    ];
+
+    for (const c of defaultCareers) {
+      insertTrack.run(
+        c.id,
+        c.roleName,
+        c.discipline,
+        c.icon || '🧭',
+        c.mission,
+        JSON.stringify(c.levels),
+        0,
+        now,
+        now
+      );
+    }
+  }
+}
+
 function seedDatabaseIfEmpty() {
   const usersCount = db.prepare('SELECT count(*) as count FROM users').get().count;
   if (usersCount === 0) {
@@ -319,6 +541,7 @@ function seedDatabaseIfEmpty() {
   }
 
   seedDefaultGoals(false);
+  seedDefaultCareers(false);
 
   console.log('✅ Banco de dados SQLite verificado e pronto para operações!');
 }
@@ -671,6 +894,25 @@ function getFullGoals() {
   }));
 }
 
+function getFullCareerTracks() {
+  const rows = db.prepare("SELECT * FROM career_tracks ORDER BY is_custom ASC, created_at ASC").all();
+  return rows.map(r => {
+    let parsedLevels = [];
+    try { parsedLevels = JSON.parse(r.levels); } catch (e) { parsedLevels = []; }
+    return {
+      id: r.id,
+      roleName: r.role_name,
+      discipline: r.discipline,
+      icon: r.icon || '🧭',
+      mission: r.mission,
+      levels: parsedLevels,
+      isCustom: r.is_custom === 1,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at
+    };
+  });
+}
+
 // ==============================================================================
 // 5. Servidor HTTP Principal & Roteamento da REST API
 // ==============================================================================
@@ -716,6 +958,7 @@ const server = http.createServer(async (req, res) => {
         testCases: getFullTestCases(),
         users: getFullUsers(),
         goals: getFullGoals(),
+        careers: getFullCareerTracks(),
         auditLogs: isAdmin ? getFullAuditLogs(150) : []
       });
     }
@@ -796,9 +1039,10 @@ const server = http.createServer(async (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(newId, name, email, data.password, data.role || 'dev', data.devRole || null, data.seniority || 'Pleno', skillsStr, randomBg, createdAt);
 
-      // Se for perfil desenvolvedor, sincroniza na equipe sem criar duplicidade
-      if (data.role === 'dev') {
+      // Se for perfil desenvolvedor ou QA, sincroniza na equipe sem criar duplicidade
+      if (data.role === 'dev' || data.role === 'qa') {
         const memberExists = db.prepare('SELECT id, skills, role, seniority FROM team_members WHERE lower(trim(name)) = lower(trim(?))').get(name);
+        const resolvedRole = data.devRole || (data.role === 'qa' ? 'qa' : 'backend');
         if (memberExists) {
           let existingSkills = [];
           try { existingSkills = JSON.parse(memberExists.skills); } catch(e) {}
@@ -807,12 +1051,12 @@ const server = http.createServer(async (req, res) => {
             UPDATE team_members
             SET role = ?, seniority = ?, skills = ?, avatar_bg = ?
             WHERE id = ?
-          `).run(data.devRole || memberExists.role || 'frontend', data.seniority || memberExists.seniority || 'Pleno', JSON.stringify(mergedSkills), randomBg, memberExists.id);
+          `).run(resolvedRole, data.seniority || memberExists.seniority || 'Pleno', JSON.stringify(mergedSkills), randomBg, memberExists.id);
         } else {
           db.prepare(`
             INSERT INTO team_members (id, name, role, seniority, skills, capacity, avatar_bg)
             VALUES (?, ?, ?, ?, ?, 40, ?)
-          `).run('m_' + Date.now(), name, data.devRole || 'frontend', data.seniority || 'Pleno', skillsStr, randomBg);
+          `).run('m_' + Date.now(), name, resolvedRole, data.seniority || 'Pleno', skillsStr, randomBg);
         }
       }
 
@@ -867,7 +1111,7 @@ const server = http.createServer(async (req, res) => {
 
       const newName = (data.name || user.name).trim();
       const newRole = (callerRole === 'admin' && data.role) ? data.role : user.role;
-      const newDevRole = (callerRole === 'admin' && typeof data.devRole !== 'undefined') ? (newRole === 'dev' ? data.devRole : null) : user.dev_role;
+      const newDevRole = (callerRole === 'admin' && typeof data.devRole !== 'undefined') ? ((newRole === 'dev' || newRole === 'qa') ? data.devRole : null) : user.dev_role;
       const newSeniority = data.seniority || user.seniority;
       const skillsStr = JSON.stringify(Array.isArray(data.skills) ? data.skills : (typeof data.skills === 'string' ? data.skills.split(',').map(s=>s.trim()).filter(Boolean) : []));
       const newAvatarBg = data.avatarBg || user.avatar_bg;
@@ -879,20 +1123,21 @@ const server = http.createServer(async (req, res) => {
         WHERE id = ?
       `).run(newName, newRole, newDevRole, newSeniority, skillsStr, newAvatarBg, newPassword, targetUserId);
 
-      // Sincroniza também na tabela de equipe se for dev
-      if (newRole === 'dev') {
+      // Sincroniza também na tabela de equipe se for dev ou qa
+      if (newRole === 'dev' || newRole === 'qa') {
         const teamMember = db.prepare('SELECT id FROM team_members WHERE id = ? OR lower(name) = lower(?)').get(targetUserId, user.name);
+        const resolvedRole = newDevRole || (newRole === 'qa' ? 'qa' : 'backend');
         if (teamMember) {
           db.prepare(`
             UPDATE team_members
             SET name = ?, role = ?, seniority = ?, skills = ?, avatar_bg = ?
             WHERE id = ?
-          `).run(newName, newDevRole || 'frontend', newSeniority, skillsStr, newAvatarBg, teamMember.id);
+          `).run(newName, resolvedRole, newSeniority, skillsStr, newAvatarBg, teamMember.id);
         } else {
           db.prepare(`
             INSERT INTO team_members (id, name, role, seniority, skills, capacity, avatar_bg)
             VALUES (?, ?, ?, ?, ?, 40, ?)
-          `).run('m_' + Date.now(), newName, newDevRole || 'frontend', newSeniority, skillsStr, newAvatarBg);
+          `).run('m_' + Date.now(), newName, resolvedRole, newSeniority, skillsStr, newAvatarBg);
         }
       }
 
@@ -1841,6 +2086,153 @@ const server = http.createServer(async (req, res) => {
         });
 
         return sendJson(res, 200, { success: true, id: goalId });
+      }
+    }
+
+    // 11. API de Estruturas e Trilhas de Carreira
+    if (pathname === '/api/careers') {
+      if (method === 'GET') {
+        return sendJson(res, 200, getFullCareerTracks());
+      }
+      if (method === 'POST') {
+        const actor = getActorFromReq(req);
+        if (!actor || actor.role !== 'admin') {
+          return sendJson(res, 403, { success: false, message: 'Apenas Administradores do Sistema possuem permissão para cadastrar novas estruturas e tipos de carreira.' });
+        }
+        const data = await parseJsonBody(req);
+        const roleName = (data.roleName || data.name || '').trim();
+        const discipline = (data.discipline || data.roleName || 'Engenharia').trim();
+        const mission = (data.mission || data.description || '').trim();
+        const icon = (data.icon || '🧭').trim();
+        const levels = Array.isArray(data.levels) ? data.levels : [];
+
+        if (!roleName) {
+          return sendJson(res, 400, { success: false, message: 'O nome da carreira é obrigatório.' });
+        }
+        if (!mission) {
+          return sendJson(res, 400, { success: false, message: 'A descrição/missão da carreira é obrigatória.' });
+        }
+        if (levels.length === 0) {
+          return sendJson(res, 400, { success: false, message: 'Ao menos um nível hierárquico com competências deve ser definido.' });
+        }
+
+        // Gera ID / slug limpo
+        const rawSlug = (data.id || data.slug || roleName.toLowerCase())
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]/g, '_')
+          .replace(/_+/g, '_')
+          .replace(/^_|_$/g, '');
+        const id = rawSlug || ('career_' + Date.now());
+
+        // Processa níveis garantindo chaves e competências
+        const processedLevels = levels.map((lvl, idx) => {
+          const lvlKey = (lvl.key || lvl.name || `nivel_${idx + 1}`)
+            .toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^_|_$/g, '') || `lvl_${idx + 1}`;
+          
+          let hardSkills = [];
+          if (Array.isArray(lvl.hardSkills)) hardSkills = lvl.hardSkills;
+          else if (typeof lvl.hardSkills === 'string') hardSkills = lvl.hardSkills.split(',').map(s => s.trim()).filter(Boolean);
+
+          let softSkills = [];
+          if (Array.isArray(lvl.softSkills)) softSkills = lvl.softSkills;
+          else if (typeof lvl.softSkills === 'string') softSkills = lvl.softSkills.split(',').map(s => s.trim()).filter(Boolean);
+
+          let triggers = [];
+          if (Array.isArray(lvl.triggers)) triggers = lvl.triggers;
+          else if (typeof lvl.triggers === 'string') triggers = lvl.triggers.split('\n').map(s => s.trim()).filter(Boolean);
+
+          return {
+            key: lvlKey,
+            name: (lvl.name || `Nível ${idx + 1}`).trim(),
+            nextLevel: (lvl.nextLevel || (idx < levels.length - 1 ? (levels[idx + 1].name || `Nível ${idx + 2}`) : 'Liderança / Especialista')).trim(),
+            tag: (lvl.tag || 'Evolução Profissional').trim(),
+            focus: (lvl.focus || lvl.missionDetail || 'Atuação e entregas do nível').trim(),
+            missionDetail: (lvl.missionDetail || lvl.focus || '').trim(),
+            hardSkills: hardSkills.length > 0 ? hardSkills : ['Competências técnicas do nível'],
+            softSkills: softSkills.length > 0 ? softSkills : ['Comunicação', 'Colaboração', 'Proatividade'],
+            metrics: lvl.metrics || {
+              tasks: '4+ demandas',
+              complexity: 'Média ou Alta',
+              qaRate: '≥ 80% aprovação em QA',
+              hoursVariance: 'Desvio ≤ 25%'
+            },
+            triggers: triggers.length > 0 ? triggers : ['Entrega consistente de demandas no nível', 'Conformidade com os padrões da squad']
+          };
+        });
+
+        const now = new Date().toISOString();
+        const levelsJson = JSON.stringify(processedLevels);
+
+        const existing = db.prepare('SELECT id FROM career_tracks WHERE id = ?').get(id);
+        if (existing) {
+          db.prepare(`
+            UPDATE career_tracks
+            SET role_name = ?, discipline = ?, icon = ?, mission = ?, levels = ?, updated_at = ?
+            WHERE id = ?
+          `).run(roleName, discipline, icon, mission, levelsJson, now, id);
+        } else {
+          db.prepare(`
+            INSERT INTO career_tracks (id, role_name, discipline, icon, mission, levels, is_custom, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+          `).run(id, roleName, discipline, icon, mission, levelsJson, now, now);
+        }
+
+        logAudit({
+          entityType: 'career',
+          entityId: id,
+          entityTitle: roleName,
+          action: existing ? 'UPDATE' : 'CREATE',
+          ...actor,
+          details: `${existing ? 'Atualizou' : 'Cadastrou nova'} estrutura de carreira: "${roleName}" (${processedLevels.length} níveis hierárquicos).`
+        });
+
+        const newTrack = {
+          id,
+          roleName,
+          discipline,
+          icon,
+          mission,
+          levels: processedLevels,
+          isCustom: true,
+          createdAt: now,
+          updatedAt: now
+        };
+
+        return sendJson(res, 201, { success: true, track: newTrack });
+      }
+    }
+
+    if (pathname.startsWith('/api/careers/')) {
+      const careerId = pathname.split('/')[3];
+      if (method === 'DELETE') {
+        const actor = getActorFromReq(req);
+        if (!actor || actor.role !== 'admin') {
+          return sendJson(res, 403, { success: false, message: 'Apenas Administradores podem excluir estruturas de carreira.' });
+        }
+        const existing = db.prepare('SELECT * FROM career_tracks WHERE id = ?').get(careerId);
+        if (!existing) {
+          return sendJson(res, 404, { success: false, message: 'Trilha de carreira não encontrada.' });
+        }
+        if (existing.is_custom === 0) {
+          return sendJson(res, 400, { success: false, message: 'Trilhas padrão do sistema não podem ser removidas.' });
+        }
+
+        db.prepare('DELETE FROM career_tracks WHERE id = ?').run(careerId);
+
+        logAudit({
+          entityType: 'career',
+          entityId: careerId,
+          entityTitle: existing.role_name,
+          action: 'DELETE',
+          ...actor,
+          details: `Excluiu trilha de carreira: "${existing.role_name}".`
+        });
+
+        return sendJson(res, 200, { success: true, id: careerId });
       }
     }
 

@@ -26,13 +26,25 @@
   --back-bg: rgba(16, 185, 129, 0.12);
   --back-border: rgba(16, 185, 129, 0.3);
 
-  --req-accent: #8b5cf6;
-  --req-bg: rgba(139, 92, 246, 0.12);
-  --req-border: rgba(139, 92, 246, 0.3);
+  --fullstack-accent: #818cf8;
+  --fullstack-bg: rgba(99, 102, 241, 0.15);
+  --fullstack-border: rgba(99, 102, 241, 0.35);
 
-  --qa-accent: #f59e0b;
-  --qa-bg: rgba(245, 158, 11, 0.12);
-  --qa-border: rgba(245, 158, 11, 0.3);
+  --dba-accent: #f472b6;
+  --dba-bg: rgba(236, 72, 153, 0.15);
+  --dba-border: rgba(236, 72, 153, 0.35);
+
+  --analyst-accent: #a78bfa;
+  --analyst-bg: rgba(139, 92, 246, 0.15);
+  --analyst-border: rgba(139, 92, 246, 0.35);
+
+  --qa-accent: #fbbf24;
+  --qa-bg: rgba(245, 158, 11, 0.15);
+  --qa-border: rgba(245, 158, 11, 0.35);
+
+  --devops-accent: #fb923c;
+  --devops-bg: rgba(249, 115, 22, 0.15);
+  --devops-border: rgba(249, 115, 22, 0.35);
 
   /* Status Gerais */
   --color-danger: #f43f5e;
@@ -1209,6 +1221,26 @@ html, body {
   border-left: 3px solid var(--back-accent);
 }
 
+.task-card.task-fullstack {
+  border-left: 3px solid var(--fullstack-accent);
+}
+
+.task-card.task-dba {
+  border-left: 3px solid var(--dba-accent);
+}
+
+.task-card.task-analyst {
+  border-left: 3px solid var(--analyst-accent);
+}
+
+.task-card.task-qa {
+  border-left: 3px solid var(--qa-accent);
+}
+
+.task-card.task-devops {
+  border-left: 3px solid var(--devops-accent);
+}
+
 .task-tags-row {
   display: flex;
   align-items: center;
@@ -1248,6 +1280,11 @@ html, body {
 
 .role-front { background: var(--front-bg); color: var(--front-accent); }
 .role-back { background: var(--back-bg); color: var(--back-accent); }
+.role-fullstack { background: var(--fullstack-bg); color: var(--fullstack-accent); }
+.role-dba { background: var(--dba-bg); color: var(--dba-accent); }
+.role-analyst { background: var(--analyst-bg); color: var(--analyst-accent); }
+.role-qa { background: var(--qa-bg); color: var(--qa-accent); }
+.role-devops { background: var(--devops-bg); color: var(--devops-accent); }
 
 .task-priority-tag {
   font-size: 0.68rem;
@@ -1643,6 +1680,7 @@ html, body {
   justify-content: space-between;
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
 .modal-title {
@@ -1667,9 +1705,33 @@ html, body {
 .modal-body {
   padding: 1.5rem;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.4) transparent;
+}
+
+.modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.35);
+  border-radius: 999px;
+}
+
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.65);
 }
 
 .form-group {
@@ -3117,6 +3179,7 @@ html, body {
   padding: 0.75rem 1.5rem 0 1.5rem;
   border-bottom: 1px solid var(--border-subtle);
   background: rgba(0, 0, 0, 0.18);
+  flex-shrink: 0;
 }
 
 .modal-tab-btn {
@@ -3157,6 +3220,66 @@ html, body {
 .modal-tab-btn.active .badge-tab-count {
   background: rgba(99, 102, 241, 0.25);
   color: #c7d2fe;
+}
+
+/* ==============================================================================
+   Rolagem Fluida e Estrutura dos Painéis das Abas do Modal de Demanda
+   ============================================================================== */
+.modal-tab-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.4) transparent;
+}
+
+.modal-tab-pane::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-tab-pane::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal-tab-pane::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.35);
+  border-radius: 999px;
+}
+
+.modal-tab-pane::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.65);
+}
+
+/* Aba principal de Formulário da Demanda */
+#pane-task-form {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#pane-task-form[style*="display: block"] {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#pane-task-form > .modal-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
 }
 
 /* Caixa de Notas do Desenvolvedor */
@@ -4398,4 +4521,63 @@ html, body {
     display: none;
   }
 }
+
+/* ==============================================================================
+   Painel de Configurações & Cadastro de Estrutura de Carreiras
+   ============================================================================== */
+.career-level-form-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  animation: fadeIn 0.25s ease-out;
+}
+
+.career-level-form-card:hover {
+  border-color: rgba(99, 102, 241, 0.45) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.career-level-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.career-level-number-badge {
+  background: linear-gradient(135deg, var(--accent-primary), #8b5cf6);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.4);
+}
+
+#career-levels-form-container:empty::before {
+  content: 'Nenhum nível hierárquico adicionado ainda. Clique em "+ Adicionar Nível" acima.';
+  display: block;
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.85rem;
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.career-tab-badge {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+}
+
 

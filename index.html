@@ -542,8 +542,13 @@
               <span class="filter-label">Especialidade:</span>
               <div class="segmented-control" id="kanban-role-filter">
                 <button class="segment-btn active" data-role="all">Todos</button>
+                <button class="segment-btn" data-role="fullstack">🌐 Full-Stack</button>
                 <button class="segment-btn" data-role="frontend">🎨 Front-end</button>
                 <button class="segment-btn" data-role="backend">⚙️ Back-end</button>
+                <button class="segment-btn" data-role="dba">🗄️ DBA</button>
+                <button class="segment-btn" data-role="analyst">📋 Requisitos</button>
+                <button class="segment-btn" data-role="qa">🧪 QA</button>
+                <button class="segment-btn" data-role="devops">🚀 DevOps</button>
               </div>
             </div>
             <div class="filter-group">
@@ -555,9 +560,14 @@
                 <option value="Baixa">Baixa</option>
               </select>
             </div>
-            <div class="filter-group ml-auto">
-              <span class="legend-dot bg-cyan"></span> <span class="legend-text">Front-end</span>
-              <span class="legend-dot bg-emerald ml-2"></span> <span class="legend-text">Back-end</span>
+            <div class="filter-group ml-auto" style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
+              <span style="display: flex; align-items: center; gap: 3px;"><span class="legend-dot" style="background: #818cf8;"></span> <span class="legend-text" style="font-size: 0.72rem;">Full-Stack</span></span>
+              <span style="display: flex; align-items: center; gap: 3px;"><span class="legend-dot bg-cyan"></span> <span class="legend-text" style="font-size: 0.72rem;">Front-end</span></span>
+              <span style="display: flex; align-items: center; gap: 3px;"><span class="legend-dot bg-emerald"></span> <span class="legend-text" style="font-size: 0.72rem;">Back-end</span></span>
+              <span style="display: flex; align-items: center; gap: 3px;"><span class="legend-dot" style="background: #f472b6;"></span> <span class="legend-text" style="font-size: 0.72rem;">DBA</span></span>
+              <span style="display: flex; align-items: center; gap: 3px;"><span class="legend-dot" style="background: #a78bfa;"></span> <span class="legend-text" style="font-size: 0.72rem;">Requisitos</span></span>
+              <span style="display: flex; align-items: center; gap: 3px;"><span class="legend-dot" style="background: #fbbf24;"></span> <span class="legend-text" style="font-size: 0.72rem;">QA</span></span>
+              <span style="display: flex; align-items: center; gap: 3px;"><span class="legend-dot" style="background: #fb923c;"></span> <span class="legend-text" style="font-size: 0.72rem;">DevOps</span></span>
             </div>
           </div>
 
@@ -657,8 +667,13 @@
               <span class="filter-label">Visualizar Especialidade:</span>
               <div class="segmented-control" id="team-role-filter">
                 <button class="segment-btn active" data-team-role="all">Toda a Equipe</button>
-                <button class="segment-btn" data-team-role="frontend">Apenas Front-ends</button>
-                <button class="segment-btn" data-team-role="backend">Apenas Back-ends</button>
+                <button class="segment-btn" data-team-role="fullstack">🌐 Full-Stack</button>
+                <button class="segment-btn" data-team-role="frontend">🎨 Front-ends</button>
+                <button class="segment-btn" data-team-role="backend">⚙️ Back-ends</button>
+                <button class="segment-btn" data-team-role="dba">🗄️ DBA / Dados</button>
+                <button class="segment-btn" data-team-role="analyst">📋 Requisitos</button>
+                <button class="segment-btn" data-team-role="qa">🧪 QA / Testes</button>
+                <button class="segment-btn" data-team-role="devops">🚀 DevOps / Infra</button>
               </div>
             </div>
           </div>
@@ -1538,10 +1553,16 @@
 
           <!-- SEÇÃO 2: Trilhas de Carreira por Cargo -->
           <div class="career-tracks-section" id="career-tracks-section">
-            <div class="career-section-header">
+            <div class="career-section-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
               <div>
                 <h2 class="career-section-title">🧭 Trilhas de Carreira por Cargo & Especialidade</h2>
                 <p class="career-section-desc">Selecione uma especialidade abaixo para navegar pela escada de evolução e compreender os requisitos exigidos para cada promoção.</p>
+              </div>
+              <div class="career-header-actions" id="career-header-admin-actions">
+                <button class="btn btn-primary btn-sm btn-glow" id="btn-open-career-modal" onclick="openNewCareerModal()" style="display: inline-flex; align-items: center; gap: 0.5rem;" title="Cadastrar nova estrutura de carreira e trilha de promoção (Apenas Administrador)">
+                  <span>➕</span>
+                  <span>Cadastrar Nova Carreira</span>
+                </button>
               </div>
             </div>
 
@@ -1890,8 +1911,13 @@
             <div class="form-group">
               <label for="task-role">Especialidade Técnica *</label>
               <select id="task-role" required class="custom-select">
-                <option value="backend">⚙️ Back-end</option>
+                <option value="backend" selected>⚙️ Back-end</option>
                 <option value="frontend">🎨 Front-end</option>
+                <option value="fullstack">🌐 Full-Stack</option>
+                <option value="dba">🗄️ DBA / Banco de Dados</option>
+                <option value="analyst">📋 Analista de Requisitos / Produto</option>
+                <option value="qa">🧪 QA / Testes</option>
+                <option value="devops">🚀 DevOps / Infra</option>
               </select>
             </div>
             <div class="form-group">
@@ -2176,8 +2202,13 @@
           <div class="form-group">
             <label for="member-role">Especialidade Principal *</label>
             <select id="member-role" required class="custom-select">
-              <option value="backend">⚙️ Back-end</option>
+              <option value="fullstack">🌐 Full-Stack</option>
               <option value="frontend">🎨 Front-end</option>
+              <option value="backend" selected>⚙️ Back-end</option>
+              <option value="dba">🗄️ DBA / Banco de Dados</option>
+              <option value="analyst">📋 Analista de Requisitos / Produto</option>
+              <option value="qa">🧪 QA / Testes</option>
+              <option value="devops">🚀 DevOps / Infra</option>
             </select>
           </div>
           <div class="form-group">
@@ -2390,10 +2421,15 @@
             </select>
           </div>
           <div class="form-group flex-1" id="group-admin-user-devrole">
-            <label for="admin-user-devrole">Especialidade Dev *</label>
+            <label for="admin-user-devrole">Especialidade Técnica *</label>
             <select id="admin-user-devrole" class="custom-select">
-              <option value="backend" selected>⚙️ Back-end</option>
+              <option value="fullstack">🌐 Full-Stack</option>
               <option value="frontend">🎨 Front-end</option>
+              <option value="backend" selected>⚙️ Back-end</option>
+              <option value="dba">🗄️ DBA / Banco de Dados</option>
+              <option value="analyst">📋 Analista de Requisitos / Produto</option>
+              <option value="qa">🧪 QA / Testes</option>
+              <option value="devops">🚀 DevOps / Infra</option>
             </select>
           </div>
         </div>
@@ -2518,6 +2554,100 @@
     </div>
   </div>
 
+  <!-- MODAL: CADASTRAR / EDITAR NOVA ESTRUTURA E TIPO DE CARREIRA -->
+  <div class="modal-backdrop" id="modal-career-track">
+    <div class="modal-dialog glass-panel" style="max-width: 840px; max-height: 90vh;">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" id="modal-career-title">🧭 Cadastrar Nova Estrutura & Trilha de Carreira</h2>
+          <p style="margin: 0.2rem 0 0 0; font-size: 0.82rem; color: var(--text-muted);">Defina a nomenclatura, propósito, níveis hierárquicos e competências essenciais desta trajetória profissional.</p>
+        </div>
+        <button type="button" class="modal-close" data-close="modal-career-track">&times;</button>
+      </div>
+
+      <form id="form-career-track" class="modal-body" style="gap: 1.25rem;">
+        <input type="hidden" id="career-id-edit" value="">
+
+        <!-- Seção 1: Dados Gerais da Carreira -->
+        <div style="background: rgba(255, 255, 255, 0.03); padding: 1.15rem; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+          <h3 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 0.85rem; color: var(--text-main); display: flex; align-items: center; gap: 0.5rem;">
+            <span>📋</span> <span>Dados Gerais da Carreira</span>
+          </h3>
+
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label for="career-name">Nome da Carreira / Cargo *</label>
+              <input type="text" id="career-name" required placeholder="Ex: Engenharia de Dados (Data Engineer)" class="custom-input">
+            </div>
+            <div class="form-group flex-1">
+              <label for="career-discipline">Área / Disciplina Técnica *</label>
+              <input type="text" id="career-discipline" required placeholder="Ex: Data & Analytics" class="custom-input">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="career-icon">Ícone Representativo *</label>
+              <select id="career-icon" class="custom-select">
+                <option value="🗄️">🗄️ Banco de Dados / DBA</option>
+                <option value="🚀">🚀 DevOps & Cloud</option>
+                <option value="🌐">🌐 Full-Stack</option>
+                <option value="📋">📋 Requisitos / Produto</option>
+                <option value="🧪">🧪 QA & Testes</option>
+                <option value="🛡️">🛡️ Cibersegurança / SecOps</option>
+                <option value="🧠">🧠 Data Science & IA</option>
+                <option value="📱">📱 Mobile / Apps</option>
+                <option value="🎨">🎨 Front-end / UI</option>
+                <option value="⚙️">⚙️ Back-end / APIs</option>
+                <option value="📊">📊 Gestão & Métricas</option>
+                <option value="👑">👑 Liderança Técnica</option>
+                <option value="💻" selected>💻 Engenharia Geral</option>
+              </select>
+            </div>
+            <div class="form-group flex-1">
+              <label for="career-linked-specialty">Chave de Especialidade do Sistema</label>
+              <input type="text" id="career-linked-specialty" placeholder="Ex: dba, devops, data, sec" class="custom-input" title="Slug interno para associação em demandas e filtros (opcional, gerado automaticamente se vazio)">
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0;">
+            <label for="career-mission">Descrição & Missão da Carreira *</label>
+            <textarea id="career-mission" required rows="2" class="custom-input" placeholder="Descreva o propósito da atuação profissional, impacto no negócio e objetivos na organização..."></textarea>
+          </div>
+        </div>
+
+        <!-- Seção 2: Níveis Hierárquicos e Competências -->
+        <div>
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div>
+              <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                <span>🪜</span> <span>Níveis Hierárquicos & Competências Necessárias *</span>
+              </h3>
+              <p style="margin: 0.2rem 0 0 0; font-size: 0.78rem; color: var(--text-muted);">Defina ao menos um nível de evolução profissional, especificando as hard skills e escopo exigidos.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-add-career-level" onclick="addCareerLevelFormRow()" style="display: inline-flex; align-items: center; gap: 0.4rem;">
+              <span>➕</span>
+              <span>Adicionar Nível</span>
+            </button>
+          </div>
+
+          <!-- Container dinâmico com os cartões dos níveis -->
+          <div id="career-levels-form-container" style="display: flex; flex-direction: column; gap: 0.85rem;">
+            <!-- Cartões de níveis inseridos aqui dinamicamente -->
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding-top: 1rem; border-top: 1px solid var(--border-subtle); margin-top: 0.5rem;">
+          <button type="button" class="btn btn-ghost" data-close="modal-career-track">Cancelar</button>
+          <button type="submit" class="btn btn-primary btn-glow" id="btn-save-career">
+            <span>💾</span>
+            <span>Salvar e Disponibilizar Trilha</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div id="toast-container" class="toast-container"></div>
 
@@ -2527,6 +2657,6 @@
   <script src="vendor/jspdf.plugin.autotable.min.js"></script>
 
   <!-- Script Principal da Aplicação -->
-  <script src="script.js?v=1.0.4"></script>
+  <script src="script.js?v=1.0.5"></script>
 </body>
 </html>
