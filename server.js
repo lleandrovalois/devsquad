@@ -179,6 +179,31 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_career_tracks_created ON career_tracks(created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS document_templates (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    is_default INTEGER DEFAULT 0,
+    logo_url TEXT,
+    doc_title TEXT NOT NULL,
+    doc_subtitle TEXT,
+    header_institution TEXT,
+    primary_color TEXT DEFAULT '#0284c7',
+    footer_text TEXT,
+    approval_terms TEXT,
+    signee_contratada_title TEXT DEFAULT 'PELA CONTRATADA (DEVSQUAD)',
+    signee_contratante_title TEXT DEFAULT 'PELA CONTRATANTE (CLIENTE)',
+    include_user_story INTEGER DEFAULT 1,
+    include_acceptance_criteria INTEGER DEFAULT 1,
+    include_qa_evidence INTEGER DEFAULT 1,
+    include_signatures INTEGER DEFAULT 1,
+    include_kpis INTEGER DEFAULT 1,
+    include_status_banner INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_doc_templates_created ON document_templates(created_at ASC);
 `);
 
 // Migrações seguras de colunas em bases já existentes
@@ -546,8 +571,114 @@ function seedDatabaseIfEmpty() {
 
   seedDefaultGoals(false);
   seedDefaultCareers(false);
+  seedDefaultDocumentTemplates(false);
 
   console.log('✅ Banco de dados SQLite verificado e pronto para operações!');
+}
+
+function seedDefaultDocumentTemplates(force = false) {
+  if (force) {
+    db.prepare('DELETE FROM document_templates').run();
+  }
+  const count = db.prepare('SELECT count(*) as count FROM document_templates').get().count;
+  if (count === 0 || force) {
+    console.log('🌱 Inicializando Templates Padrão de Documento no SQLite...');
+    const insertTpl = db.prepare(`
+      INSERT INTO document_templates (
+        id, name, description, is_default, logo_url, doc_title, doc_subtitle,
+        header_institution, primary_color, footer_text, approval_terms,
+        signee_contratada_title, signee_contratante_title,
+        include_user_story, include_acceptance_criteria, include_qa_evidence,
+        include_signatures, include_kpis, include_status_banner,
+        created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const now = new Date().toISOString();
+    const defaultTemplates = [
+      {
+        id: "tpl_default",
+        name: "Padrão Corporativo DevSquad (Oficial)",
+        description: "Template institucional padrão do DevSquad ALM com paleta Sky Blue (#0284c7), todos os blocos ativados e termo padrão de aceite contratual e medição.",
+        is_default: 1,
+        logo_url: "",
+        doc_title: "RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS",
+        doc_subtitle: "Artefato Oficial de Comprovação de Entrega Técnica para Fins de Faturamento & Aceite",
+        header_institution: "DEVSQUAD ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE",
+        primary_color: "#0284c7",
+        footer_text: "DevSquad ALM Pro — Artefato Formal de Medição & Aceite Técnico",
+        approval_terms: "Pelo presente instrumento, a CONTRATANTE atesta expressamente o pleno recebimento, homologação técnica e aceite formal dos requisitos de software e critérios de aceite descritos neste Relatório de Medição correspondentes à Feature / Marco acima especificado. Declara que os entregáveis foram devidamente verificados e aprovados pelo controle de qualidade (QA), em conformidade com as especificações contratadas, autorizando a emissão da respectiva Nota Fiscal de Serviços para faturamento.",
+        signee_contratada_title: "PELA CONTRATADA (DEVSQUAD)",
+        signee_contratante_title: "PELA CONTRATANTE (CLIENTE)",
+        include_user_story: 1,
+        include_acceptance_criteria: 1,
+        include_qa_evidence: 1,
+        include_signatures: 1,
+        include_kpis: 1,
+        include_status_banner: 1,
+        created_at: now,
+        updated_at: now
+      },
+      {
+        id: "tpl_exec_contract",
+        name: "Executivo & Contratual Rigoroso (Enterprise)",
+        description: "Modelo jurídico-técnico formal para grandes contas, auditorias de conformidade e contratos enterprise com termos de garantia de SLA e laudo de entrega.",
+        is_default: 0,
+        logo_url: "",
+        doc_title: "DOCUMENTO TÉCNICO DE ESPECIFICAÇÃO & HOMOLOGAÇÃO DE REQUISITOS",
+        doc_subtitle: "Laudo Pericial de Engenharia de Software, Rastreabilidade e Evidências de Qualidade Assegurada",
+        header_institution: "DIRETORIA DE TECNOLOGIA, COMPLIANCE & AUDITORIA DE SISTEMAS",
+        primary_color: "#1e3a8a",
+        footer_text: "Documento Registrado e Auditado — Validade Contratual Plena — Confidencial",
+        approval_terms: "A CONTRATANTE atesta expressamente para os devidos fins de direito que os requisitos e casos de teste foram homologados com total rigor técnico, estando em estrita conformidade com o escopo pactuado no Contrato Principal. Fica expressamente autorizado o faturamento financeiro do respectivo marco de entrega, iniciando-se nesta data o período regulamentar de garantia de software e suporte pós-implantação conforme SLA estipulado.",
+        signee_contratada_title: "PELA CONTRATADA (DIRETORIA TÉCNICA)",
+        signee_contratante_title: "PELA CONTRATANTE (FISCAL DO CONTRATO / C-LEVEL)",
+        include_user_story: 1,
+        include_acceptance_criteria: 1,
+        include_qa_evidence: 1,
+        include_signatures: 1,
+        include_kpis: 1,
+        include_status_banner: 1,
+        created_at: now,
+        updated_at: now
+      },
+      {
+        id: "tpl_agile_spec",
+        name: "Especificação Ágil & Enxuta (Sprint Spec)",
+        description: "Modelo dinâmico focado no squad de desenvolvimento e Product Owner, priorizando Histórias de Usuário e Critérios BDD com layout leve e direto.",
+        is_default: 0,
+        logo_url: "",
+        doc_title: "ESPECIFICAÇÃO FUNCIONAL DE REQUISITOS & SPRINT BACKLOG",
+        doc_subtitle: "Alinhamento Contínuo de Escopo, Critérios de Aceite e Histórias de Usuário",
+        header_institution: "SQUAD DE ENGENHARIA DE PRODUTO & ARQUITETURA ÁGIL",
+        primary_color: "#059669",
+        footer_text: "DevSquad Agile Spec — Uso Interno e Alinhamento Técnico de Produto",
+        approval_terms: "Os requisitos funcionais descritos neste documento foram refinados e validados conjuntamente pelo time de produto e engenharia, servindo como especificação oficial e critérios de aceite da sprint corrente.",
+        signee_contratada_title: "PRODUCT OWNER (PO)",
+        signee_contratante_title: "TECH LEAD / ENGENHEIRO RESPONSÁVEL",
+        include_user_story: 1,
+        include_acceptance_criteria: 1,
+        include_qa_evidence: 0,
+        include_signatures: 0,
+        include_kpis: 1,
+        include_status_banner: 0,
+        created_at: now,
+        updated_at: now
+      }
+    ];
+
+    defaultTemplates.forEach(t => {
+      insertTpl.run(
+        t.id, t.name, t.description, t.is_default, t.logo_url, t.doc_title, t.doc_subtitle,
+        t.header_institution, t.primary_color, t.footer_text, t.approval_terms,
+        t.signee_contratada_title, t.signee_contratante_title,
+        t.include_user_story, t.include_acceptance_criteria, t.include_qa_evidence,
+        t.include_signatures, t.include_kpis, t.include_status_banner,
+        t.created_at, t.updated_at
+      );
+    });
+  }
 }
 
 seedDatabaseIfEmpty();
@@ -930,6 +1061,33 @@ function getFullCareerTracks() {
   });
 }
 
+function getFullDocumentTemplates() {
+  const rows = db.prepare('SELECT * FROM document_templates ORDER BY is_default DESC, created_at ASC').all();
+  return rows.map(r => ({
+    id: r.id,
+    name: r.name,
+    description: r.description || '',
+    isDefault: r.is_default === 1,
+    logoUrl: r.logo_url || '',
+    docTitle: r.doc_title,
+    docSubtitle: r.doc_subtitle || '',
+    headerInstitution: r.header_institution || '',
+    primaryColor: r.primary_color || '#0284c7',
+    footerText: r.footer_text || '',
+    approvalTerms: r.approval_terms || '',
+    signeeContratadaTitle: r.signee_contratada_title || 'PELA CONTRATADA (DEVSQUAD)',
+    signeeContratanteTitle: r.signee_contratante_title || 'PELA CONTRATANTE (CLIENTE)',
+    includeUserStory: r.include_user_story === 1,
+    includeAcceptanceCriteria: r.include_acceptance_criteria === 1,
+    includeQaEvidence: r.include_qa_evidence === 1,
+    includeSignatures: r.include_signatures === 1,
+    includeKpis: r.include_kpis === 1,
+    includeStatusBanner: r.include_status_banner === 1,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  }));
+}
+
 // ==============================================================================
 // 5. Servidor HTTP Principal & Roteamento da REST API
 // ==============================================================================
@@ -976,6 +1134,8 @@ const server = http.createServer(async (req, res) => {
         users: getFullUsers(),
         goals: getFullGoals(),
         careers: getFullCareerTracks(),
+        documentTemplates: getFullDocumentTemplates(),
+        templates: getFullDocumentTemplates(),
         auditLogs: isAdmin ? getFullAuditLogs(150) : []
       });
     }
@@ -2296,6 +2456,324 @@ const server = http.createServer(async (req, res) => {
         });
 
         return sendJson(res, 200, { success: true, id: careerId });
+      }
+    }
+
+    // --------------------------------------------------------------------------
+    // ROTAS DE TEMPLATES DE DOCUMENTO & IDENTIDADE VISUAL (/api/templates)
+    // --------------------------------------------------------------------------
+    if (pathname === '/api/templates/reset-defaults' && method === 'POST') {
+      const actor = getActorFromReq(req);
+      if (!actor || (actor.role !== 'admin' && actor.role !== 'pm')) {
+        return sendJson(res, 403, { success: false, message: 'Apenas Gestores e Administradores podem restaurar templates padrão.' });
+      }
+
+      seedDefaultDocumentTemplates(true);
+      const updatedList = getFullDocumentTemplates();
+
+      logAudit({
+        entityType: 'template',
+        entityId: 'all',
+        entityTitle: 'Templates de Documento',
+        action: 'RESET_DEFAULTS',
+        ...actor,
+        details: 'Restaurou a coleção original de templates padrão de documentos de requisitos do sistema.'
+      });
+
+      return sendJson(res, 200, { success: true, templates: updatedList });
+    }
+
+    if (pathname === '/api/templates') {
+      if (method === 'GET') {
+        return sendJson(res, 200, getFullDocumentTemplates());
+      }
+
+      if (method === 'POST') {
+        const actor = getActorFromReq(req);
+        if (!actor || (actor.role !== 'admin' && actor.role !== 'pm')) {
+          return sendJson(res, 403, { success: false, message: 'Apenas Gestores e Administradores podem criar novos templates.' });
+        }
+
+        const data = await parseJsonBody(req);
+        const name = (data.name || '').trim();
+        const docTitle = (data.docTitle || data.doc_title || 'RELATÓRIO DE REQUISITOS').trim();
+
+        if (!name) {
+          return sendJson(res, 400, { success: false, message: 'O nome do template é obrigatório.' });
+        }
+
+        const id = 'tpl_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+        const now = new Date().toISOString();
+        const isDefault = Boolean(data.isDefault || data.is_default);
+
+        if (isDefault) {
+          db.prepare('UPDATE document_templates SET is_default = 0').run();
+        }
+
+        db.prepare(`
+          INSERT INTO document_templates (
+            id, name, description, is_default, logo_url, doc_title, doc_subtitle,
+            header_institution, primary_color, footer_text, approval_terms,
+            signee_contratada_title, signee_contratante_title,
+            include_user_story, include_acceptance_criteria, include_qa_evidence,
+            include_signatures, include_kpis, include_status_banner,
+            created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          id,
+          name,
+          (data.description || '').trim(),
+          isDefault ? 1 : 0,
+          data.logoUrl || data.logo_url || null,
+          docTitle,
+          (data.docSubtitle || data.doc_subtitle || '').trim(),
+          (data.headerInstitution || data.header_institution || '').trim(),
+          (data.primaryColor || data.primary_color || '#0284c7').trim(),
+          (data.footerText || data.footer_text || '').trim(),
+          (data.approvalTerms || data.approval_terms || '').trim(),
+          (data.signeeContratadaTitle || data.signee_contratada_title || 'PELA CONTRATADA (DEVSQUAD)').trim(),
+          (data.signeeContratanteTitle || data.signee_contratante_title || 'PELA CONTRATANTE (CLIENTE)').trim(),
+          data.includeUserStory !== false ? 1 : 0,
+          data.includeAcceptanceCriteria !== false ? 1 : 0,
+          data.includeQaEvidence !== false ? 1 : 0,
+          data.includeSignatures !== false ? 1 : 0,
+          data.includeKpis !== false ? 1 : 0,
+          data.includeStatusBanner !== false ? 1 : 0,
+          now,
+          now
+        );
+
+        const created = db.prepare('SELECT * FROM document_templates WHERE id = ?').get(id);
+
+        logAudit({
+          entityType: 'template',
+          entityId: id,
+          entityTitle: name,
+          action: 'CREATE',
+          ...actor,
+          details: `Criou novo template de documento: "${name}" com cor ${created.primary_color}.`,
+          newState: created
+        });
+
+        const formatted = {
+          id: created.id,
+          name: created.name,
+          description: created.description || '',
+          isDefault: created.is_default === 1,
+          logoUrl: created.logo_url || '',
+          docTitle: created.doc_title,
+          docSubtitle: created.doc_subtitle || '',
+          headerInstitution: created.header_institution || '',
+          primaryColor: created.primary_color || '#0284c7',
+          footerText: created.footer_text || '',
+          approvalTerms: created.approval_terms || '',
+          signeeContratadaTitle: created.signee_contratada_title,
+          signeeContratanteTitle: created.signee_contratante_title,
+          includeUserStory: created.include_user_story === 1,
+          includeAcceptanceCriteria: created.include_acceptance_criteria === 1,
+          includeQaEvidence: created.include_qa_evidence === 1,
+          includeSignatures: created.include_signatures === 1,
+          includeKpis: created.include_kpis === 1,
+          includeStatusBanner: created.include_status_banner === 1,
+          createdAt: created.created_at,
+          updatedAt: created.updated_at
+        };
+
+        return sendJson(res, 201, { success: true, template: formatted });
+      }
+    }
+
+    if (pathname.startsWith('/api/templates/')) {
+      const parts = pathname.split('/');
+      const templateId = parts[3];
+      const action = parts[4];
+
+      if (action === 'set-default' && method === 'POST') {
+        const actor = getActorFromReq(req);
+        if (!actor || (actor.role !== 'admin' && actor.role !== 'pm')) {
+          return sendJson(res, 403, { success: false, message: 'Apenas Gestores e Administradores podem definir template padrão.' });
+        }
+        const existing = db.prepare('SELECT * FROM document_templates WHERE id = ?').get(templateId);
+        if (!existing) {
+          return sendJson(res, 404, { success: false, message: 'Template não encontrado.' });
+        }
+
+        db.prepare('UPDATE document_templates SET is_default = 0').run();
+        db.prepare('UPDATE document_templates SET is_default = 1, updated_at = ? WHERE id = ?').run(new Date().toISOString(), templateId);
+
+        logAudit({
+          entityType: 'template',
+          entityId: templateId,
+          entityTitle: existing.name,
+          action: 'SET_DEFAULT',
+          ...actor,
+          details: `Definiu o template "${existing.name}" como padrão para novas exportações.`
+        });
+
+        return sendJson(res, 200, { success: true, id: templateId });
+      }
+
+      if (method === 'GET') {
+        const row = db.prepare('SELECT * FROM document_templates WHERE id = ?').get(templateId);
+        if (!row) {
+          return sendJson(res, 404, { success: false, message: 'Template não encontrado.' });
+        }
+        return sendJson(res, 200, {
+          id: row.id,
+          name: row.name,
+          description: row.description || '',
+          isDefault: row.is_default === 1,
+          logoUrl: row.logo_url || '',
+          docTitle: row.doc_title,
+          docSubtitle: row.doc_subtitle || '',
+          headerInstitution: row.header_institution || '',
+          primaryColor: row.primary_color || '#0284c7',
+          footerText: row.footer_text || '',
+          approvalTerms: row.approval_terms || '',
+          signeeContratadaTitle: row.signee_contratada_title,
+          signeeContratanteTitle: row.signee_contratante_title,
+          includeUserStory: row.include_user_story === 1,
+          includeAcceptanceCriteria: row.include_acceptance_criteria === 1,
+          includeQaEvidence: row.include_qa_evidence === 1,
+          includeSignatures: row.include_signatures === 1,
+          includeKpis: row.include_kpis === 1,
+          includeStatusBanner: row.include_status_banner === 1,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at
+        });
+      }
+
+      if (method === 'PUT') {
+        const actor = getActorFromReq(req);
+        if (!actor || (actor.role !== 'admin' && actor.role !== 'pm')) {
+          return sendJson(res, 403, { success: false, message: 'Apenas Gestores e Administradores podem editar templates.' });
+        }
+
+        const existing = db.prepare('SELECT * FROM document_templates WHERE id = ?').get(templateId);
+        if (!existing) {
+          return sendJson(res, 404, { success: false, message: 'Template não encontrado.' });
+        }
+
+        const data = await parseJsonBody(req);
+        const name = (data.name || existing.name).trim();
+        const docTitle = (data.docTitle || data.doc_title || existing.doc_title).trim();
+        const now = new Date().toISOString();
+        const isDefault = typeof data.isDefault !== 'undefined' ? Boolean(data.isDefault) : (existing.is_default === 1);
+
+        if (isDefault) {
+          db.prepare('UPDATE document_templates SET is_default = 0 WHERE id != ?').run(templateId);
+        }
+
+        const logoUrl = typeof data.logoUrl !== 'undefined' ? (data.logoUrl || null) : existing.logo_url;
+
+        db.prepare(`
+          UPDATE document_templates
+          SET name = ?, description = ?, is_default = ?, logo_url = ?, doc_title = ?,
+              doc_subtitle = ?, header_institution = ?, primary_color = ?, footer_text = ?,
+              approval_terms = ?, signee_contratada_title = ?, signee_contratante_title = ?,
+              include_user_story = ?, include_acceptance_criteria = ?, include_qa_evidence = ?,
+              include_signatures = ?, include_kpis = ?, include_status_banner = ?, updated_at = ?
+          WHERE id = ?
+        `).run(
+          name,
+          typeof data.description !== 'undefined' ? (data.description || '').trim() : existing.description,
+          isDefault ? 1 : 0,
+          logoUrl,
+          docTitle,
+          typeof data.docSubtitle !== 'undefined' ? (data.docSubtitle || '').trim() : existing.doc_subtitle,
+          typeof data.headerInstitution !== 'undefined' ? (data.headerInstitution || '').trim() : existing.header_institution,
+          typeof data.primaryColor !== 'undefined' ? (data.primaryColor || '#0284c7').trim() : existing.primary_color,
+          typeof data.footerText !== 'undefined' ? (data.footerText || '').trim() : existing.footer_text,
+          typeof data.approvalTerms !== 'undefined' ? (data.approvalTerms || '').trim() : existing.approval_terms,
+          typeof data.signeeContratadaTitle !== 'undefined' ? (data.signeeContratadaTitle || '').trim() : existing.signee_contratada_title,
+          typeof data.signeeContratanteTitle !== 'undefined' ? (data.signeeContratanteTitle || '').trim() : existing.signee_contratante_title,
+          typeof data.includeUserStory !== 'undefined' ? (data.includeUserStory ? 1 : 0) : existing.include_user_story,
+          typeof data.includeAcceptanceCriteria !== 'undefined' ? (data.includeAcceptanceCriteria ? 1 : 0) : existing.include_acceptance_criteria,
+          typeof data.includeQaEvidence !== 'undefined' ? (data.includeQaEvidence ? 1 : 0) : existing.include_qa_evidence,
+          typeof data.includeSignatures !== 'undefined' ? (data.includeSignatures ? 1 : 0) : existing.include_signatures,
+          typeof data.includeKpis !== 'undefined' ? (data.includeKpis ? 1 : 0) : existing.include_kpis,
+          typeof data.includeStatusBanner !== 'undefined' ? (data.includeStatusBanner ? 1 : 0) : existing.include_status_banner,
+          now,
+          templateId
+        );
+
+        const updated = db.prepare('SELECT * FROM document_templates WHERE id = ?').get(templateId);
+
+        logAudit({
+          entityType: 'template',
+          entityId: templateId,
+          entityTitle: name,
+          action: 'UPDATE',
+          ...actor,
+          details: `Atualizou configurações do template: "${name}".`,
+          prevState: existing,
+          newState: updated
+        });
+
+        const formatted = {
+          id: updated.id,
+          name: updated.name,
+          description: updated.description || '',
+          isDefault: updated.is_default === 1,
+          logoUrl: updated.logo_url || '',
+          docTitle: updated.doc_title,
+          docSubtitle: updated.doc_subtitle || '',
+          headerInstitution: updated.header_institution || '',
+          primaryColor: updated.primary_color || '#0284c7',
+          footerText: updated.footer_text || '',
+          approvalTerms: updated.approval_terms || '',
+          signeeContratadaTitle: updated.signee_contratada_title,
+          signeeContratanteTitle: updated.signee_contratante_title,
+          includeUserStory: updated.include_user_story === 1,
+          includeAcceptanceCriteria: updated.include_acceptance_criteria === 1,
+          includeQaEvidence: updated.include_qa_evidence === 1,
+          includeSignatures: updated.include_signatures === 1,
+          includeKpis: updated.include_kpis === 1,
+          includeStatusBanner: updated.include_status_banner === 1,
+          createdAt: updated.created_at,
+          updatedAt: updated.updated_at
+        };
+
+        return sendJson(res, 200, { success: true, template: formatted });
+      }
+
+      if (method === 'DELETE') {
+        const actor = getActorFromReq(req);
+        if (!actor || (actor.role !== 'admin' && actor.role !== 'pm')) {
+          return sendJson(res, 403, { success: false, message: 'Apenas Gestores e Administradores podem excluir templates.' });
+        }
+
+        const totalCount = db.prepare('SELECT count(*) as count FROM document_templates').get().count;
+        if (totalCount <= 1) {
+          return sendJson(res, 400, { success: false, message: 'Não é possível excluir o único template restante no sistema.' });
+        }
+
+        const existing = db.prepare('SELECT * FROM document_templates WHERE id = ?').get(templateId);
+        if (!existing) {
+          return sendJson(res, 404, { success: false, message: 'Template não encontrado.' });
+        }
+
+        db.prepare('DELETE FROM document_templates WHERE id = ?').run(templateId);
+
+        // Se deletou o padrão, elege o primeiro restante como padrão
+        if (existing.is_default === 1) {
+          const firstRemaining = db.prepare('SELECT id FROM document_templates ORDER BY created_at ASC LIMIT 1').get();
+          if (firstRemaining) {
+            db.prepare('UPDATE document_templates SET is_default = 1 WHERE id = ?').run(firstRemaining.id);
+          }
+        }
+
+        logAudit({
+          entityType: 'template',
+          entityId: templateId,
+          entityTitle: existing.name,
+          action: 'DELETE',
+          ...actor,
+          details: `Excluiu o template de documento: "${existing.name}".`
+        });
+
+        return sendJson(res, 200, { success: true, id: templateId });
       }
     }
 

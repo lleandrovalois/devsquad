@@ -19,7 +19,8 @@ const initialSeedData = {
   requirements: [],
   tasks: [],
   testCases: [],
-  goals: []
+  goals: [],
+  documentTemplates: []
 };
 
 // ==============================================================================
@@ -194,6 +195,7 @@ class ALMStore {
         return true;
       });
     }
+    state.documentTemplates = Array.isArray(state.documentTemplates) ? state.documentTemplates : [];
     return state;
   }
 
@@ -227,6 +229,7 @@ class ALMStore {
       }
       if (Array.isArray(data.testCases)) this.state.testCases = data.testCases;
       if (Array.isArray(data.goals)) this.state.goals = data.goals;
+      if (Array.isArray(data.documentTemplates || data.templates)) this.state.documentTemplates = data.documentTemplates || data.templates;
       if (Array.isArray(data.auditLogs)) this.auditLogs = data.auditLogs;
       if (Array.isArray(data.careers) && typeof careerTracksData !== 'undefined') {
         data.careers.forEach(c => {
@@ -1096,6 +1099,158 @@ class ALMStore {
     }
     return this.state.goals;
   }
+
+  // --- CRUD: TEMPLATES DE DOCUMENTO & IDENTIDADE VISUAL ---
+  getDocumentTemplates() {
+    return Array.isArray(this.state.documentTemplates) ? this.state.documentTemplates : [];
+  }
+
+  getTemplateById(id) {
+    return (this.state.documentTemplates || []).find(t => t.id === id);
+  }
+
+  getDefaultTemplate() {
+    const list = this.getDocumentTemplates();
+    return list.find(t => t.isDefault) || list[0] || null;
+  }
+
+  async createTemplate(templateData) {
+    const payload = {
+      name: templateData.name,
+      description: templateData.description || '',
+      isDefault: Boolean(templateData.isDefault),
+      logoUrl: templateData.logoUrl || '',
+      docTitle: templateData.docTitle,
+      docSubtitle: templateData.docSubtitle || '',
+      headerInstitution: templateData.headerInstitution || '',
+      primaryColor: templateData.primaryColor || '#0284c7',
+      footerText: templateData.footerText || '',
+      approvalTerms: templateData.approvalTerms || '',
+      signeeContratadaTitle: templateData.signeeContratadaTitle || 'PELA CONTRATADA (DEVSQUAD)',
+      signeeContratanteTitle: templateData.signeeContratanteTitle || 'PELA CONTRATANTE (CLIENTE)',
+      includeUserStory: templateData.includeUserStory !== false,
+      includeAcceptanceCriteria: templateData.includeAcceptanceCriteria !== false,
+      includeQaEvidence: templateData.includeQaEvidence !== false,
+      includeSignatures: templateData.includeSignatures !== false,
+      includeKpis: templateData.includeKpis !== false,
+      includeStatusBanner: templateData.includeStatusBanner !== false
+    };
+
+    if (typeof api !== 'undefined' && api.isOnline) {
+      const res = await api.apiRequest('/api/templates', 'POST', payload);
+      if (res && res.template) {
+        if (payload.isDefault) {
+          (this.state.documentTemplates || []).forEach(t => { t.isDefault = false; });
+        }
+        this.state.documentTemplates = this.state.documentTemplates || [];
+        this.state.documentTemplates.push(res.template);
+        this.saveState();
+        return res.template;
+      }
+    }
+
+    // Fallback Local
+    const id = 'tpl_' + Date.now();
+    const newTemplate = {
+      id,
+      ...payload,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    if (newTemplate.isDefault) {
+      (this.state.documentTemplates || []).forEach(t => { t.isDefault = false; });
+    }
+    this.state.documentTemplates = this.state.documentTemplates || [];
+    this.state.documentTemplates.push(newTemplate);
+    this.saveState();
+    return newTemplate;
+  }
+
+  async updateTemplate(id, templateData) {
+    if (typeof api !== 'undefined' && api.isOnline) {
+      const res = await api.apiRequest(`/api/templates/${id}`, 'PUT', templateData);
+      if (res && res.template) {
+        if (templateData.isDefault) {
+          (this.state.documentTemplates || []).forEach(t => { if (t.id !== id) t.isDefault = false; });
+        }
+        const idx = (this.state.documentTemplates || []).findIndex(t => t.id === id);
+        if (idx !== -1) {
+          this.state.documentTemplates[idx] = res.template;
+        } else {
+          this.state.documentTemplates.push(res.template);
+        }
+        this.saveState();
+        return res.template;
+      }
+    }
+
+    // Fallback Local
+    const idx = (this.state.documentTemplates || []).findIndex(t => t.id === id);
+    if (idx !== -1) {
+      if (templateData.isDefault) {
+        this.state.documentTemplates.forEach(t => { if (t.id !== id) t.isDefault = false; });
+      }
+      this.state.documentTemplates[idx] = {
+        ...this.state.documentTemplates[idx],
+        ...templateData,
+        updatedAt: new Date().toISOString()
+      };
+      this.saveState();
+      return this.state.documentTemplates[idx];
+    }
+    return null;
+  }
+
+  async deleteTemplate(id) {
+    const list = this.getDocumentTemplates();
+    if (list.length <= 1) {
+      return { success: false, message: 'Não é possível excluir o único template restante no sistema.' };
+    }
+
+    if (typeof api !== 'undefined' && api.isOnline) {
+      const res = await api.apiRequest(`/api/templates/${id}`, 'DELETE');
+      if (res && res.success) {
+        const deletedWasDefault = (this.getTemplateById(id) || {}).isDefault;
+        this.state.documentTemplates = (this.state.documentTemplates || []).filter(t => t.id !== id);
+        if (deletedWasDefault && this.state.documentTemplates.length > 0) {
+          this.state.documentTemplates[0].isDefault = true;
+        }
+        this.saveState();
+        return { success: true };
+      }
+      return res || { success: false, message: 'Erro ao excluir template.' };
+    }
+
+    const deletedWasDefault = (this.getTemplateById(id) || {}).isDefault;
+    this.state.documentTemplates = (this.state.documentTemplates || []).filter(t => t.id !== id);
+    if (deletedWasDefault && this.state.documentTemplates.length > 0) {
+      this.state.documentTemplates[0].isDefault = true;
+    }
+    this.saveState();
+    return { success: true };
+  }
+
+  async setDefaultTemplate(id) {
+    if (typeof api !== 'undefined' && api.isOnline) {
+      await api.apiRequest(`/api/templates/${id}/set-default`, 'POST');
+    }
+    (this.state.documentTemplates || []).forEach(t => {
+      t.isDefault = (t.id === id);
+    });
+    this.saveState();
+  }
+
+  async resetDefaultTemplates() {
+    if (typeof api !== 'undefined' && api.isOnline) {
+      const res = await api.apiRequest('/api/templates/reset-defaults', 'POST');
+      if (res && Array.isArray(res.templates)) {
+        this.state.documentTemplates = res.templates;
+        this.saveState();
+        return res.templates;
+      }
+    }
+    return this.getDocumentTemplates();
+  }
 }
 
 // Instância Global do Store
@@ -1146,7 +1301,8 @@ const RolePermissions = {
     canManageTeam: true,
     canManageGovernance: true,
     canManageGoals: true,
-    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing', 'governance', 'performance', 'goals', 'audit', 'career'],
+    canManageTemplates: true,
+    allowedViews: ['dashboard', 'projects', 'requirements', 'templates', 'kanban', 'team', 'testing', 'governance', 'performance', 'goals', 'audit', 'career'],
     allowedNewItems: ['project', 'task', 'req', 'test', 'member']
   },
   pm: {
@@ -1169,7 +1325,8 @@ const RolePermissions = {
     canCreateTest: true,
     canManageTeam: true,
     canManageGovernance: false,
-    allowedViews: ['dashboard', 'projects', 'requirements', 'kanban', 'team', 'testing', 'career'],
+    canManageTemplates: true,
+    allowedViews: ['dashboard', 'projects', 'requirements', 'templates', 'kanban', 'team', 'testing', 'career'],
     allowedNewItems: ['project', 'task', 'req', 'test', 'member']
   },
   dev: {
@@ -5804,9 +5961,62 @@ function openMeasurementReportModal() {
     clientSigneeInput.value = 'Product Owner / Fiscal do Contrato (Cliente)';
   }
 
+  // Popula seletor de templates de documento
+  const templateSelect = document.getElementById('measurement-template-select');
+  if (templateSelect) {
+    templateSelect.innerHTML = '';
+    const templates = store.getDocumentTemplates();
+    const defaultTpl = store.getDefaultTemplate();
+    templates.forEach(tpl => {
+      const opt = document.createElement('option');
+      opt.value = tpl.id;
+      opt.textContent = `${tpl.isDefault ? '⭐ ' : ''}${tpl.name} [${tpl.primaryColor}]`;
+      if (tpl.isDefault) opt.selected = true;
+      templateSelect.appendChild(opt);
+    });
+    if (defaultTpl && (!templateSelect.value || !store.getTemplateById(templateSelect.value))) {
+      templateSelect.value = defaultTpl.id;
+    }
+  }
+  updateMeasurementTemplateInfo();
+
   updateMeasurementReportPreview();
   openModal('modal-measurement-report');
 }
+
+function updateMeasurementTemplateInfo() {
+  const templateSelect = document.getElementById('measurement-template-select');
+  const infoBar = document.getElementById('measurement-template-info-bar');
+  if (!templateSelect || !infoBar) return;
+
+  const tplId = templateSelect.value;
+  const tpl = (tplId ? store.getTemplateById(tplId) : null) || store.getDefaultTemplate();
+  if (!tpl) {
+    infoBar.innerHTML = '';
+    return;
+  }
+
+  const primColor = tpl.primaryColor || '#0284c7';
+  const hasLogo = Boolean(tpl.logoUrl);
+
+  const pills = [
+    tpl.includeUserStory !== false ? '<span class="template-sec-pill active" title="História de Usuário visível">✓ US</span>' : '<span class="template-sec-pill inactive" title="História de Usuário oculta">✕ US</span>',
+    tpl.includeAcceptanceCriteria !== false ? '<span class="template-sec-pill active" title="Critérios BDD visíveis">✓ BDD</span>' : '<span class="template-sec-pill inactive" title="Critérios BDD ocultos">✕ BDD</span>',
+    tpl.includeQaEvidence !== false ? '<span class="template-sec-pill active" title="Evidências de QA visíveis">✓ QA</span>' : '<span class="template-sec-pill inactive" title="Evidências de QA ocultas">✕ QA</span>',
+    tpl.includeSignatures !== false ? '<span class="template-sec-pill active" title="Bloco de assinaturas visível">✓ Assinaturas</span>' : '<span class="template-sec-pill inactive" title="Bloco de assinaturas oculto">✕ Assinaturas</span>',
+    tpl.includeKpis !== false ? '<span class="template-sec-pill active" title="Quadro de KPIs visível">✓ KPIs</span>' : '<span class="template-sec-pill inactive" title="Quadro de KPIs oculto">✕ KPIs</span>'
+  ].join('');
+
+  infoBar.innerHTML = `
+    <span class="template-info-chip" style="display: inline-flex; align-items: center; gap: 5px;">
+      <span class="color-swatch-circle" style="background: ${primColor}; width: 11px; height: 11px;"></span>
+      <strong style="color: var(--text-main);">${escapeHtml(tpl.name)}</strong>
+    </span>
+    <span class="template-info-chip">${hasLogo ? '🖼️ Logotipo Ativo' : '🏢 Marca Padrão'}</span>
+    <span style="display: inline-flex; gap: 4px; flex-wrap: wrap;">${pills}</span>
+  `;
+}
+window.updateMeasurementTemplateInfo = updateMeasurementTemplateInfo;
 
 function populateMeasurementFeatures(projectId) {
   const featureSelect = document.getElementById('measurement-feature-select');
@@ -6001,6 +6211,34 @@ window.exportMeasurementReportPDF = function() {
   const featureLabel = (feature && feature !== 'all') ? feature : 'Todas as Features do Escopo';
   const issueDate = new Date().toLocaleString('pt-BR');
 
+  // Resgata o template de documento selecionado
+  const templateId = document.getElementById('measurement-template-select')?.value;
+  const template = (templateId ? store.getTemplateById(templateId) : null) || store.getDefaultTemplate() || {
+    name: 'Padrão Corporativo',
+    primaryColor: '#0284c7',
+    docTitle: 'RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS',
+    docSubtitle: 'Artefato Oficial de Comprovação de Entrega Técnica para Fins de Faturamento & Aceite',
+    headerInstitution: 'DEVSQUAD ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE',
+    footerText: 'DevSquad ALM Pro — Artefato Formal de Medição & Aceite Técnico',
+    approvalTerms: 'Pelo presente instrumento, a CONTRATANTE atesta expressamente o pleno recebimento, homologação técnica e aceite formal dos requisitos de software e critérios de aceite descritos neste Relatório de Medição correspondentes à Feature / Marco acima especificado. Declara que os entregáveis foram devidamente verificados e aprovados pelo controle de qualidade (QA), em conformidade com as cláusulas contratuais, autorizando a emissão da Nota Fiscal de Serviços e o respectivo faturamento financeiro.',
+    signeeContratadaTitle: 'PELA CONTRATADA (DEVSQUAD)',
+    signeeContratanteTitle: 'PELA CONTRATANTE (CLIENTE)',
+    includeUserStory: true,
+    includeAcceptanceCriteria: true,
+    includeQaEvidence: true,
+    includeSignatures: true,
+    includeKpis: true,
+    includeStatusBanner: true
+  };
+
+  function parseHexToRgb(hex) {
+    let clean = (hex || '#0284c7').replace('#', '').trim();
+    if (clean.length === 3) clean = clean.split('').map(c => c + c).join('');
+    const num = parseInt(clean, 16);
+    return [ (num >> 16) & 255, (num >> 8) & 255, num & 255 ];
+  }
+  const primRgb = parseHexToRgb(template.primaryColor);
+
   const doc = new jsPDFClass({
     orientation: 'portrait',
     unit: 'pt',
@@ -6010,27 +6248,37 @@ window.exportMeasurementReportPDF = function() {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
-  // 1. Cabeçalho Principal (Deep Slate & Sky Blue)
+  // 1. Cabeçalho Principal (com cor primária e logo customizáveis)
   doc.setFillColor(15, 23, 42);
   doc.rect(0, 0, pageWidth, 64, 'F');
 
-  doc.setFillColor(14, 165, 233);
+  doc.setFillColor(primRgb[0], primRgb[1], primRgb[2]);
   doc.rect(0, 61, pageWidth, 3, 'F');
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(56, 189, 248);
-  doc.text('DEVSQUAD ALM PRO — PLATAFORMA DE ENGENHARIA & QUALIDADE', 36, 24);
+  let headerTextX = 36;
+  if (template.logoUrl) {
+    try {
+      doc.addImage(template.logoUrl, 'PNG', 36, 13, 38, 38, undefined, 'FAST');
+      headerTextX = 84;
+    } catch(e) {
+      console.warn('Erro ao inserir logo no PDF:', e);
+    }
+  }
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
+  doc.setFontSize(7.8);
+  doc.setTextColor(primRgb[0], primRgb[1], primRgb[2]);
+  doc.text((template.headerInstitution || 'DEVSQUAD ALM PRO — PLATAFORMA DE ENGENHARIA').slice(0, 75), headerTextX, 23);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(template.docTitle && template.docTitle.length > 55 ? 10.5 : 12.5);
   doc.setTextColor(255, 255, 255);
-  doc.text('RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS', 36, 42);
+  doc.text((template.docTitle || 'RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS').slice(0, 65), headerTextX, 40);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
+  doc.setFontSize(7.2);
   doc.setTextColor(148, 163, 184);
-  doc.text('Artefato Oficial de Comprovação de Entrega Técnica para Fins de Faturamento & Aceite', 36, 54);
+  doc.text((template.docSubtitle || 'Artefato Oficial de Comprovação de Entrega Técnica').slice(0, 85), headerTextX, 52);
 
   // 2. Quadro de Metadados do Projeto, Contrato e Partes
   doc.setFillColor(248, 250, 252);
@@ -6082,74 +6330,120 @@ window.exportMeasurementReportPDF = function() {
   doc.setFont('helvetica', 'normal');
   doc.text(clientSignee.slice(0, 26), 405, 137);
 
-  // 3. Indicadores de Medição & Aderência (Mini Cards)
-  const tileY = 158;
-  const tileH = 38;
-  const tileW = (pageWidth - 72 - 18) / 4;
+  // 3. Indicadores de Medição & Aderência (Mini Cards - se ativado no template)
+  let currentY = 158;
+  if (template.includeKpis !== false) {
+    const tileH = 38;
+    const tileW = (pageWidth - 72 - 18) / 4;
 
-  const metricsData = [
-    { label: 'TOTAL REQUISITOS', val: `${totalInScope}`, color: [30, 41, 59] },
-    { label: 'VALIDADOS QA', val: `${qaApprovedCount}`, color: [16, 185, 129] },
-    { label: 'CRITÉRIOS BDD', val: `${bddCount}`, color: [14, 165, 233] },
-    { label: 'TAXA CONCLUSÃO', val: `${completionRate}%`, color: [168, 85, 247] }
-  ];
+    const metricsData = [
+      { label: 'TOTAL REQUISITOS', val: `${totalInScope}`, color: [30, 41, 59] },
+      { label: 'VALIDADOS QA', val: `${qaApprovedCount}`, color: [16, 185, 129] },
+      { label: 'CRITÉRIOS BDD', val: `${bddCount}`, color: primRgb },
+      { label: 'TAXA CONCLUSÃO', val: `${completionRate}%`, color: [168, 85, 247] }
+    ];
 
-  metricsData.forEach((m, idx) => {
-    const x = 36 + idx * (tileW + 6);
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(x, tileY, tileW, tileH, 3, 3, 'F');
-    doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(x, tileY, tileW, tileH, 3, 3, 'S');
+    metricsData.forEach((m, idx) => {
+      const x = 36 + idx * (tileW + 6);
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(x, currentY, tileW, tileH, 3, 3, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(x, currentY, tileW, tileH, 3, 3, 'S');
 
-    doc.setFontSize(6.5);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(100, 116, 139);
-    doc.text(m.label, x + tileW / 2, tileY + 12, { align: 'center' });
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(100, 116, 139);
+      doc.text(m.label, x + tileW / 2, currentY + 12, { align: 'center' });
 
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(m.color[0], m.color[1], m.color[2]);
-    doc.text(m.val, x + tileW / 2, tileY + 30, { align: 'center' });
-  });
-
-  // Banner de Status da Medição
-  const statusBannerY = 202;
-  const is100 = completionRate === 100;
-  if (is100) {
-    doc.setFillColor(236, 253, 245);
-    doc.setDrawColor(16, 185, 129);
-    doc.roundedRect(36, statusBannerY, pageWidth - 72, 20, 3, 3, 'FD');
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(5, 150, 105);
-    doc.text('STATUS: 100% HOMOLOGADO & APROVADO PELO QA — APTO PARA EMISSÃO DE FATURA & ACEITE DEFINITIVO', pageWidth / 2, statusBannerY + 13, { align: 'center' });
-  } else {
-    doc.setFillColor(254, 243, 199);
-    doc.setDrawColor(245, 158, 11);
-    doc.roundedRect(36, statusBannerY, pageWidth - 72, 20, 3, 3, 'FD');
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(180, 83, 9);
-    doc.text(`STATUS: MEDIÇÃO PARCIAL (${completionRate}% HOMOLOGADO) — COMPROVAÇÃO DE ENTREGA PROPORCIONAL`, pageWidth / 2, statusBannerY + 13, { align: 'center' });
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(m.color[0], m.color[1], m.color[2]);
+      doc.text(m.val, x + tileW / 2, currentY + 30, { align: 'center' });
+    });
+    currentY += 44;
   }
 
-  // 4. Tabela Estruturada de Requisitos & Critérios de Aceite via autoTable
-  const head = [['Identificador', 'Especificação & História de Usuário', 'Critérios de Aceite (BDD / Cenários)', 'Status de Validação QA']];
+  // Banner de Status da Medição (se ativado no template)
+  if (template.includeStatusBanner !== false) {
+    const is100 = completionRate === 100;
+    if (is100) {
+      doc.setFillColor(236, 253, 245);
+      doc.setDrawColor(16, 185, 129);
+      doc.roundedRect(36, currentY, pageWidth - 72, 20, 3, 3, 'FD');
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(5, 150, 105);
+      doc.text('STATUS: 100% HOMOLOGADO & APROVADO PELO QA — APTO PARA EMISSÃO DE FATURA & ACEITE DEFINITIVO', pageWidth / 2, currentY + 13, { align: 'center' });
+    } else {
+      doc.setFillColor(254, 243, 199);
+      doc.setDrawColor(245, 158, 11);
+      doc.roundedRect(36, currentY, pageWidth - 72, 20, 3, 3, 'FD');
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(180, 83, 9);
+      doc.text(`STATUS: MEDIÇÃO PARCIAL (${completionRate}% HOMOLOGADO) — COMPROVAÇÃO DE ENTREGA PROPORCIONAL`, pageWidth / 2, currentY + 13, { align: 'center' });
+    }
+    currentY += 26;
+  }
+
+  // 4. Tabela Estruturada de Requisitos & Critérios de Aceite via autoTable (Colunas Dinâmicas)
+  const headRow = ['Identificador'];
+  headRow.push(template.includeUserStory !== false ? 'Especificação & História de Usuário' : 'Especificação do Requisito');
+  if (template.includeAcceptanceCriteria !== false) {
+    headRow.push('Critérios de Aceite (BDD / Cenários)');
+  }
+  if (template.includeQaEvidence !== false) {
+    headRow.push('Status de Validação QA');
+  }
+
+  const head = [headRow];
   const body = exportItems.map(item => {
     const r = item.req;
     const v = item.val;
     const idCell = `${r.code || 'RF'}\n${r.type === 'non-functional' ? 'RNF' : 'RF'}\n[${r.moscow || 'Must'}]`;
-    const specCell = `${r.title || '-'}\n\nUser Story:\n${r.userStory ? r.userStory : 'Não informada'}`;
-    const bddCell = r.bdd && r.bdd.trim() ? r.bdd.trim() : 'Critérios de aceite não documentados formalmente.';
-    const qaCell = `${v.isValidated ? 'VALIDADO QA\nAprovado' : 'EM HOMOLOGAÇÃO'}\n\n${v.detailNote}\nDemandas: ${v.linkedTasks.length}\nTestes: ${v.linkedTests.length}`;
-    return [idCell, specCell, bddCell, qaCell];
+    
+    let specCell = r.title || '-';
+    if (template.includeUserStory !== false) {
+      specCell += `\n\nUser Story:\n${r.userStory ? r.userStory : 'Não informada'}`;
+    }
+
+    const row = [idCell, specCell];
+
+    if (template.includeAcceptanceCriteria !== false) {
+      const bddCell = r.bdd && r.bdd.trim() ? r.bdd.trim() : 'Critérios de aceite não documentados formalmente.';
+      row.push(bddCell);
+    }
+
+    if (template.includeQaEvidence !== false) {
+      const qaCell = `${v.isValidated ? 'VALIDADO QA\nAprovado' : 'EM HOMOLOGAÇÃO'}\n\n${v.detailNote}\nDemandas: ${v.linkedTasks.length}\nTestes: ${v.linkedTests.length}`;
+      row.push(qaCell);
+    }
+
+    return row;
   });
+
+  const colStyles = {
+    0: { cellWidth: 70, fontStyle: 'bold' }
+  };
+  if (template.includeAcceptanceCriteria !== false && template.includeQaEvidence !== false) {
+    colStyles[1] = { cellWidth: 155 };
+    colStyles[2] = { cellWidth: 178 };
+    colStyles[3] = { cellWidth: 120 };
+  } else if (template.includeAcceptanceCriteria !== false) {
+    colStyles[1] = { cellWidth: 230 };
+    colStyles[2] = { cellWidth: 223 };
+  } else if (template.includeQaEvidence !== false) {
+    colStyles[1] = { cellWidth: 310 };
+    colStyles[2] = { cellWidth: 143 };
+  } else {
+    colStyles[1] = { cellWidth: 453 };
+  }
 
   if (typeof doc.autoTable === 'function') {
     doc.autoTable({
       head: head,
       body: body,
-      startY: 228,
+      startY: currentY + 6,
       margin: { top: 70, bottom: 40, left: 36, right: 36 },
       theme: 'grid',
       styles: {
@@ -6162,7 +6456,7 @@ window.exportMeasurementReportPDF = function() {
         font: 'helvetica'
       },
       headStyles: {
-        fillColor: [30, 41, 59],
+        fillColor: primRgb,
         textColor: [248, 250, 252],
         fontStyle: 'bold',
         fontSize: 7.8
@@ -6170,12 +6464,7 @@ window.exportMeasurementReportPDF = function() {
       alternateRowStyles: {
         fillColor: [248, 250, 252]
       },
-      columnStyles: {
-        0: { cellWidth: 70, fontStyle: 'bold' },
-        1: { cellWidth: 155 },
-        2: { cellWidth: 178 },
-        3: { cellWidth: 120 }
-      }
+      columnStyles: colStyles
     });
 
     let finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 16 : 450;
@@ -6198,39 +6487,41 @@ window.exportMeasurementReportPDF = function() {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.8);
     doc.setTextColor(71, 85, 105);
-    const termo = 'Pelo presente instrumento, a CONTRATANTE atesta expressamente o pleno recebimento, homologação técnica e aceite formal dos requisitos de software e critérios de aceite descritos neste Relatório de Medição correspondentes à Feature / Marco acima especificado. Declara que os entregáveis foram devidamente verificados e aprovados pelo controle de qualidade (QA), em conformidade com as cláusulas contratuais, autorizando a emissão da Nota Fiscal de Serviços e o respectivo faturamento financeiro.';
+    const termo = template.approvalTerms || 'Pelo presente instrumento, a CONTRATANTE atesta expressamente o pleno recebimento, homologação técnica e aceite formal dos requisitos de software e critérios de aceite descritos neste Relatório de Medição correspondentes à Feature / Marco acima especificado. Declara que os entregáveis foram devidamente verificados e aprovados pelo controle de qualidade (QA), em conformidade com as cláusulas contratuais, autorizando a emissão da Nota Fiscal de Serviços e o respectivo faturamento financeiro.';
     const splitTermo = doc.splitTextToSize(termo, pageWidth - 92);
     doc.text(splitTermo, 46, finalY + 24);
 
-    // 6. Campos Formais de Assinatura (Contratada e Contratante)
-    const signY = finalY + 48 + 36;
-    doc.setDrawColor(148, 163, 184);
+    // 6. Campos Formais de Assinatura (se ativado no template)
+    if (template.includeSignatures !== false) {
+      const signY = finalY + 48 + 36;
+      doc.setDrawColor(148, 163, 184);
 
-    // Assinatura Contratada
-    doc.line(48, signY, 260, signY);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(15, 23, 42);
-    doc.text('PELA CONTRATADA (DEVSQUAD)', 154, signY + 11, { align: 'center' });
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(71, 85, 105);
-    doc.text(managerName, 154, signY + 21, { align: 'center' });
-    doc.text('Gestor de Projetos / Scrum Master', 154, signY + 30, { align: 'center' });
-    doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, 154, signY + 39, { align: 'center' });
+      // Assinatura Contratada
+      doc.line(48, signY, 260, signY);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(template.signeeContratadaTitle || 'PELA CONTRATADA (DEVSQUAD)', 154, signY + 11, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(71, 85, 105);
+      doc.text(managerName, 154, signY + 21, { align: 'center' });
+      doc.text('Gestor de Projetos / Scrum Master', 154, signY + 30, { align: 'center' });
+      doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, 154, signY + 39, { align: 'center' });
 
-    // Assinatura Contratante
-    doc.line(335, signY, 547, signY);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(15, 23, 42);
-    doc.text('PELA CONTRATANTE (CLIENTE)', 441, signY + 11, { align: 'center' });
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(71, 85, 105);
-    doc.text(clientSignee, 441, signY + 21, { align: 'center' });
-    doc.text('Fiscal do Contrato / Responsável pelo Aceite', 441, signY + 30, { align: 'center' });
-    doc.text('Data: _____ / _____ / _________', 441, signY + 39, { align: 'center' });
+      // Assinatura Contratante
+      doc.line(335, signY, 547, signY);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(template.signeeContratanteTitle || 'PELA CONTRATANTE (CLIENTE)', 441, signY + 11, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(71, 85, 105);
+      doc.text(clientSignee, 441, signY + 21, { align: 'center' });
+      doc.text('Fiscal do Contrato / Responsável pelo Aceite', 441, signY + 30, { align: 'center' });
+      doc.text('Data: _____ / _____ / _________', 441, signY + 39, { align: 'center' });
+    }
 
     // Rodapé de Paginação e Autenticidade
     const totalPages = doc.internal.getNumberOfPages();
@@ -6239,7 +6530,7 @@ window.exportMeasurementReportPDF = function() {
       doc.setPage(i);
       doc.setFontSize(6.8);
       doc.setTextColor(148, 163, 184);
-      doc.text('DevSquad ALM Pro — Artefato Formal de Medição & Aceite Técnico de Entrega', 36, pageHeight - 16);
+      doc.text(template.footerText || 'DevSquad ALM Pro — Artefato Formal de Medição & Aceite Técnico de Entrega', 36, pageHeight - 16);
       doc.text(`Doc Ref: ${docHash} | Página ${i} de ${totalPages}`, pageWidth - 36, pageHeight - 16, { align: 'right' });
     }
   }
@@ -6248,7 +6539,7 @@ window.exportMeasurementReportPDF = function() {
   const cleanFeature = featureLabel.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
   const filename = `medicao_${project.code || 'proj'}_${cleanFeature}_${dateStr}.pdf`;
   doc.save(filename);
-  showToast(`Relatório Formal de Medição gerado com sucesso! Arquivo: ${filename}`);
+  showToast(`Relatório Formal de Medição gerado com sucesso via template "${template.name}"! Arquivo: ${filename}`);
 };
 
 window.printMeasurementReport = function() {
@@ -6300,28 +6591,73 @@ window.printMeasurementReport = function() {
   const featureLabel = (feature && feature !== 'all') ? feature : 'Todas as Features do Escopo';
   const issueDate = new Date().toLocaleString('pt-BR');
 
-  const rowsHtml = exportItems.map(item => `
-    <tr>
+  // Resgata o template de documento selecionado
+  const templateId = document.getElementById('measurement-template-select')?.value;
+  const template = (templateId ? store.getTemplateById(templateId) : null) || store.getDefaultTemplate() || {
+    name: 'Padrão Corporativo',
+    primaryColor: '#0284c7',
+    docTitle: 'RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS',
+    docSubtitle: 'Artefato Oficial de Comprovação de Entrega Técnica para Fins de Faturamento & Aceite',
+    headerInstitution: 'DEVSQUAD ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE',
+    footerText: 'DevSquad ALM Pro — Artefato Formal de Medição & Aceite Técnico',
+    approvalTerms: 'Pelo presente instrumento, a CONTRATANTE atesta expressamente o pleno recebimento, homologação técnica e aceite formal dos requisitos de software e critérios de aceite descritos neste Relatório de Medição correspondentes à Feature / Marco acima especificado. Declara que os entregáveis foram devidamente verificados e aprovados pelo controle de qualidade (QA), em conformidade com as especificações contratadas, autorizando a emissão da respectiva Nota Fiscal de Serviços para faturamento.',
+    signeeContratadaTitle: 'PELA CONTRATADA (DEVSQUAD)',
+    signeeContratanteTitle: 'PELA CONTRATANTE (CLIENTE)',
+    includeUserStory: true,
+    includeAcceptanceCriteria: true,
+    includeQaEvidence: true,
+    includeSignatures: true,
+    includeKpis: true,
+    includeStatusBanner: true
+  };
+
+  const primColor = template.primaryColor || '#0284c7';
+
+  const rowsHtml = exportItems.map(item => {
+    let cellsHtml = `
       <td style="font-weight: 700; width: 85px;">
         <div>${escapeHtml(item.req.code)}</div>
         <small style="color: #64748b;">${item.req.type === 'non-functional' ? 'RNF' : 'RF'} [${item.req.moscow || 'Must'}]</small>
       </td>
       <td>
         <strong>${escapeHtml(item.req.title)}</strong>
-        <div style="margin-top: 4px; font-size: 0.8rem; color: #475569;">
-          <em>User Story:</em> ${escapeHtml(item.req.userStory || 'Não documentada')}
-        </div>
+        ${template.includeUserStory !== false ? `
+          <div style="margin-top: 4px; font-size: 0.8rem; color: #475569;">
+            <em>User Story:</em> ${escapeHtml(item.req.userStory || 'Não documentada')}
+          </div>
+        ` : ''}
       </td>
-      <td style="white-space: pre-wrap; font-family: monospace; font-size: 0.78rem; color: #1e293b; background: #f8fafc;">${escapeHtml(item.req.bdd || 'Critérios não documentados.')}</td>
-      <td style="width: 140px;">
-        <span style="font-weight: 700; color: ${item.val.isValidated ? '#059669' : '#d97706'};">
-          ${item.val.isValidated ? '✓ VALIDADO QA' : 'EM HOMOLOGAÇÃO'}
-        </span>
-        <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">${escapeHtml(item.val.detailNote)}</div>
-        <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">Demandas: ${item.val.linkedTasks.length} | Testes: ${item.val.linkedTests.length}</div>
-      </td>
+    `;
+
+    if (template.includeAcceptanceCriteria !== false) {
+      cellsHtml += `
+        <td style="white-space: pre-wrap; font-family: monospace; font-size: 0.78rem; color: #1e293b; background: #f8fafc;">${escapeHtml(item.req.bdd || 'Critérios não documentados.')}</td>
+      `;
+    }
+
+    if (template.includeQaEvidence !== false) {
+      cellsHtml += `
+        <td style="width: 140px;">
+          <span style="font-weight: 700; color: ${item.val.isValidated ? '#059669' : '#d97706'};">
+            ${item.val.isValidated ? '✓ VALIDADO QA' : 'EM HOMOLOGAÇÃO'}
+          </span>
+          <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">${escapeHtml(item.val.detailNote)}</div>
+          <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">Demandas: ${item.val.linkedTasks.length} | Testes: ${item.val.linkedTests.length}</div>
+        </td>
+      `;
+    }
+
+    return `<tr>${cellsHtml}</tr>`;
+  }).join('');
+
+  let tableHeaderHtml = `
+    <tr>
+      <th>Identificador</th>
+      <th>${template.includeUserStory !== false ? 'Especificação & User Story' : 'Especificação do Requisito'}</th>
+      ${template.includeAcceptanceCriteria !== false ? '<th>Critérios de Aceite (BDD)</th>' : ''}
+      ${template.includeQaEvidence !== false ? '<th>Status de Validação QA</th>' : ''}
     </tr>
-  `).join('');
+  `;
 
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
@@ -6334,12 +6670,14 @@ window.printMeasurementReport = function() {
     <html lang="pt-BR">
     <head>
       <meta charset="UTF-8">
-      <title>Relatório de Medição & Aceite - ${escapeHtml(project.name)}</title>
+      <title>${escapeHtml(template.docTitle)} - ${escapeHtml(project.name)}</title>
       <style>
         @page { size: A4 portrait; margin: 15mm; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #0f172a; margin: 0; padding: 20px; font-size: 12px; line-height: 1.4; background: #fff; }
-        .header { border-bottom: 3px solid #0ea5e9; padding-bottom: 12px; margin-bottom: 15px; }
-        .brand { font-size: 11px; font-weight: 800; color: #0284c7; text-transform: uppercase; letter-spacing: 0.5px; }
+        .header { border-bottom: 3px solid ${primColor}; padding-bottom: 12px; margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between; }
+        .header-content { flex: 1; }
+        .header-logo { max-height: 48px; max-width: 120px; object-fit: contain; margin-left: 15px; }
+        .brand { font-size: 11px; font-weight: 800; color: ${primColor}; text-transform: uppercase; letter-spacing: 0.5px; }
         .title { font-size: 18px; font-weight: 800; color: #0f172a; margin: 4px 0 2px 0; }
         .subtitle { font-size: 11px; color: #64748b; margin: 0; }
         .meta-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; font-size: 11px; }
@@ -6351,7 +6689,7 @@ window.printMeasurementReport = function() {
         .kpi-val { font-size: 18px; font-weight: 800; margin-top: 2px; }
         .banner { background: #ecfdf5; border: 1px solid #10b981; color: #065f46; border-radius: 6px; padding: 8px 12px; font-weight: 700; font-size: 11px; text-align: center; margin-bottom: 15px; }
         table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; }
-        th { background: #1e293b; color: #fff; font-weight: 700; text-align: left; padding: 8px; border: 1px solid #1e293b; font-size: 10px; }
+        th { background: ${primColor}; color: #fff; font-weight: 700; text-align: left; padding: 8px; border: 1px solid ${primColor}; font-size: 10px; }
         td { border: 1px solid #e2e8f0; padding: 8px; vertical-align: top; }
         tr:nth-child(even) td { background: #fcfdfe; }
         .termo-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; margin-bottom: 30px; font-size: 10px; color: #334155; }
@@ -6368,13 +6706,16 @@ window.printMeasurementReport = function() {
     </head>
     <body>
       <div class="no-print" style="margin-bottom: 15px; text-align: right;">
-        <button onclick="window.print()" style="padding: 8px 16px; background: #0284c7; color: #fff; border: none; border-radius: 4px; font-weight: 700; cursor: pointer;">🖨️ Imprimir / Salvar em PDF</button>
+        <button onclick="window.print()" style="padding: 8px 16px; background: ${primColor}; color: #fff; border: none; border-radius: 4px; font-weight: 700; cursor: pointer;">🖨️ Imprimir / Salvar em PDF</button>
       </div>
 
       <div class="header">
-        <div class="brand">DevSquad ALM Pro — Plataforma Integrada de Engenharia de Software</div>
-        <h1 class="title">RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS</h1>
-        <p class="subtitle">Artefato Oficial de Comprovação de Entrega Técnica para Fins de Faturamento & Aceite</p>
+        <div class="header-content">
+          <div class="brand">${escapeHtml(template.headerInstitution || 'DevSquad ALM Pro')}</div>
+          <h1 class="title">${escapeHtml(template.docTitle)}</h1>
+          <p class="subtitle">${escapeHtml(template.docSubtitle || '')}</p>
+        </div>
+        ${template.logoUrl ? `<img src="${template.logoUrl}" class="header-logo" alt="Logo">` : ''}
       </div>
 
       <div class="meta-box">
@@ -6392,39 +6733,38 @@ window.printMeasurementReport = function() {
         </div>
       </div>
 
-      <div class="kpi-row">
-        <div class="kpi-box">
-          <div class="kpi-title">Total Requisitos</div>
-          <div class="kpi-val" style="color: #0f172a;">${totalInScope}</div>
+      ${template.includeKpis !== false ? `
+        <div class="kpi-row">
+          <div class="kpi-box">
+            <div class="kpi-title">Total Requisitos</div>
+            <div class="kpi-val" style="color: #0f172a;">${totalInScope}</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">Validados QA</div>
+            <div class="kpi-val" style="color: #059669;">${qaApprovedCount}</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">Critérios BDD</div>
+            <div class="kpi-val" style="color: ${primColor};">${bddCount}</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">Taxa Conclusão</div>
+            <div class="kpi-val" style="color: #9333ea;">${completionRate}%</div>
+          </div>
         </div>
-        <div class="kpi-box">
-          <div class="kpi-title">Validados QA</div>
-          <div class="kpi-val" style="color: #059669;">${qaApprovedCount}</div>
-        </div>
-        <div class="kpi-box">
-          <div class="kpi-title">Critérios BDD</div>
-          <div class="kpi-val" style="color: #0284c7;">${bddCount}</div>
-        </div>
-        <div class="kpi-box">
-          <div class="kpi-title">Taxa Conclusão</div>
-          <div class="kpi-val" style="color: #9333ea;">${completionRate}%</div>
-        </div>
-      </div>
+      ` : ''}
 
-      <div class="banner">
-        ${completionRate === 100 
-          ? 'STATUS: 100% HOMOLOGADO & APROVADO PELO QA — APTO PARA FATURAMENTO INTEGRAL & ACEITE DEFINITIVO' 
-          : `STATUS: MEDIÇÃO PARCIAL (${completionRate}% HOMOLOGADO) — COMPROVAÇÃO DE ENTREGA PROPORCIONAL`}
-      </div>
+      ${template.includeStatusBanner !== false ? `
+        <div class="banner">
+          ${completionRate === 100 
+            ? 'STATUS: 100% HOMOLOGADO & APROVADO PELO QA — APTO PARA FATURAMENTO INTEGRAL & ACEITE DEFINITIVO' 
+            : `STATUS: MEDIÇÃO PARCIAL (${completionRate}% HOMOLOGADO) — COMPROVAÇÃO DE ENTREGA PROPORCIONAL`}
+        </div>
+      ` : ''}
 
       <table>
         <thead>
-          <tr>
-            <th>Identificador</th>
-            <th>Especificação & User Story</th>
-            <th>Critérios de Aceite (BDD: Dado / Quando / Então)</th>
-            <th>Status de Validação QA</th>
-          </tr>
+          ${tableHeaderHtml}
         </thead>
         <tbody>
           ${rowsHtml}
@@ -6433,28 +6773,30 @@ window.printMeasurementReport = function() {
 
       <div class="termo-box">
         <strong>TERMO FORMAL DE HOMOLOGAÇÃO, ACEITE E AUTORIZAÇÃO DE FATURAMENTO</strong><br>
-        Pelo presente instrumento, a CONTRATANTE atesta expressamente o pleno recebimento, homologação técnica e aceite formal dos requisitos de software e critérios de aceite descritos neste Relatório de Medição correspondentes à Feature / Marco acima especificado. Declara que os entregáveis foram devidamente verificados e aprovados pelo controle de qualidade (QA), em conformidade com as especificações contratadas, autorizando a emissão da respectiva Nota Fiscal de Serviços para faturamento.
+        ${escapeHtml(template.approvalTerms)}
       </div>
 
-      <div class="signatures">
-        <div>
-          <div class="sig-line"></div>
-          <div class="sig-title">PELA CONTRATADA (DEVSQUAD)</div>
-          <div class="sig-sub">${escapeHtml(managerName)}</div>
-          <div class="sig-sub">Gestor de Projetos / Scrum Master</div>
-          <div class="sig-sub">Data: ${new Date().toLocaleDateString('pt-BR')}</div>
+      ${template.includeSignatures !== false ? `
+        <div class="signatures">
+          <div>
+            <div class="sig-line"></div>
+            <div class="sig-title">${escapeHtml(template.signeeContratadaTitle || 'PELA CONTRATADA (DEVSQUAD)')}</div>
+            <div class="sig-sub">${escapeHtml(managerName)}</div>
+            <div class="sig-sub">Gestor de Projetos / Scrum Master</div>
+            <div class="sig-sub">Data: ${new Date().toLocaleDateString('pt-BR')}</div>
+          </div>
+          <div>
+            <div class="sig-line"></div>
+            <div class="sig-title">${escapeHtml(template.signeeContratanteTitle || 'PELA CONTRATANTE (CLIENTE)')}</div>
+            <div class="sig-sub">${escapeHtml(clientSignee)}</div>
+            <div class="sig-sub">Fiscal do Contrato / PO Cliente</div>
+            <div class="sig-sub">Data: _____ / _____ / _________</div>
+          </div>
         </div>
-        <div>
-          <div class="sig-line"></div>
-          <div class="sig-title">PELA CONTRATANTE (CLIENTE)</div>
-          <div class="sig-sub">${escapeHtml(clientSignee)}</div>
-          <div class="sig-sub">Fiscal do Contrato / PO Cliente</div>
-          <div class="sig-sub">Data: _____ / _____ / _________</div>
-        </div>
-      </div>
+      ` : ''}
 
       <div class="footer">
-        <span>DevSquad ALM Pro — Artefato Formal de Medição & Aceite Técnico</span>
+        <span>${escapeHtml(template.footerText || 'DevSquad ALM Pro — Artefato Formal de Medição & Aceite Técnico')}</span>
         <span>Código de Autenticidade: DSQ-MED-${Date.now().toString(36).toUpperCase()}</span>
       </div>
     </body>
@@ -6890,6 +7232,14 @@ function updateSidebarCounters() {
     const trackCount = typeof careerTracksData !== 'undefined' ? Object.keys(careerTracksData).length : 5;
     careerCounter.textContent = `${trackCount} Trilhas`;
   }
+  const tplCounter = document.getElementById('counter-nav-templates');
+  if (tplCounter && typeof store !== 'undefined' && typeof store.getDocumentTemplates === 'function') {
+    tplCounter.textContent = store.getDocumentTemplates().length;
+  }
+  const statTotalTpl = document.getElementById('badge-stat-total-templates');
+  if (statTotalTpl && typeof store !== 'undefined' && typeof store.getDocumentTemplates === 'function') {
+    statTotalTpl.textContent = `${store.getDocumentTemplates().length} Modelos Cadastrados`;
+  }
 }
 
 function switchView(viewName) {
@@ -6944,6 +7294,7 @@ function switchView(viewName) {
   if (viewName === 'goals') renderGoals();
   if (viewName === 'audit') refreshAuditLogsUI();
   if (viewName === 'career') renderCareer();
+  if (viewName === 'templates') renderTemplates();
 }
 window.switchView = switchView;
 
@@ -6957,6 +7308,7 @@ function applyRolePermissions(user) {
     { id: 'nav-dashboard', view: 'dashboard' },
     { id: 'nav-projects', view: 'projects' },
     { id: 'nav-requirements', view: 'requirements' },
+    { id: 'nav-doc-templates', view: 'templates' },
     { id: 'nav-kanban', view: 'kanban' },
     { id: 'nav-team', view: 'team' },
     { id: 'nav-testing', view: 'testing' },
@@ -7001,6 +7353,9 @@ function applyRolePermissions(user) {
   const btnTest = document.getElementById('btn-open-test-modal');
   const btnRunTests = document.getElementById('btn-run-all-tests');
   const btnMeasurement = document.getElementById('btn-open-measurement-modal');
+  const btnQuickTpl = document.getElementById('btn-quick-templates');
+  const btnTpl = document.getElementById('btn-open-template-modal');
+  const btnResetTpl = document.getElementById('btn-reset-default-templates');
 
   if (btnProj) btnProj.style.display = perms.canCreateProject ? 'inline-flex' : 'none';
   if (btnTask) btnTask.style.display = perms.canCreateTask ? 'inline-flex' : 'none';
@@ -7008,6 +7363,9 @@ function applyRolePermissions(user) {
   if (btnMember) btnMember.style.display = perms.canManageTeam ? 'inline-flex' : 'none';
   if (btnTest) btnTest.style.display = perms.canCreateTest ? 'inline-flex' : 'none';
   if (btnMeasurement) btnMeasurement.style.display = 'inline-flex';
+  if (btnQuickTpl) btnQuickTpl.style.display = perms.canManageTemplates ? 'inline-flex' : 'none';
+  if (btnTpl) btnTpl.style.display = perms.canManageTemplates ? 'inline-flex' : 'none';
+  if (btnResetTpl) btnResetTpl.style.display = perms.canManageTemplates ? 'inline-flex' : 'none';
   const btnCareerAdmin = document.getElementById('btn-open-career-modal');
   if (btnCareerAdmin) {
     btnCareerAdmin.style.display = (roleKey === 'admin') ? 'inline-flex' : 'none';
@@ -7598,6 +7956,17 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-print-measurement-doc')?.addEventListener('click', () => {
     printMeasurementReport();
   });
+
+  // Listeners do Módulo de Templates de Documentos
+  document.getElementById('btn-open-template-modal')?.addEventListener('click', () => openTemplateModalForCreate());
+  document.getElementById('btn-reset-default-templates')?.addEventListener('click', () => handleResetDefaultTemplates());
+  document.getElementById('measurement-template-select')?.addEventListener('change', () => {
+    updateMeasurementTemplateInfo();
+    updateMeasurementReportPreview();
+  });
+  if (typeof setupTemplateEventListeners === 'function') {
+    setupTemplateEventListeners();
+  }
 
   // Fechamento de Modais
   document.querySelectorAll('[data-close]').forEach(btn => {
@@ -9601,4 +9970,822 @@ window.deleteCareerTrack = async function(trackId, event) {
   renderCareer();
   showToast(`Trilha "${track.roleName}" removida com sucesso.`, 'info');
 };
+
+// ==============================================================================
+// 2.8 MÓDULO DE TEMPLATES DE DOCUMENTOS & IDENTIDADE VISUAL
+// ==============================================================================
+
+window.renderTemplates = function() {
+  const container = document.getElementById('templates-cards-grid');
+  if (!container) return;
+
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+
+  const templates = store.getDocumentTemplates();
+  const defaultTpl = store.getDefaultTemplate();
+
+  // Atualiza os contadores do topo da tela e da sidebar
+  const statBadge = document.getElementById('badge-stat-total-templates');
+  if (statBadge) {
+    statBadge.textContent = `${templates.length} Modelo${templates.length === 1 ? '' : 's'} Cadastrado${templates.length === 1 ? '' : 's'}`;
+  }
+  const sideCounter = document.getElementById('counter-nav-templates');
+  if (sideCounter) {
+    sideCounter.textContent = templates.length;
+  }
+
+  container.innerHTML = '';
+
+  if (!templates || templates.length === 0) {
+    container.innerHTML = `
+      <div class="glass-panel" style="grid-column: 1 / -1; padding: 3rem 1.5rem; text-align: center; color: var(--text-muted); border-radius: 8px;">
+        <div style="font-size: 2.8rem; margin-bottom: 0.75rem;">🎨</div>
+        <h3 style="color: var(--text-main); margin-bottom: 0.5rem;">Nenhum template de documento cadastrado</h3>
+        <p style="font-size: 0.85rem; max-width: 480px; margin: 0 auto 1.25rem auto;">Crie modelos com logotipos, paletas de cores e seções personalizadas para emissão de relatórios de medição e requisitos.</p>
+        <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+          <button class="btn btn-primary" onclick="openTemplateModalForCreate()">+ Criar Novo Template</button>
+          <button class="btn btn-secondary" onclick="handleResetDefaultTemplates()">🔄 Restaurar Padrões de Fábrica</button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  templates.forEach(tpl => {
+    const isDefault = !!tpl.isDefault;
+    const primColor = tpl.primaryColor || '#0284c7';
+    const hasLogo = !!tpl.logoUrl;
+
+    const card = document.createElement('div');
+    card.className = `template-card glass-panel ${isDefault ? 'is-default-card' : ''}`;
+    card.dataset.templateId = tpl.id;
+
+    // Constrói pílulas das seções ativas
+    const secPills = [
+      tpl.includeUserStory !== false ? '<span class="template-sec-pill active" title="História de Usuário visível">✓ User Story</span>' : '<span class="template-sec-pill inactive" title="História de Usuário oculta">✕ US</span>',
+      tpl.includeAcceptanceCriteria !== false ? '<span class="template-sec-pill active" title="Critérios de Aceite BDD visíveis">✓ BDD</span>' : '<span class="template-sec-pill inactive" title="Critérios BDD ocultos">✕ BDD</span>',
+      tpl.includeQaEvidence !== false ? '<span class="template-sec-pill active" title="Evidências de QA visíveis">✓ QA</span>' : '<span class="template-sec-pill inactive" title="Evidências QA ocultas">✕ QA</span>',
+      tpl.includeSignatures !== false ? '<span class="template-sec-pill active" title="Bloco de Assinaturas e Aceite visível">✓ Assinaturas</span>' : '<span class="template-sec-pill inactive" title="Bloco de Assinaturas oculto">✕ Assinaturas</span>',
+      tpl.includeKpis !== false ? '<span class="template-sec-pill active" title="Quadro de Indicadores visível">✓ KPIs</span>' : '<span class="template-sec-pill inactive" title="Quadro de KPIs oculto">✕ KPIs</span>',
+      tpl.includeStatusBanner !== false ? '<span class="template-sec-pill active" title="Faixa de Status da Medição visível">✓ Status</span>' : '<span class="template-sec-pill inactive" title="Faixa de Status oculta">✕ Status</span>'
+    ].join(' ');
+
+    // Termo de aprovação resumido
+    const termSnippet = (tpl.approvalTerms || 'Termo padrão de aceite técnico e homologação contratual.')
+      .slice(0, 140) + ((tpl.approvalTerms && tpl.approvalTerms.length > 140) ? '...' : '');
+
+    card.innerHTML = `
+      <div class="template-card-header-stripe" style="background: ${primColor}; height: 6px; border-radius: 8px 8px 0 0;"></div>
+      
+      <div class="template-card-body" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 0.9rem; flex: 1;">
+        
+        <!-- Cabeçalho do Card: Logo + Título + Badge Padrão -->
+        <div style="display: flex; align-items: flex-start; gap: 0.85rem;">
+          <div class="template-logo-avatar" style="width: 46px; height: 46px; border-radius: 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--border-medium); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+            ${hasLogo 
+              ? `<img src="${tpl.logoUrl}" alt="Logo" style="max-width: 100%; max-height: 100%; object-fit: contain;">` 
+              : `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: ${primColor}22; color: ${primColor}; font-weight: 800; font-size: 1.1rem;">🏢</div>`}
+          </div>
+
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <h3 style="font-size: 1rem; font-weight: 700; margin: 0; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(tpl.name)}">
+                ${escapeHtml(tpl.name)}
+              </h3>
+              ${isDefault ? `
+                <span class="badge-subtle badge-default-template" style="font-size: 0.68rem; padding: 2px 7px; color: #38bdf8; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); font-weight: 700;">
+                  ⭐ Padrão do Sistema
+                </span>
+              ` : ''}
+            </div>
+            <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 3px 0 0 0; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;" title="${escapeHtml(tpl.description || '')}">
+              ${escapeHtml(tpl.description || 'Modelo de especificação técnica e aceite de requisitos.')}
+            </p>
+          </div>
+        </div>
+
+        <!-- Metadados Visuais do Template -->
+        <div class="glass-subpanel" style="padding: 0.65rem 0.85rem; border-radius: 6px; font-size: 0.76rem; display: flex; flex-direction: column; gap: 5px; border: 1px solid var(--border-subtle);">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--text-muted);">Cor Primária:</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; font-family: monospace; font-weight: 700;">
+              <span style="width: 13px; height: 13px; border-radius: 3px; background: ${primColor}; display: inline-block; border: 1px solid rgba(255,255,255,0.2);"></span>
+              ${primColor}
+            </span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--text-muted);">Título do Documento:</span>
+            <strong style="color: var(--text-main); max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(tpl.docTitle || '')}">${escapeHtml(tpl.docTitle || 'RELATÓRIO DE MEDIÇÃO')}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--text-muted);">Instituição:</span>
+            <span style="color: var(--text-secondary); max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(tpl.headerInstitution || 'DevSquad ALM Pro')}</span>
+          </div>
+        </div>
+
+        <!-- Seções & Blocos Impressos -->
+        <div>
+          <div style="font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 5px; letter-spacing: 0.3px;">
+            Blocos Técnicos Impressos:
+          </div>
+          <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+            ${secPills}
+          </div>
+        </div>
+
+        <!-- Termo de Aceite Excert -->
+        <div style="font-size: 0.73rem; background: rgba(0,0,0,0.12); padding: 0.55rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-subtle); color: var(--text-secondary); line-height: 1.4;">
+          <strong style="display: block; font-size: 0.7rem; color: var(--text-muted); margin-bottom: 2px;">Termo de Aceite & Medição:</strong>
+          <span style="font-style: italic;">"${escapeHtml(termSnippet)}"</span>
+        </div>
+
+        <!-- Ações do Card -->
+        <div style="margin-top: auto; padding-top: 0.75rem; border-top: 1px solid var(--border-subtle); display: flex; gap: 6px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+          <div style="display: flex; gap: 4px;">
+            ${perms.canManageTemplates ? `
+              <button class="btn btn-secondary btn-sm" onclick="openTemplateModalForEdit('${tpl.id}')" title="Editar Configurações do Template">
+                <span>✏️ Editar</span>
+              </button>
+            ` : ''}
+            <button class="btn btn-ghost btn-sm" onclick="testTemplatePrint('${tpl.id}')" title="Visualizar Teste de Impressão com este Template">
+              <span>🖨️ Prévia</span>
+            </button>
+            ${perms.canManageTemplates ? `
+              <button class="btn btn-ghost btn-sm" onclick="duplicateTemplate('${tpl.id}')" title="Duplicar Template">
+                <span>📋 Duplicar</span>
+              </button>
+            ` : ''}
+          </div>
+
+          <div style="display: flex; gap: 4px; align-items: center;">
+            ${!isDefault && perms.canManageTemplates ? `
+              <button class="btn btn-ghost btn-sm" onclick="setDefaultTemplateAction('${tpl.id}')" title="Tornar este template o padrão do sistema">
+                <span>⭐ Padrão</span>
+              </button>
+            ` : ''}
+            ${templates.length > 1 && perms.canManageTemplates ? `
+              <button class="btn btn-ghost btn-sm btn-del" onclick="confirmDeleteTemplate('${tpl.id}', '${escapeHtml(tpl.name)}')" title="Excluir Template" style="color: #fb7185;">
+                <span>🗑️</span>
+              </button>
+            ` : ''}
+          </div>
+        </div>
+
+      </div>
+    `;
+
+    container.appendChild(card);
+  });
+};
+
+// ==============================================================================
+// FUNÇÕES DE CRUD E MODAL DE TEMPLATES
+// ==============================================================================
+
+window.openTemplateModalForCreate = function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+
+  if (!perms.canManageTemplates) {
+    showToast('Apenas Administradores e Gestores têm permissão para criar templates de documento.', 'error');
+    return;
+  }
+
+  document.getElementById('modal-template-title').textContent = "🎨 Criar Novo Template de Documento";
+  document.getElementById('template-id-edit').value = "";
+  document.getElementById('template-logo-base64').value = "";
+
+  const form = document.getElementById('form-document-template');
+  if (form) form.reset();
+
+  // Valores padrão de fábrica
+  document.getElementById('template-name').value = "";
+  document.getElementById('template-primary-color').value = "#0284c7";
+  document.getElementById('template-color-picker').value = "#0284c7";
+  document.getElementById('template-description').value = "";
+  document.getElementById('template-is-default').checked = false;
+
+  document.getElementById('template-doc-title').value = "RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS";
+  document.getElementById('template-doc-subtitle').value = "Artefato Oficial de Comprovação de Entrega Técnica para Fins de Faturamento & Aceite";
+  document.getElementById('template-header-institution').value = "DEVSQUAD ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE";
+
+  document.getElementById('toggle-user-story').checked = true;
+  document.getElementById('toggle-acceptance-criteria').checked = true;
+  document.getElementById('toggle-qa-evidence').checked = true;
+  document.getElementById('toggle-signatures').checked = true;
+  document.getElementById('toggle-kpis').checked = true;
+  document.getElementById('toggle-status-banner').checked = true;
+
+  document.getElementById('template-approval-terms').value = "Pelo presente instrumento, a CONTRATANTE atesta expressamente o pleno recebimento, homologação técnica e aceite formal dos requisitos de software e critérios de aceite descritos neste Relatório de Medição correspondentes à Feature / Marco acima especificado. Declara que os entregáveis foram devidamente verificados e aprovados pelo controle de qualidade (QA), em conformidade com as cláusulas contratuais, autorizando a emissão da Nota Fiscal de Serviços e o respectivo faturamento financeiro.";
+  document.getElementById('template-signee-contratada').value = "PELA CONTRATADA (DEVSQUAD)";
+  document.getElementById('template-signee-contratante').value = "PELA CONTRATANTE (CLIENTE)";
+  document.getElementById('template-footer-text').value = "DevSquad ALM Pro — Artefato Formal de Medição & Aceite Técnico de Entrega";
+
+  // Reseta visualizador de logo
+  const logoImg = document.getElementById('template-logo-img');
+  const logoPlaceholder = document.getElementById('template-logo-placeholder');
+  const btnRemoveLogo = document.getElementById('btn-remove-logo');
+  if (logoImg) { logoImg.src = ""; logoImg.style.display = "none"; }
+  if (logoPlaceholder) logoPlaceholder.style.display = "block";
+  if (btnRemoveLogo) btnRemoveLogo.style.display = "none";
+
+  updateLiveTemplatePreview();
+  openModal('modal-template');
+};
+
+window.openTemplateModalForEdit = function(templateId) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+
+  if (!perms.canManageTemplates) {
+    showToast('Apenas Administradores e Gestores têm permissão para editar templates.', 'error');
+    return;
+  }
+
+  const tpl = store.getTemplateById(templateId);
+  if (!tpl) {
+    showToast('Template não encontrado.', 'error');
+    return;
+  }
+
+  document.getElementById('modal-template-title').textContent = `✏️ Editar Template: ${tpl.name}`;
+  document.getElementById('template-id-edit').value = tpl.id;
+  document.getElementById('template-logo-base64').value = tpl.logoUrl || "";
+
+  document.getElementById('template-name').value = tpl.name || "";
+  const primColor = tpl.primaryColor || "#0284c7";
+  document.getElementById('template-primary-color').value = primColor;
+  document.getElementById('template-color-picker').value = primColor;
+  document.getElementById('template-description').value = tpl.description || "";
+  document.getElementById('template-is-default').checked = !!tpl.isDefault;
+
+  document.getElementById('template-doc-title').value = tpl.docTitle || "RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS";
+  document.getElementById('template-doc-subtitle').value = tpl.docSubtitle || "";
+  document.getElementById('template-header-institution').value = tpl.headerInstitution || "DEVSQUAD ALM PRO";
+
+  document.getElementById('toggle-user-story').checked = tpl.includeUserStory !== false;
+  document.getElementById('toggle-acceptance-criteria').checked = tpl.includeAcceptanceCriteria !== false;
+  document.getElementById('toggle-qa-evidence').checked = tpl.includeQaEvidence !== false;
+  document.getElementById('toggle-signatures').checked = tpl.includeSignatures !== false;
+  document.getElementById('toggle-kpis').checked = tpl.includeKpis !== false;
+  document.getElementById('toggle-status-banner').checked = tpl.includeStatusBanner !== false;
+
+  document.getElementById('template-approval-terms').value = tpl.approvalTerms || "";
+  document.getElementById('template-signee-contratada').value = tpl.signeeContratadaTitle || "PELA CONTRATADA (DEVSQUAD)";
+  document.getElementById('template-signee-contratante').value = tpl.signeeContratanteTitle || "PELA CONTRATANTE (CLIENTE)";
+  document.getElementById('template-footer-text').value = tpl.footerText || "";
+
+  // Visualizador de logo
+  const logoImg = document.getElementById('template-logo-img');
+  const logoPlaceholder = document.getElementById('template-logo-placeholder');
+  const btnRemoveLogo = document.getElementById('btn-remove-logo');
+  if (tpl.logoUrl) {
+    if (logoImg) { logoImg.src = tpl.logoUrl; logoImg.style.display = "block"; }
+    if (logoPlaceholder) logoPlaceholder.style.display = "none";
+    if (btnRemoveLogo) btnRemoveLogo.style.display = "inline-flex";
+  } else {
+    if (logoImg) { logoImg.src = ""; logoImg.style.display = "none"; }
+    if (logoPlaceholder) logoPlaceholder.style.display = "block";
+    if (btnRemoveLogo) btnRemoveLogo.style.display = "none";
+  }
+
+  updateLiveTemplatePreview();
+  openModal('modal-template');
+};
+
+window.updateLiveTemplatePreview = function() {
+  const docTitle = document.getElementById('template-doc-title')?.value || 'RELATÓRIO DE MEDIÇÃO';
+  const docSubtitle = document.getElementById('template-doc-subtitle')?.value || '';
+  const institution = document.getElementById('template-header-institution')?.value || 'DEVSQUAD ALM PRO';
+  const color = document.getElementById('template-primary-color')?.value || '#0284c7';
+  const logoBase64 = document.getElementById('template-logo-base64')?.value || '';
+
+  const hasUS = document.getElementById('toggle-user-story')?.checked;
+  const hasBDD = document.getElementById('toggle-acceptance-criteria')?.checked;
+  const hasQA = document.getElementById('toggle-qa-evidence')?.checked;
+  const hasSignatures = document.getElementById('toggle-signatures')?.checked;
+  const hasKpis = document.getElementById('toggle-kpis')?.checked;
+  const hasStatusBanner = document.getElementById('toggle-status-banner')?.checked;
+
+  const terms = document.getElementById('template-approval-terms')?.value || 'Pelo presente instrumento, a CONTRATANTE atesta o pleno recebimento...';
+  const sigContratada = document.getElementById('template-signee-contratada')?.value || 'CONTRATADA';
+  const sigContratante = document.getElementById('template-signee-contratante')?.value || 'CONTRATANTE';
+  const footerText = document.getElementById('template-footer-text')?.value || 'DevSquad ALM Pro';
+
+  // Aplica cores principais
+  const miniHeader = document.getElementById('mini-header-bar');
+  if (miniHeader) miniHeader.style.background = color;
+
+  const miniTableHead = document.getElementById('mini-table-header');
+  if (miniTableHead) miniTableHead.style.background = color;
+
+  // Textos do topo
+  const titleEl = document.getElementById('mini-title-text');
+  if (titleEl) titleEl.textContent = docTitle;
+
+  const instEl = document.getElementById('mini-institution-text');
+  if (instEl) instEl.textContent = institution;
+
+  // Logotipo
+  const miniLogoImg = document.getElementById('mini-logo-img');
+  const miniLogoPlaceholder = document.getElementById('mini-logo-placeholder');
+  if (logoBase64) {
+    if (miniLogoImg) { miniLogoImg.src = logoBase64; miniLogoImg.style.display = 'block'; }
+    if (miniLogoPlaceholder) miniLogoPlaceholder.style.display = 'none';
+  } else {
+    if (miniLogoImg) { miniLogoImg.src = ''; miniLogoImg.style.display = 'none'; }
+    if (miniLogoPlaceholder) miniLogoPlaceholder.style.display = 'block';
+  }
+
+  // Toggles de Blocos
+  const kpisBox = document.getElementById('mini-kpis-box');
+  if (kpisBox) kpisBox.style.display = hasKpis ? 'grid' : 'none';
+
+  const statusBox = document.getElementById('mini-status-banner-box');
+  if (statusBox) statusBox.style.display = hasStatusBanner ? 'block' : 'none';
+
+  const userStoryRow = document.getElementById('mini-userstory-row');
+  if (userStoryRow) userStoryRow.style.display = hasUS ? 'block' : 'none';
+
+  const bddRow = document.getElementById('mini-bdd-row');
+  if (bddRow) bddRow.style.display = hasBDD ? 'block' : 'none';
+
+  const qaRow = document.getElementById('mini-qa-row');
+  if (qaRow) qaRow.style.display = hasQA ? 'block' : 'none';
+
+  const termsBox = document.getElementById('mini-terms-box');
+  const termsText = document.getElementById('mini-terms-text');
+  if (termsBox) termsBox.style.display = hasSignatures ? 'block' : 'none';
+  if (termsText) termsText.textContent = terms.slice(0, 100) + (terms.length > 100 ? '...' : '');
+
+  const signaturesBox = document.getElementById('mini-signatures-box');
+  if (signaturesBox) signaturesBox.style.display = hasSignatures ? 'grid' : 'none';
+
+  const sigContratadaEl = document.getElementById('mini-sig-contratada');
+  if (sigContratadaEl) sigContratadaEl.textContent = sigContratada;
+
+  const sigContratanteEl = document.getElementById('mini-sig-contratante');
+  if (sigContratanteEl) sigContratanteEl.textContent = sigContratante;
+
+  const footerTextEl = document.getElementById('mini-footer-text');
+  if (footerTextEl) footerTextEl.textContent = footerText;
+};
+
+window.duplicateTemplate = async function(templateId) {
+  const original = store.getTemplateById(templateId);
+  if (!original) return;
+
+  const copyPayload = {
+    ...original,
+    name: `${original.name} (Cópia)`,
+    isDefault: false
+  };
+  delete copyPayload.id;
+  delete copyPayload.createdAt;
+  delete copyPayload.updatedAt;
+
+  try {
+    const created = await store.createTemplate(copyPayload);
+    showToast(`Template duplicado com sucesso: "${created.name}"`);
+    renderTemplates();
+    updateSidebarCounters();
+    openTemplateModalForEdit(created.id);
+  } catch (err) {
+    showToast(`Erro ao duplicar template: ${err.message}`, 'error');
+  }
+};
+
+window.setDefaultTemplateAction = async function(templateId) {
+  const tpl = store.getTemplateById(templateId);
+  if (!tpl) return;
+
+  try {
+    await store.setDefaultTemplate(templateId);
+    showToast(`O template "${tpl.name}" agora é o modelo padrão de exportação!`, 'success');
+    renderTemplates();
+    refreshAllUI();
+  } catch (err) {
+    showToast(`Erro ao definir template padrão: ${err.message}`, 'error');
+  }
+};
+
+window.confirmDeleteTemplate = async function(templateId, templateName) {
+  const templates = store.getDocumentTemplates();
+  if (templates.length <= 1) {
+    showToast('Não é possível excluir o único template restante no sistema.', 'warn');
+    return;
+  }
+
+  if (confirm(`Deseja realmente excluir o template de documento "${templateName}"?\n\nEsta operação será registrada no log de auditoria.`)) {
+    try {
+      await store.deleteTemplate(templateId);
+      showToast(`Template "${templateName}" excluído com sucesso.`, 'info');
+      renderTemplates();
+      updateSidebarCounters();
+      refreshAllUI();
+    } catch (err) {
+      showToast(`Erro ao excluir template: ${err.message}`, 'error');
+    }
+  }
+};
+
+window.handleResetDefaultTemplates = async function() {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+
+  if (!perms.canManageTemplates) {
+    showToast('Apenas Administradores e Gestores podem restaurar templates.', 'error');
+    return;
+  }
+
+  if (confirm('Deseja restaurar a coleção original de templates de fábrica da plataforma?\n\nOs templates padrão (Oficial, Enterprise e Sprint Spec) serão redefinidos.')) {
+    try {
+      await store.resetDefaultTemplates();
+      showToast('Templates padrão restaurados com sucesso!', 'success');
+      renderTemplates();
+      updateSidebarCounters();
+      refreshAllUI();
+    } catch (err) {
+      showToast(`Erro ao restaurar templates: ${err.message}`, 'error');
+    }
+  }
+};
+
+window.testTemplatePrint = function(templateId) {
+  const tpl = store.getTemplateById(templateId) || store.getDefaultTemplate();
+  if (!tpl) {
+    showToast('Template não encontrado.', 'error');
+    return;
+  }
+
+  // Gera uma janela de impressão de amostra com dados de demonstração
+  const printWin = window.open('', '_blank', 'width=980,height=800');
+  if (!printWin) {
+    showToast('Bloqueador de popups impediu a pré-visualização. Permita popups para este site.', 'warn');
+    return;
+  }
+
+  const primColor = tpl.primaryColor || '#0284c7';
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <title>Pré-visualização: ${escapeHtml(tpl.name)}</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #0f172a; padding: 30px; margin: 0; background: #fff; font-size: 13px; line-height: 1.5; }
+        .doc-header { border-bottom: 2px solid ${primColor}; padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .brand { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700; }
+        .title { font-size: 20px; font-weight: 800; color: ${primColor}; margin: 4px 0; }
+        .subtitle { font-size: 12px; color: #475569; }
+        .header-logo { max-height: 52px; max-width: 140px; object-fit: contain; }
+        .meta-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 18px; font-size: 12px; }
+        .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+        .kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; text-align: center; }
+        .kpi-card strong { display: block; font-size: 18px; color: ${primColor}; }
+        .kpi-card span { font-size: 11px; color: #64748b; }
+        .status-banner { background: #ecfdf5; border: 1px solid #10b981; color: #065f46; border-radius: 6px; padding: 10px 14px; font-weight: 700; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
+        th { background: ${primColor}; color: #ffffff; text-align: left; padding: 9px 10px; font-size: 11.5px; text-transform: uppercase; }
+        td { border-bottom: 1px solid #e2e8f0; padding: 10px; font-size: 12px; vertical-align: top; }
+        .bdd-box { font-family: monospace; font-size: 11px; color: #0369a1; background: #f0f9ff; padding: 6px 8px; border-radius: 4px; margin-top: 4px; }
+        .qa-approved { color: #059669; font-weight: 700; }
+        .terms-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 14px; font-size: 11.5px; color: #334155; margin-top: 25px; line-height: 1.6; text-align: justify; }
+        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; margin-top: 50px; text-align: center; }
+        .sig-line { border-top: 1px solid #475569; padding-top: 6px; font-weight: 700; font-size: 11.5px; }
+        .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 10px; color: #94a3b8; display: flex; justify-content: space-between; }
+        @media print {
+          body { padding: 0; }
+          button.no-print { display: none; }
+        }
+      </style>
+    </head>
+    <body>
+      <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;" class="no-print">
+        <span style="font-size: 12px; background: #e0f2fe; color: #0369a1; padding: 4px 10px; border-radius: 4px; font-weight: 600;">
+          🎨 Visualizando com Template: <strong>${escapeHtml(tpl.name)}</strong>
+        </span>
+        <button onclick="window.print()" style="background: ${primColor}; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+          🖨️ Imprimir / Salvar PDF
+        </button>
+      </div>
+
+      <div class="doc-header">
+        <div>
+          <div class="brand">${escapeHtml(tpl.headerInstitution || 'DevSquad ALM Pro')}</div>
+          <h1 class="title">${escapeHtml(tpl.docTitle || 'RELATÓRIO FORMAL DE MEDIÇÃO')}</h1>
+          <p class="subtitle">${escapeHtml(tpl.docSubtitle || '')}</p>
+        </div>
+        ${tpl.logoUrl ? `<img src="${tpl.logoUrl}" class="header-logo" alt="Logo">` : ''}
+      </div>
+
+      <div class="meta-box">
+        <div><strong>Projeto Exemplo:</strong> Sistema Corporativo de Pagamentos</div>
+        <div><strong>Data de Emissão:</strong> ${new Date().toLocaleDateString('pt-BR')}</div>
+        <div><strong>Módulo / Feature:</strong> Autenticação & Pix Checkout</div>
+        <div><strong>Status da Entrega:</strong> 100% Homologado pelo QA</div>
+      </div>
+
+      ${tpl.includeKpis !== false ? `
+        <div class="kpi-row">
+          <div class="kpi-card"><strong>3</strong><span>Requisitos no Escopo</span></div>
+          <div class="kpi-card"><strong>3</strong><span>Validados em QA</span></div>
+          <div class="kpi-card"><strong>3</strong><span>Cenários BDD</span></div>
+          <div class="kpi-card"><strong>100%</strong><span>Taxa de Homologação</span></div>
+        </div>
+      ` : ''}
+
+      ${tpl.includeStatusBanner !== false ? `
+        <div class="status-banner">
+          <span>STATUS: HOMOLOGAÇÃO TÉCNICA CONCLUÍDA</span>
+          <span>Apto para Faturamento & Aceite Formal</span>
+        </div>
+      ` : ''}
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 75px;">Código</th>
+            <th style="width: 130px;">Título</th>
+            <th>${tpl.includeUserStory !== false ? 'Especificação & User Story' : 'Especificação Técnica'}</th>
+            ${tpl.includeAcceptanceCriteria !== false ? '<th>Critérios BDD</th>' : ''}
+            ${tpl.includeQaEvidence !== false ? '<th>Validação QA</th>' : ''}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>RF-01</strong></td>
+            <td><strong>Autenticação MFA</strong></td>
+            <td>
+              ${tpl.includeUserStory !== false ? '<p><strong>User Story:</strong> Como correntista, quero autenticação em 2 fatores para proteger transações.</p>' : ''}
+              Requisito funcional de autenticação segura via TOTP e SMS.
+            </td>
+            ${tpl.includeAcceptanceCriteria !== false ? '<td><div class="bdd-box">Dado que o usuário insere a senha<br>Quando solicitar código OTP<br>Então o sistema valida em até 60s</div></td>' : ''}
+            ${tpl.includeQaEvidence !== false ? '<td><span class="qa-approved">✓ Homologado</span><br><small>Testes unitários e E2E aprovados</small></td>' : ''}
+          </tr>
+          <tr>
+            <td><strong>RF-02</strong></td>
+            <td><strong>Chaves Pix</strong></td>
+            <td>
+              ${tpl.includeUserStory !== false ? '<p><strong>User Story:</strong> Como pagador, quero cadastrar chave aleatória para receber pagamentos.</p>' : ''}
+              Mecanismo de consulta e validação no DICT do Bacen.
+            </td>
+            ${tpl.includeAcceptanceCriteria !== false ? '<td><div class="bdd-box">Dado uma chave válida<br>Quando registrar no DICT<br>Então confirma vínculo</div></td>' : ''}
+            ${tpl.includeQaEvidence !== false ? '<td><span class="qa-approved">✓ Homologado</span><br><small>Mock Bacen aprovado</small></td>' : ''}
+          </tr>
+        </tbody>
+      </table>
+
+      ${tpl.approvalTerms ? `
+        <div class="terms-box">
+          <strong style="display: block; margin-bottom: 6px; font-size: 12px; text-transform: uppercase;">Termo de Aceite & Medição Técnica:</strong>
+          ${escapeHtml(tpl.approvalTerms)}
+        </div>
+      ` : ''}
+
+      ${tpl.includeSignatures !== false ? `
+        <div class="signatures">
+          <div>
+            <div class="sig-line">${escapeHtml(tpl.signeeContratadaTitle || 'PELA CONTRATADA (DEVSQUAD)')}</div>
+            <div style="font-size: 10px; color: #64748b; margin-top: 3px;">Assinatura do Responsável Técnico</div>
+          </div>
+          <div>
+            <div class="sig-line">${escapeHtml(tpl.signeeContratanteTitle || 'PELA CONTRATANTE (CLIENTE)')}</div>
+            <div style="font-size: 10px; color: #64748b; margin-top: 3px;">Assinatura do Gestor do Contrato / Fiscal</div>
+          </div>
+        </div>
+      ` : ''}
+
+      <div class="footer">
+        <span>${escapeHtml(tpl.footerText || 'DevSquad ALM Pro')}</span>
+        <span>Folha 1 de 1</span>
+      </div>
+    </body>
+    </html>
+  `;
+
+  printWin.document.open();
+  printWin.document.write(htmlContent);
+  printWin.document.close();
+};
+
+window.setupTemplateEventListeners = function() {
+  const form = document.getElementById('form-document-template');
+  if (form && !form.dataset.initialized) {
+    form.dataset.initialized = 'true';
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const id = document.getElementById('template-id-edit')?.value.trim();
+      const name = document.getElementById('template-name')?.value.trim();
+      const primaryColor = document.getElementById('template-primary-color')?.value.trim() || '#0284c7';
+      const description = document.getElementById('template-description')?.value.trim();
+      const isDefault = document.getElementById('template-is-default')?.checked;
+
+      const logoUrl = document.getElementById('template-logo-base64')?.value || '';
+      const docTitle = document.getElementById('template-doc-title')?.value.trim() || 'RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS';
+      const docSubtitle = document.getElementById('template-doc-subtitle')?.value.trim();
+      const headerInstitution = document.getElementById('template-header-institution')?.value.trim();
+
+      const includeUserStory = document.getElementById('toggle-user-story')?.checked;
+      const includeAcceptanceCriteria = document.getElementById('toggle-acceptance-criteria')?.checked;
+      const includeQaEvidence = document.getElementById('toggle-qa-evidence')?.checked;
+      const includeSignatures = document.getElementById('toggle-signatures')?.checked;
+      const includeKpis = document.getElementById('toggle-kpis')?.checked;
+      const includeStatusBanner = document.getElementById('toggle-status-banner')?.checked;
+
+      const approvalTerms = document.getElementById('template-approval-terms')?.value.trim();
+      const signeeContratadaTitle = document.getElementById('template-signee-contratada')?.value.trim() || 'PELA CONTRATADA (DEVSQUAD)';
+      const signeeContratanteTitle = document.getElementById('template-signee-contratante')?.value.trim() || 'PELA CONTRATANTE (CLIENTE)';
+      const footerText = document.getElementById('template-footer-text')?.value.trim();
+
+      if (!name) {
+        showToast('Informe o nome do template.', 'warn');
+        document.getElementById('template-name')?.focus();
+        return;
+      }
+
+      const payload = {
+        name,
+        primaryColor,
+        description,
+        isDefault,
+        logoUrl,
+        docTitle,
+        docSubtitle,
+        headerInstitution,
+        includeUserStory,
+        includeAcceptanceCriteria,
+        includeQaEvidence,
+        includeSignatures,
+        includeKpis,
+        includeStatusBanner,
+        approvalTerms,
+        signeeContratadaTitle,
+        signeeContratanteTitle,
+        footerText
+      };
+
+      const saveBtn = document.getElementById('btn-save-template');
+      const originalText = saveBtn ? saveBtn.innerHTML : '';
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span>⏳ Salvando...</span>';
+      }
+
+      try {
+        if (id) {
+          await store.updateTemplate(id, payload);
+          showToast(`Template "${name}" atualizado com sucesso!`, 'success');
+        } else {
+          const created = await store.createTemplate(payload);
+          showToast(`Template "${name}" criado com sucesso!`, 'success');
+        }
+
+        closeModal('modal-template');
+        renderTemplates();
+        updateSidebarCounters();
+        refreshAllUI();
+      } catch (err) {
+        showToast(`Erro ao salvar template: ${err.message}`, 'error');
+      } finally {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = originalText;
+        }
+      }
+    });
+  }
+
+  // Seletor de Cores e Paletas Rápidas
+  const colorPicker = document.getElementById('template-color-picker');
+  const colorInput = document.getElementById('template-primary-color');
+
+  if (colorPicker && !colorPicker.dataset.initialized) {
+    colorPicker.dataset.initialized = 'true';
+    colorPicker.addEventListener('input', (e) => {
+      if (colorInput) colorInput.value = e.target.value.toUpperCase();
+      updateLiveTemplatePreview();
+    });
+  }
+
+  if (colorInput && !colorInput.dataset.initialized) {
+    colorInput.dataset.initialized = 'true';
+    colorInput.addEventListener('input', (e) => {
+      let val = e.target.value;
+      if (val && !val.startsWith('#')) val = '#' + val;
+      if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+        if (colorPicker) colorPicker.value = val;
+        updateLiveTemplatePreview();
+      }
+    });
+  }
+
+  document.querySelectorAll('.btn-color-swatch').forEach(swatch => {
+    if (!swatch.dataset.initialized) {
+      swatch.dataset.initialized = 'true';
+      swatch.addEventListener('click', () => {
+        const c = swatch.dataset.color;
+        if (c) {
+          if (colorPicker) colorPicker.value = c;
+          if (colorInput) colorInput.value = c.toUpperCase();
+          updateLiveTemplatePreview();
+        }
+      });
+    }
+  });
+
+  // Upload e Remoção de Logotipo
+  const logoFileInput = document.getElementById('template-logo-file');
+  const btnChooseLogo = document.getElementById('btn-choose-logo');
+  const btnRemoveLogo = document.getElementById('btn-remove-logo');
+  const logoBase64Input = document.getElementById('template-logo-base64');
+  const logoImg = document.getElementById('template-logo-img');
+  const logoPlaceholder = document.getElementById('template-logo-placeholder');
+
+  if (btnChooseLogo && logoFileInput && !btnChooseLogo.dataset.initialized) {
+    btnChooseLogo.dataset.initialized = 'true';
+    btnChooseLogo.addEventListener('click', () => {
+      logoFileInput.click();
+    });
+  }
+
+  if (logoFileInput && !logoFileInput.dataset.initialized) {
+    logoFileInput.dataset.initialized = 'true';
+    logoFileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      if (file.size > 2.5 * 1024 * 1024) {
+        showToast('O arquivo de imagem é muito grande. Escolha uma imagem de até 2MB.', 'warn');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const base64Data = evt.target.result;
+        if (logoBase64Input) logoBase64Input.value = base64Data;
+        if (logoImg) {
+          logoImg.src = base64Data;
+          logoImg.style.display = 'block';
+        }
+        if (logoPlaceholder) logoPlaceholder.style.display = 'none';
+        if (btnRemoveLogo) btnRemoveLogo.style.display = 'inline-flex';
+        updateLiveTemplatePreview();
+        showToast('Logotipo carregado com sucesso!');
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  if (btnRemoveLogo && !btnRemoveLogo.dataset.initialized) {
+    btnRemoveLogo.dataset.initialized = 'true';
+    btnRemoveLogo.addEventListener('click', () => {
+      if (logoBase64Input) logoBase64Input.value = '';
+      if (logoFileInput) logoFileInput.value = '';
+      if (logoImg) {
+        logoImg.src = '';
+        logoImg.style.display = 'none';
+      }
+      if (logoPlaceholder) logoPlaceholder.style.display = 'block';
+      if (btnRemoveLogo) btnRemoveLogo.style.display = 'none';
+      updateLiveTemplatePreview();
+      showToast('Logotipo removido do modelo.', 'info');
+    });
+  }
+
+  // Gatilhos de Live Preview para inputs de texto e checkboxes
+  const livePreviewTriggers = [
+    'template-name',
+    'template-doc-title',
+    'template-doc-subtitle',
+    'template-header-institution',
+    'template-approval-terms',
+    'template-signee-contratada',
+    'template-signee-contratante',
+    'template-footer-text',
+    'toggle-user-story',
+    'toggle-acceptance-criteria',
+    'toggle-qa-evidence',
+    'toggle-signatures',
+    'toggle-kpis',
+    'toggle-status-banner'
+  ];
+
+  livePreviewTriggers.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el.dataset.previewInit) {
+      el.dataset.previewInit = 'true';
+      el.addEventListener('input', updateLiveTemplatePreview);
+      el.addEventListener('change', updateLiveTemplatePreview);
+    }
+  });
+};
+
 

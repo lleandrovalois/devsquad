@@ -118,6 +118,11 @@
           <span class="nav-text">Requisitos & Specs</span>
           <span class="nav-counter" id="counter-nav-req">0</span>
         </button>
+        <button class="nav-item" data-view="templates" id="nav-doc-templates">
+          <span class="nav-icon">🎨</span>
+          <span class="nav-text">Templates de Documento</span>
+          <span class="nav-counter" id="counter-nav-templates">3</span>
+        </button>
         <button class="nav-item" data-view="kanban" id="nav-kanban">
           <span class="nav-icon">🚀</span>
           <span class="nav-text">Quadro de Demandas</span>
@@ -498,6 +503,9 @@
               <p class="view-subtitle">Documentação funcional, Histórias de Usuário, Requisitos RF/RNF e Critérios de Aceite.</p>
             </div>
             <div class="header-actions-group" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <button class="btn btn-secondary" id="btn-quick-templates" onclick="switchView('templates')" title="Configurar Modelos e Identidade Visual de Documentos">
+                <span>🎨 Templates de Documento</span>
+              </button>
               <button class="btn btn-secondary" id="btn-open-measurement-modal" title="Emitir Relatório de Medição / Documento de Requisitos para comprovação e faturamento">
                 <span>📑 Emitir Relatório de Medição</span>
               </button>
@@ -1839,6 +1847,45 @@
 
         </section>
 
+        <!-- ===================================================================
+             ABA: TEMPLATES DE DOCUMENTOS & IDENTIDADE VISUAL
+             =================================================================== -->
+        <section class="view-panel" id="view-templates">
+          <div class="view-header">
+            <div>
+              <h1 class="view-title">🎨 Templates de Documentos & Identidade Visual</h1>
+              <p class="view-subtitle">Gerencie modelos padronizados de especificação de requisitos, definindo logotipo, paleta de cores, blocos técnicos impressos e termos contratuais de aceite.</p>
+            </div>
+            <div class="header-actions-group" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <button class="btn btn-secondary" id="btn-reset-default-templates" title="Restaurar a coleção original de templates padrão de fábrica">
+                <span>🔄 Restaurar Padrões</span>
+              </button>
+              <button class="btn btn-primary btn-glow" id="btn-open-template-modal">
+                <span>+ Novo Template</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Banner Informativo / Guia Rápido -->
+          <div class="glass-panel" style="padding: 1.15rem 1.4rem; border-radius: var(--radius-md); margin-bottom: 1.5rem; background: rgba(2, 132, 199, 0.08); border-left: 4px solid #0284c7; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+              <div style="font-size: 1.8rem;">🎨</div>
+              <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5;">
+                <strong style="color: var(--text-main);">Identidade Visual Sob Medida para Cada Cliente:</strong>
+                Configure templates com a marca de cada parceiro comercial, ative ou oculte seções sensíveis (como evidências de QA e termos de faturamento) e escolha qual modelo aplicar diretamente no momento da exportação de qualquer Feature ou Projeto.
+              </div>
+            </div>
+            <div class="template-stats-badge" style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <span id="badge-stat-total-templates" class="badge-subtle" style="font-size: 0.78rem; padding: 4px 10px; font-weight: 700; color: #38bdf8; background: rgba(14, 165, 233, 0.15); border: 1px solid rgba(14, 165, 233, 0.3);">3 Modelos Cadastrados</span>
+            </div>
+          </div>
+
+          <!-- Grid de Cartões de Templates -->
+          <div id="templates-cards-grid" class="templates-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1.25rem;">
+            <!-- Renderizado dinamicamente via renderTemplates() em script.js -->
+          </div>
+        </section>
+
       </main>
     </div>
   </div>
@@ -2773,6 +2820,24 @@
               </select>
             </div>
           </div>
+          <!-- Seleção de Template e Identidade Visual para o Relatório -->
+          <div class="form-row" style="margin-top: 0.85rem; padding-top: 0.85rem; border-top: 1px dashed var(--border-subtle); align-items: flex-end;">
+            <div class="form-group flex-2">
+              <label for="measurement-template-select">Template de Identidade Visual & Formatação *</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <select id="measurement-template-select" class="custom-select" style="flex: 1;" required>
+                  <!-- Preenchido dinamicamente com os templates -->
+                </select>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-measurement-manage-templates" onclick="switchView('templates'); closeModal('modal-measurement-report');" title="Gerenciar ou Criar Novos Templates de Documento" style="padding: 0.5rem 0.8rem; white-space: nowrap;">
+                  <span>🎨 Configurar</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <!-- Barra de Informações do Template Ativo -->
+          <div id="measurement-template-info-bar" style="margin-top: 0.45rem; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 0.74rem;">
+            <!-- Preenchido via script -->
+          </div>
         </div>
 
         <!-- Seção 2: Dados Formais de Cabeçalho e Contrato -->
@@ -2860,6 +2925,304 @@
           </button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal: Configuração de Template de Documento de Requisitos (CRUD & Personalização) -->
+  <div class="modal-backdrop" id="modal-template">
+    <div class="modal-dialog glass-panel" style="max-width: 960px; width: 95%; max-height: 94vh;">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" id="modal-template-title">🎨 Configurar Template de Documento</h2>
+          <p class="modal-subtitle" style="font-size: 0.82rem; color: var(--text-muted); margin: 2px 0 0 0;">
+            Personalize logotipo, cabeçalho, rodapé, cor primária, blocos visíveis e termos formais de aprovação.
+          </p>
+        </div>
+        <button class="modal-close" data-close="modal-template">&times;</button>
+      </div>
+
+      <form id="form-document-template" class="modal-body" style="display: flex; flex-direction: column; gap: 1.25rem; overflow-y: auto; padding: 1.25rem;">
+        <input type="hidden" id="template-id-edit" value="">
+        <input type="hidden" id="template-logo-base64" value="">
+
+        <!-- Topo: Nome, Descrição e Checkbox de Padrão -->
+        <div class="glass-subpanel" style="padding: 1.15rem; border-radius: 8px; border: 1px solid var(--border-subtle);">
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label for="template-name">Nome do Modelo / Template *</label>
+              <input type="text" id="template-name" class="custom-input" placeholder="Ex: Padrão Corporativo Banco Alpha" required>
+            </div>
+            <div class="form-group flex-1">
+              <label for="template-primary-color">Cor Primária do Documento *</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="color" id="template-color-picker" value="#0284c7" style="width: 44px; height: 38px; border-radius: 6px; border: 1px solid var(--border-medium); cursor: pointer; padding: 2px; background: transparent;">
+                <input type="text" id="template-primary-color" class="custom-input" value="#0284c7" placeholder="#0284c7" maxlength="7" style="font-family: monospace; text-transform: uppercase;">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-3">
+              <label for="template-description">Descrição / Finalidade do Template</label>
+              <input type="text" id="template-description" class="custom-input" placeholder="Ex: Utilizado para aprovações formais de marcos e faturamento contratual com o cliente...">
+            </div>
+            <div class="form-group flex-1" style="display: flex; align-items: flex-end;">
+              <label class="custom-checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding-bottom: 8px;">
+                <input type="checkbox" id="template-is-default" class="custom-checkbox">
+                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">⭐ Definir como Padrão</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Paleta de Cores Recomendadas (Presets Rápidos) -->
+          <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 600;">Paletas Rápidas:</span>
+            <button type="button" class="btn-color-swatch" data-color="#0284c7" style="background: #0284c7;" title="Azul Cerúleo (DevSquad)"></button>
+            <button type="button" class="btn-color-swatch" data-color="#1e3a8a" style="background: #1e3a8a;" title="Azul Marinho Real (Enterprise)"></button>
+            <button type="button" class="btn-color-swatch" data-color="#059669" style="background: #059669;" title="Verde Esmeralda (Ágil)"></button>
+            <button type="button" class="btn-color-swatch" data-color="#6366f1" style="background: #6366f1;" title="Índigo Tech (Inovação)"></button>
+            <button type="button" class="btn-color-swatch" data-color="#7c3aed" style="background: #7c3aed;" title="Roxo Profundo (Executivo)"></button>
+            <button type="button" class="btn-color-swatch" data-color="#0f172a" style="background: #0f172a;" title="Ardósia Escura (Minimalista)"></button>
+            <button type="button" class="btn-color-swatch" data-color="#b91c1c" style="background: #b91c1c;" title="Bordô Corporativo (Formal)"></button>
+          </div>
+        </div>
+
+        <!-- Layout de Duas Colunas: Configurações e Live Preview -->
+        <div class="template-form-grid" style="display: grid; grid-template-columns: 1fr 340px; gap: 1.15rem; align-items: start;">
+          <!-- Coluna 1: Campos Detalhados de Configuração -->
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            
+            <!-- Upload de Logotipo & Cabeçalho -->
+            <div class="glass-subpanel" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--border-subtle);">
+              <div style="font-weight: 700; font-size: 0.88rem; color: var(--accent-primary); margin-bottom: 0.75rem; display: flex; align-items: center; gap: 6px;">
+                <span>🖼️</span> Logotipo & Identidade do Cabeçalho
+              </div>
+
+              <!-- Upload de Logotipo -->
+              <div class="logo-upload-box" style="margin-bottom: 0.85rem; padding: 10px; border: 1px dashed var(--border-medium); border-radius: 8px; background: rgba(0,0,0,0.15); display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <div id="template-logo-preview" style="width: 56px; height: 56px; border-radius: 6px; background: rgba(255,255,255,0.06); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                  <span style="font-size: 1.8rem;" id="template-logo-placeholder">🏢</span>
+                  <img id="template-logo-img" src="" alt="Logo" style="display: none; max-width: 100%; max-height: 100%; object-fit: contain;">
+                </div>
+                <div style="flex: 1; min-width: 160px;">
+                  <input type="file" id="template-logo-file" accept="image/png, image/jpeg, image/svg+xml, image/webp" style="display: none;">
+                  <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-secondary btn-sm" id="btn-choose-logo">
+                      <span>📁 Escolher Logotipo</span>
+                    </button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-remove-logo" style="display: none; color: #fb7185;">
+                      <span>✕ Remover</span>
+                    </button>
+                  </div>
+                  <small style="display: block; font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">PNG, JPG, SVG ou WebP (recomendado fundo transparente ou claro).</small>
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0.65rem;">
+                <label for="template-doc-title">Título Principal do Documento *</label>
+                <input type="text" id="template-doc-title" class="custom-input" placeholder="Ex: RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS" required>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0.65rem;">
+                <label for="template-doc-subtitle">Subtítulo do Documento</label>
+                <input type="text" id="template-doc-subtitle" class="custom-input" placeholder="Ex: Artefato Oficial de Comprovação de Entrega Técnica para Fins de Faturamento & Aceite">
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="template-header-institution">Cabeçalho Institucional Superior</label>
+                <input type="text" id="template-header-institution" class="custom-input" placeholder="Ex: DEVSQUAD ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE">
+              </div>
+            </div>
+
+            <!-- Blocos Impressos & Seções Visíveis (Checkboxes) -->
+            <div class="glass-subpanel" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--border-subtle);">
+              <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-main); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 6px;">
+                <span>📑</span> Blocos & Seções Visíveis na Geração do Documento
+              </div>
+              <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0 0 0.85rem 0;">
+                Defina com precisão quais seções técnicas devem ser impressas no PDF / documento final:
+              </p>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <label class="block-toggle-card glass-panel" style="padding: 10px; border-radius: 6px; display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" id="toggle-user-story" class="custom-checkbox" checked style="margin-top: 2px;">
+                  <div>
+                    <strong style="font-size: 0.82rem; color: var(--text-main); display: block;">História de Usuário</strong>
+                    <small style="font-size: 0.72rem; color: var(--text-secondary);">User Story (Como... quero... para...)</small>
+                  </div>
+                </label>
+
+                <label class="block-toggle-card glass-panel" style="padding: 10px; border-radius: 6px; display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" id="toggle-acceptance-criteria" class="custom-checkbox" checked style="margin-top: 2px;">
+                  <div>
+                    <strong style="font-size: 0.82rem; color: var(--text-main); display: block;">Critérios de Aceite (BDD)</strong>
+                    <small style="font-size: 0.72rem; color: var(--text-secondary);">Cenários Dado / Quando / Então</small>
+                  </div>
+                </label>
+
+                <label class="block-toggle-card glass-panel" style="padding: 10px; border-radius: 6px; display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" id="toggle-qa-evidence" class="custom-checkbox" checked style="margin-top: 2px;">
+                  <div>
+                    <strong style="font-size: 0.82rem; color: var(--text-main); display: block;">Evidências de QA</strong>
+                    <small style="font-size: 0.72rem; color: var(--text-secondary);">Status de validação, notas e testes</small>
+                  </div>
+                </label>
+
+                <label class="block-toggle-card glass-panel" style="padding: 10px; border-radius: 6px; display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" id="toggle-signatures" class="custom-checkbox" checked style="margin-top: 2px;">
+                  <div>
+                    <strong style="font-size: 0.82rem; color: var(--text-main); display: block;">Bloco de Assinaturas</strong>
+                    <small style="font-size: 0.72rem; color: var(--text-secondary);">Campos formais de aceite e rubrica</small>
+                  </div>
+                </label>
+
+                <label class="block-toggle-card glass-panel" style="padding: 10px; border-radius: 6px; display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" id="toggle-kpis" class="custom-checkbox" checked style="margin-top: 2px;">
+                  <div>
+                    <strong style="font-size: 0.82rem; color: var(--text-main); display: block;">Resumo de KPIs</strong>
+                    <small style="font-size: 0.72rem; color: var(--text-secondary);">Quadro de métricas e taxas de conclusão</small>
+                  </div>
+                </label>
+
+                <label class="block-toggle-card glass-panel" style="padding: 10px; border-radius: 6px; display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" id="toggle-status-banner" class="custom-checkbox" checked style="margin-top: 2px;">
+                  <div>
+                    <strong style="font-size: 0.82rem; color: var(--text-main); display: block;">Faixa de Status</strong>
+                    <small style="font-size: 0.72rem; color: var(--text-secondary);">Banner de conformidade / homologação</small>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Termos de Aprovação & Rodapé -->
+            <div class="glass-subpanel" style="padding: 1rem; border-radius: 8px; border: 1px solid var(--border-subtle);">
+              <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-main); margin-bottom: 0.75rem; display: flex; align-items: center; gap: 6px;">
+                <span>✍️</span> Termos Formais de Aprovação, Assinaturas & Rodapé
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0.75rem;">
+                <label for="template-approval-terms">Termo de Homologação, Aceite e Autorização Contratual</label>
+                <textarea id="template-approval-terms" rows="4" class="custom-input" style="font-size: 0.82rem; line-height: 1.45;" placeholder="Digite o texto jurídico-técnico do termo de aceite que constará antes das assinaturas..."></textarea>
+              </div>
+
+              <div class="form-row" style="margin-bottom: 0.75rem;">
+                <div class="form-group flex-1">
+                  <label for="template-signee-contratada">Título da Assinatura da Contratada</label>
+                  <input type="text" id="template-signee-contratada" class="custom-input" placeholder="Ex: PELA CONTRATADA (DEVSQUAD)">
+                </div>
+                <div class="form-group flex-1">
+                  <label for="template-signee-contratante">Título da Assinatura da Contratante (Cliente)</label>
+                  <input type="text" id="template-signee-contratante" class="custom-input" placeholder="Ex: PELA CONTRATANTE (CLIENTE)">
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="template-footer-text">Texto do Rodapé do Documento</label>
+                <input type="text" id="template-footer-text" class="custom-input" placeholder="Ex: DevSquad ALM Pro — Artefato Formal de Medição & Aceite Técnico">
+              </div>
+            </div>
+          </div>
+
+          <!-- Coluna 2: Live Document Preview (Em tempo real) -->
+          <div class="template-live-preview-box glass-panel" style="padding: 12px; border-radius: 8px; border: 1px solid var(--border-medium); position: sticky; top: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span style="font-size: 0.75rem; font-weight: 800; color: var(--accent-primary); text-transform: uppercase; letter-spacing: 0.5px;">👁️ Pré-visualização</span>
+              <span class="badge-subtle" style="font-size: 0.68rem; padding: 2px 6px;">Ao Vivo</span>
+            </div>
+
+            <!-- Miniatura do Documento em Escala -->
+            <div id="mini-doc-preview" class="mini-doc-sheet" style="background: #ffffff; color: #0f172a; border-radius: 4px; padding: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.25); font-size: 9px; line-height: 1.3; overflow: hidden; border: 1px solid #e2e8f0;">
+              <!-- Mini Header -->
+              <div id="mini-header-bar" style="background: #0284c7; color: #ffffff; padding: 6px 8px; border-radius: 3px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                <div id="mini-header-logo-box" style="width: 20px; height: 20px; border-radius: 2px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                  <span id="mini-logo-placeholder" style="font-size: 11px;">🏢</span>
+                  <img id="mini-logo-img" src="" alt="Logo" style="display: none; max-width: 100%; max-height: 100%; object-fit: contain;">
+                </div>
+                <div style="overflow: hidden; flex: 1;">
+                  <div id="mini-institution-text" style="font-size: 6.5px; opacity: 0.85; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">DEVSQUAD ALM PRO</div>
+                  <strong id="mini-title-text" style="font-size: 8px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">RELATÓRIO DE MEDIÇÃO</strong>
+                </div>
+              </div>
+
+              <!-- Mini Meta Box -->
+              <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 5px; margin-bottom: 6px; font-size: 7.5px;">
+                <div><strong>Projeto:</strong> [PRJ-01] Alpha Core Banking</div>
+                <div><strong>Marco:</strong> Sprint 04 - Homologação</div>
+              </div>
+
+              <!-- Mini KPIs -->
+              <div id="mini-kpis-box" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 6px; text-align: center;">
+                <div style="background: #f1f5f9; padding: 3px; border-radius: 2px; font-size: 6.5px;">
+                  <span style="color: #64748b; display: block;">Total</span>
+                  <strong style="font-size: 8px;">6</strong>
+                </div>
+                <div style="background: #ecfdf5; padding: 3px; border-radius: 2px; font-size: 6.5px; color: #059669;">
+                  <span style="display: block;">QA</span>
+                  <strong style="font-size: 8px;">6</strong>
+                </div>
+                <div style="background: #f0f9ff; padding: 3px; border-radius: 2px; font-size: 6.5px; color: #0284c7;">
+                  <span style="display: block;">BDD</span>
+                  <strong style="font-size: 8px;">6</strong>
+                </div>
+                <div style="background: #faf5ff; padding: 3px; border-radius: 2px; font-size: 6.5px; color: #9333ea;">
+                  <span style="display: block;">%</span>
+                  <strong style="font-size: 8px;">100%</strong>
+                </div>
+              </div>
+
+              <!-- Mini Status Banner -->
+              <div id="mini-status-banner-box" style="background: #ecfdf5; border: 1px solid #10b981; color: #065f46; border-radius: 2px; padding: 3px; font-size: 6.5px; font-weight: 700; text-align: center; margin-bottom: 6px;">
+                STATUS: 100% HOMOLOGADO & APROVADO
+              </div>
+
+              <!-- Mini Table -->
+              <div style="border: 1px solid #e2e8f0; border-radius: 2px; overflow: hidden; margin-bottom: 6px;">
+                <div id="mini-table-header" style="background: #0284c7; color: #fff; font-size: 6.5px; font-weight: 700; padding: 3px 4px; display: flex; justify-content: space-between;">
+                  <span>Requisito & Specs</span>
+                  <span>Validação QA</span>
+                </div>
+                <div style="padding: 4px; font-size: 7px; background: #fff; border-bottom: 1px solid #f1f5f9;">
+                  <strong>RF-01 Autenticação MFA</strong>
+                  <div id="mini-userstory-row" style="color: #64748b; font-size: 6.5px;"><em>User Story:</em> Como cliente quero...</div>
+                  <div id="mini-bdd-row" style="color: #0284c7; font-size: 6px; font-family: monospace;">Dado que... Quando... Então...</div>
+                  <div id="mini-qa-row" style="color: #059669; font-weight: 700; font-size: 6.5px; margin-top: 1px;">✓ Homologado QA</div>
+                </div>
+              </div>
+
+              <!-- Mini Terms -->
+              <div id="mini-terms-box" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 2px; padding: 4px; font-size: 6px; color: #475569; margin-bottom: 6px; max-height: 40px; overflow: hidden;">
+                <strong style="display: block; font-size: 6.5px; color: #1e293b;">TERMO FORMAL DE ACEITE</strong>
+                <span id="mini-terms-text">Pelo presente instrumento, a CONTRATANTE atesta o pleno recebimento...</span>
+              </div>
+
+              <!-- Mini Signatures -->
+              <div id="mini-signatures-box" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; text-align: center; font-size: 6px;">
+                <div>
+                  <div style="border-top: 1px solid #94a3b8; margin-bottom: 2px;"></div>
+                  <strong id="mini-sig-contratada">CONTRATADA</strong>
+                </div>
+                <div>
+                  <div style="border-top: 1px solid #94a3b8; margin-bottom: 2px;"></div>
+                  <strong id="mini-sig-contratante">CONTRATANTE</strong>
+                </div>
+              </div>
+
+              <!-- Mini Footer -->
+              <div id="mini-footer-box" style="margin-top: 8px; border-top: 1px solid #e2e8f0; padding-top: 4px; font-size: 5.5px; color: #94a3b8; display: flex; justify-content: space-between;">
+                <span id="mini-footer-text">DevSquad ALM Pro</span>
+                <span>Pág 1/1</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding-top: 1rem; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+          <button type="button" class="btn btn-ghost" data-close="modal-template">Cancelar</button>
+          <button type="submit" class="btn btn-primary btn-glow" id="btn-save-template">
+            <span>💾 Salvar Template</span>
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
