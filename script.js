@@ -128,6 +128,7 @@ class ALMStore {
     this.projectStatusFilter = 'all';
     this.reqTypeFilter = 'all';
     this.reqMoscowFilter = 'all';
+    this.reqFeatureFilter = 'all';
     this.kanbanRoleFilter = 'all';
     this.kanbanPriorityFilter = 'all';
     this.teamRoleFilter = 'all';
@@ -161,7 +162,18 @@ class ALMStore {
       state.projects = state.projects.filter(p => !mockIds.has(p.id));
     }
     if (Array.isArray(state.requirements)) {
-      state.requirements = state.requirements.filter(r => !mockIds.has(r.id));
+      state.requirements = state.requirements.filter(r => !mockIds.has(r.id)).map(r => {
+        if (!r.createdAt) {
+          const match = String(r.id || '').match(/\d{10,}/);
+          if (match) {
+            try {
+              const d = new Date(parseInt(match[0], 10));
+              if (!isNaN(d.getTime())) r.createdAt = d.toISOString();
+            } catch(e) {}
+          }
+        }
+        return r;
+      });
     }
     if (Array.isArray(state.tasks)) {
       state.tasks = state.tasks.filter(t => !mockIds.has(t.id)).map(t => {
@@ -294,7 +306,8 @@ class ALMStore {
       desc: data.desc || "",
       color: data.color || "#3b82f6",
       status: data.status || "Ativo",
-      deadline: data.deadline || ""
+      deadline: data.deadline || "",
+      features: Array.isArray(data.features) ? data.features : []
     };
     this.state.projects.push(newProject);
     this.saveState();
@@ -305,17 +318,54 @@ class ALMStore {
   updateProject(id, data) {
     const project = this.getProjectById(id);
     if (project) {
-      project.name = data.name;
-      project.code = (data.code || project.code).toUpperCase();
-      project.desc = data.desc;
-      project.color = data.color;
-      project.status = data.status;
-      project.deadline = data.deadline;
+      if (data.name !== undefined) project.name = data.name;
+      if (data.code !== undefined) project.code = (data.code || project.code).toUpperCase();
+      if (data.desc !== undefined) project.desc = data.desc;
+      if (data.color !== undefined) project.color = data.color;
+      if (data.status !== undefined) project.status = data.status;
+      if (data.deadline !== undefined) project.deadline = data.deadline;
+      if (data.features !== undefined) project.features = Array.isArray(data.features) ? data.features : [];
       this.saveState();
       api.apiRequest(`/api/projects/${id}`, 'PUT', data);
       return true;
     }
     return false;
+  }
+
+  getProjectFeatures(projectId) {
+    const set = new Set();
+    if (!projectId || projectId === 'all') {
+      (this.state.projects || []).forEach(p => {
+        if (Array.isArray(p.features)) p.features.forEach(f => f && set.add(f.trim()));
+      });
+      (this.state.requirements || []).forEach(r => {
+        if (r.feature) set.add(r.feature.trim());
+      });
+    } else {
+      const project = this.getProjectById(projectId);
+      if (project && Array.isArray(project.features)) {
+        project.features.forEach(f => f && set.add(f.trim()));
+      }
+      (this.state.requirements || []).filter(r => r.projectId === projectId).forEach(r => {
+        if (r.feature) set.add(r.feature.trim());
+      });
+    }
+    return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }
+
+  addFeatureToProject(projectId, featureName) {
+    if (!projectId || !featureName) return;
+    const trimmed = String(featureName).trim();
+    if (!trimmed) return;
+    const project = this.getProjectById(projectId);
+    if (project) {
+      if (!Array.isArray(project.features)) project.features = [];
+      if (!project.features.some(f => f.toLowerCase() === trimmed.toLowerCase())) {
+        project.features.push(trimmed);
+        this.saveState();
+        api.apiRequest(`/api/projects/${projectId}`, 'PUT', { features: project.features });
+      }
+    }
   }
 
   deleteProject(id) {
@@ -450,7 +500,7 @@ class ALMStore {
 
   // --- CRUD: REQUISITOS & SPECS ---
   getRequirements() {
-    let list = this.state.requirements;
+    let list = this.state.requirements || [];
     if (this.selectedProject !== 'all') {
       list = list.filter(r => r.projectId === this.selectedProject);
     }
@@ -460,11 +510,36 @@ class ALMStore {
     if (this.reqMoscowFilter !== 'all') {
       list = list.filter(r => r.moscow === this.reqMoscowFilter);
     }
+    if (this.reqFeatureFilter && this.reqFeatureFilter !== 'all') {
+      list = list.filter(r => (r.feature || '').trim().toLowerCase() === this.reqFeatureFilter.trim().toLowerCase());
+    }
     if (this.searchQuery) {
       const q = this.searchQuery.toLowerCase();
-      list = list.filter(r => r.title.toLowerCase().includes(q) || r.code.toLowerCase().includes(q) || r.userStory.toLowerCase().includes(q));
+      list = list.filter(r => (r.title && r.title.toLowerCase().includes(q)) || 
+                              (r.code && r.code.toLowerCase().includes(q)) || 
+                              (r.feature && r.feature.toLowerCase().includes(q)) || 
+                              (r.userStory && r.userStory.toLowerCase().includes(q)));
     }
-    return list;
+    return [...list].sort((a, b) => {
+      // 1. Ordenação padrão cronológica decrescente (createdAt DESC)
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      const validTimeA = (!isNaN(timeA) && timeA > 0) ? timeA : (parseInt(String(a.id || '').replace(/\D/g, ''), 10) || 0);
+      const validTimeB = (!isNaN(timeB) && timeB > 0) ? timeB : (parseInt(String(b.id || '').replace(/\D/g, ''), 10) || 0);
+
+      if (validTimeB !== validTimeA) {
+        return validTimeB - validTimeA;
+      }
+
+      // 2. Fallback: Código identificador decrescente (ex: RF-02 > RF-01)
+      const codeA = a.code || '';
+      const codeB = b.code || '';
+      const codeComp = codeB.localeCompare(codeA, undefined, { numeric: true, sensitivity: 'base' });
+      if (codeComp !== 0) return codeComp;
+
+      // 3. Fallback: ID decrescente
+      return String(b.id || '').localeCompare(String(a.id || ''), undefined, { numeric: true });
+    });
   }
 
   findRequirement(identifier) {
@@ -503,17 +578,24 @@ class ALMStore {
   }
 
   addRequirement(data) {
+    const now = new Date().toISOString();
+    const feature = (data.feature || '').trim();
     const newReq = {
       id: "req" + Date.now(),
       code: (data.code || "RF-01").toUpperCase(),
       title: data.title,
       projectId: data.projectId,
+      feature: feature,
       type: data.type,
       moscow: data.moscow,
       userStory: data.userStory,
-      bdd: data.bdd
+      bdd: data.bdd,
+      createdAt: data.createdAt || now
     };
-    this.state.requirements.push(newReq);
+    if (data.projectId && feature) {
+      this.addFeatureToProject(data.projectId, feature);
+    }
+    this.state.requirements.unshift(newReq);
     this.saveState();
     api.apiRequest('/api/requirements', 'POST', newReq);
     return newReq;
@@ -525,6 +607,12 @@ class ALMStore {
       if (data.title !== undefined) req.title = data.title;
       if (data.code !== undefined) req.code = (data.code || req.code).toUpperCase();
       if (data.projectId !== undefined) req.projectId = data.projectId;
+      if (data.feature !== undefined) {
+        req.feature = (data.feature || '').trim();
+        if (req.projectId && req.feature) {
+          this.addFeatureToProject(req.projectId, req.feature);
+        }
+      }
       if (data.type !== undefined) req.type = data.type;
       if (data.moscow !== undefined) req.moscow = data.moscow;
       if (data.userStory !== undefined) req.userStory = data.userStory;
@@ -1684,10 +1772,55 @@ function renderDashboard() {
   });
 }
 
+// ==============================================================================
+// GESTÃO DE MODO DE EXIBIÇÃO: BLOCOS (CARDS) VS LISTA COMPACTA
+// Persistência em LocalStorage e Sincronização entre Áreas
+// ==============================================================================
+
+function getViewLayoutMode(viewName) {
+  try {
+    return localStorage.getItem(`devsquad_view_layout_${viewName}`) || 'cards';
+  } catch (e) {
+    return 'cards';
+  }
+}
+window.getViewLayoutMode = getViewLayoutMode;
+
+function setViewLayoutMode(viewName, mode) {
+  try {
+    localStorage.setItem(`devsquad_view_layout_${viewName}`, mode);
+  } catch (e) {
+    console.error('Erro ao salvar preferência de layout:', e);
+  }
+  updateViewLayoutToggleUI(viewName, mode);
+  if (viewName === 'projects') renderProjects();
+  else if (viewName === 'requirements') renderRequirements();
+  else if (viewName === 'kanban') renderKanban();
+  else if (viewName === 'team') renderTeam();
+}
+window.setViewLayoutMode = setViewLayoutMode;
+
+function updateViewLayoutToggleUI(viewName, currentMode) {
+  const mode = currentMode || getViewLayoutMode(viewName);
+  const toggle = document.querySelector(`.view-layout-toggle[data-view="${viewName}"]`);
+  if (!toggle) return;
+  toggle.querySelectorAll('.view-mode-btn').forEach(btn => {
+    const isActive = btn.dataset.mode === mode;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+}
+window.updateViewLayoutToggleUI = updateViewLayoutToggleUI;
+
 // --- RENDERIZAR ABA: PROJETOS (CRUD) ---
 function renderProjects() {
   const container = document.getElementById('projects-cards-container');
+  if (!container) return;
   container.innerHTML = '';
+
+  const mode = getViewLayoutMode('projects');
+  updateViewLayoutToggleUI('projects', mode);
+  container.classList.toggle('is-list-view', mode === 'list');
 
   const projects = store.getProjects();
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
@@ -1696,7 +1829,7 @@ function renderProjects() {
 
   if (projects.length === 0) {
     container.innerHTML = `
-      <div class="glass-panel" style="padding: 3rem; text-align: center; color: var(--text-muted); grid-column: 1 / -1;">
+      <div class="glass-panel" style="padding: 3rem; text-align: center; color: var(--text-muted); grid-column: 1 / -1; width: 100%;">
         <p style="font-size: 1.15rem; margin-bottom: 0.85rem;">Nenhum projeto encontrado com os filtros aplicados.</p>
         ${perms.canCreateProject ? '<button class="btn btn-primary" onclick="openProjectModalForCreate()">+ Cadastrar Novo Projeto</button>' : ''}
       </div>
@@ -1704,74 +1837,162 @@ function renderProjects() {
     return;
   }
 
-  projects.forEach(project => {
-    const pTasks = store.state.tasks.filter(t => t.projectId === project.id);
-    const pReqs = store.state.requirements.filter(r => r.projectId === project.id);
-    const reqIds = pReqs.map(r => r.id);
-    const pTests = store.state.testCases.filter(tc => reqIds.includes(tc.reqId));
+  if (mode === 'list') {
+    // Modo Lista: Tabela compacta de alta densidade
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'table-responsive list-mode-table-wrap';
 
-    const completedTasks = pTasks.filter(t => t.status === 'done').length;
-    const progressPercent = pTasks.length > 0 ? Math.round((completedTasks / pTasks.length) * 100) : 0;
-    const statusBadgeClass = project.status === 'Ativo' ? 'status-pass' : (project.status === 'Concluído' ? 'status-pass' : 'status-pending');
+    let rowsHtml = '';
+    projects.forEach(project => {
+      const pTasks = store.state.tasks.filter(t => t.projectId === project.id);
+      const pReqs = store.state.requirements.filter(r => r.projectId === project.id);
+      const reqIds = pReqs.map(r => r.id);
+      const pTests = store.state.testCases.filter(tc => reqIds.includes(tc.reqId));
 
-    const canEditProject = perms.canEditProject;
-    const canDeleteProject = perms.canDeleteProject;
+      const completedTasks = pTasks.filter(t => t.status === 'done').length;
+      const progressPercent = pTasks.length > 0 ? Math.round((completedTasks / pTasks.length) * 100) : 0;
+      const statusBadgeClass = project.status === 'Ativo' ? 'status-pass' : (project.status === 'Concluído' ? 'status-pass' : 'status-pending');
 
-    let actionsHtml = '';
-    if (canEditProject) {
-      actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="openProjectModalForEdit('${project.id}')" title="Editar Projeto">✏️ Editar</button>`;
-    }
-    if (canDeleteProject) {
-      actionsHtml += `<button class="btn btn-danger btn-sm" onclick="confirmDeleteProject('${project.id}', '${project.name}')" title="Excluir Projeto">🗑️ Excluir</button>`;
-    }
+      const canEditProject = perms.canEditProject;
+      const canDeleteProject = perms.canDeleteProject;
 
-    const card = document.createElement('article');
-    card.className = 'project-card glass-panel';
-    card.innerHTML = `
-      <div class="project-card-top-bar" style="background: ${project.color || '#3b82f6'};"></div>
-      
-      <div class="project-card-header">
-        <div>
-          <span class="project-code-tag">${project.code || 'PROJ'}</span>
-          <h2 class="project-card-title">${project.name}</h2>
-        </div>
-        <span class="status-pill ${statusBadgeClass}">${project.status}</span>
-      </div>
+      let actionsHtml = '';
+      if (canEditProject) {
+        actionsHtml += `<button class="btn btn-secondary btn-xs" onclick="openProjectModalForEdit('${project.id}')" title="Editar Projeto">✏️ Editar</button>`;
+      }
+      if (canDeleteProject) {
+        actionsHtml += `<button class="btn btn-danger btn-xs" onclick="confirmDeleteProject('${project.id}', '${escapeHtml(project.name)}')" title="Excluir Projeto">🗑️ Excluir</button>`;
+      }
+      if (!actionsHtml) {
+        actionsHtml = `<span style="font-size: 0.72rem; color: var(--text-muted);">🔒 Leitura</span>`;
+      }
 
-      <p class="project-card-desc">${project.desc || 'Sem descrição cadastrada.'}</p>
+      rowsHtml += `
+        <tr>
+          <td>
+            <span class="project-code-tag" style="border-left: 3px solid ${project.color || '#3b82f6'};">${escapeHtml(project.code || 'PROJ')}</span>
+          </td>
+          <td>
+            <div class="cell-title-group">
+              <strong class="cell-main-title" ${canEditProject ? `onclick="openProjectModalForEdit('${project.id}')" style="cursor: pointer;"` : ''}>${escapeHtml(project.name)}</strong>
+              <span class="cell-sub-desc" title="${escapeHtml(project.desc || '')}">${escapeHtml(project.desc || 'Sem descrição cadastrada.')}</span>
+            </div>
+          </td>
+          <td>
+            <span class="status-pill ${statusBadgeClass}">${project.status}</span>
+          </td>
+          <td>
+            <div class="mini-progress-row">
+              <div style="display: flex; justify-content: space-between; font-size: 0.74rem; font-weight: 600;">
+                <span>${progressPercent}%</span>
+                <span style="color: var(--text-muted); font-size: 0.7rem;">(${completedTasks}/${pTasks.length} dem.)</span>
+              </div>
+              <div class="progress-track mini-track">
+                <div class="progress-fill" style="width: ${progressPercent}%; background: ${project.color || '#3b82f6'};"></div>
+              </div>
+              <div class="mini-metrics-chips">
+                <span class="metric-mini-tag" title="Requisitos">📋 ${pReqs.length} reqs</span>
+                <span class="metric-mini-tag" title="Demandas">💻 ${pTasks.length} dem.</span>
+                <span class="metric-mini-tag" title="Casos de Teste QA">🧪 ${pTests.length} testes</span>
+                <span class="metric-mini-tag deadline-tag" title="Data de Entrega">📅 ${project.deadline ? formatDateBR(project.deadline) : 'A definir'}</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="table-actions-cell">${actionsHtml}</div>
+          </td>
+        </tr>
+      `;
+    });
 
-      <div class="project-card-metrics">
-        <div class="project-metric-item">
-          <span class="project-metric-val">${pReqs.length}</span>
-          <span class="project-metric-lbl">Requisitos</span>
-        </div>
-        <div class="project-metric-item">
-          <span class="project-metric-val">${pTasks.length}</span>
-          <span class="project-metric-lbl">Demandas</span>
-        </div>
-        <div class="project-metric-item">
-          <span class="project-metric-val">${pTests.length}</span>
-          <span class="project-metric-lbl">Testes QA</span>
-        </div>
-      </div>
-
-      <div style="margin-bottom: 1rem;">
-        <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; margin-bottom: 0.35rem;">
-          <span>Progresso do Projeto</span>
-          <span style="color: ${project.color || 'var(--text-main)'};">${progressPercent}% (${completedTasks}/${pTasks.length})</span>
-        </div>
-        <div class="progress-track">
-          <div class="progress-fill" style="width: ${progressPercent}%; background: ${project.color || '#3b82f6'};"></div>
-        </div>
-      </div>
-
-      <div class="project-card-footer">
-        <span class="project-deadline-text">📅 Entrega: ${project.deadline ? formatDateBR(project.deadline) : 'A definir'}</span>
-        ${actionsHtml ? `<div class="project-actions-group">${actionsHtml}</div>` : '<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">🔒 Somente leitura</span>'}
-      </div>
+    tableWrap.innerHTML = `
+      <table class="compact-data-table">
+        <thead>
+          <tr>
+            <th style="width: 110px;">Identificador</th>
+            <th>Nome / Título</th>
+            <th style="width: 140px;">Status</th>
+            <th style="width: 270px;">Métricas / Progresso</th>
+            <th style="width: 140px; text-align: right;">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
     `;
-    container.appendChild(card);
-  });
+    container.appendChild(tableWrap);
+  } else {
+    // Modo Cards (Grelha original)
+    projects.forEach(project => {
+      const pTasks = store.state.tasks.filter(t => t.projectId === project.id);
+      const pReqs = store.state.requirements.filter(r => r.projectId === project.id);
+      const reqIds = pReqs.map(r => r.id);
+      const pTests = store.state.testCases.filter(tc => reqIds.includes(tc.reqId));
+
+      const completedTasks = pTasks.filter(t => t.status === 'done').length;
+      const progressPercent = pTasks.length > 0 ? Math.round((completedTasks / pTasks.length) * 100) : 0;
+      const statusBadgeClass = project.status === 'Ativo' ? 'status-pass' : (project.status === 'Concluído' ? 'status-pass' : 'status-pending');
+
+      const canEditProject = perms.canEditProject;
+      const canDeleteProject = perms.canDeleteProject;
+
+      let actionsHtml = '';
+      if (canEditProject) {
+        actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="openProjectModalForEdit('${project.id}')" title="Editar Projeto">✏️ Editar</button>`;
+      }
+      if (canDeleteProject) {
+        actionsHtml += `<button class="btn btn-danger btn-sm" onclick="confirmDeleteProject('${project.id}', '${project.name}')" title="Excluir Projeto">🗑️ Excluir</button>`;
+      }
+
+      const card = document.createElement('article');
+      card.className = 'project-card glass-panel';
+      card.innerHTML = `
+        <div class="project-card-top-bar" style="background: ${project.color || '#3b82f6'};"></div>
+        
+        <div class="project-card-header">
+          <div>
+            <span class="project-code-tag">${project.code || 'PROJ'}</span>
+            <h2 class="project-card-title">${project.name}</h2>
+          </div>
+          <span class="status-pill ${statusBadgeClass}">${project.status}</span>
+        </div>
+
+        <p class="project-card-desc">${project.desc || 'Sem descrição cadastrada.'}</p>
+
+        <div class="project-card-metrics">
+          <div class="project-metric-item">
+            <span class="project-metric-val">${pReqs.length}</span>
+            <span class="project-metric-lbl">Requisitos</span>
+          </div>
+          <div class="project-metric-item">
+            <span class="project-metric-val">${pTasks.length}</span>
+            <span class="project-metric-lbl">Demandas</span>
+          </div>
+          <div class="project-metric-item">
+            <span class="project-metric-val">${pTests.length}</span>
+            <span class="project-metric-lbl">Testes QA</span>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 1rem;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; margin-bottom: 0.35rem;">
+            <span>Progresso do Projeto</span>
+            <span style="color: ${project.color || 'var(--text-main)'};">${progressPercent}% (${completedTasks}/${pTasks.length})</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill" style="width: ${progressPercent}%; background: ${project.color || '#3b82f6'};"></div>
+          </div>
+        </div>
+
+        <div class="project-card-footer">
+          <span class="project-deadline-text">📅 Entrega: ${project.deadline ? formatDateBR(project.deadline) : 'A definir'}</span>
+          ${actionsHtml ? `<div class="project-actions-group">${actionsHtml}</div>` : '<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">🔒 Somente leitura</span>'}
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  }
 }
 
 function formatDateBR(dateStr) {
@@ -1779,6 +2000,22 @@ function formatDateBR(dateStr) {
   const parts = dateStr.split('-');
   if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
   return dateStr;
+}
+
+function formatDateTimeBR(isoOrDateStr) {
+  if (!isoOrDateStr) return '';
+  try {
+    const d = new Date(isoOrDateStr);
+    if (isNaN(d.getTime())) return isoOrDateStr;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${mins}`;
+  } catch (e) {
+    return isoOrDateStr;
+  }
 }
 
 // Funções de CRUD de Projetos
@@ -1796,6 +2033,8 @@ window.openProjectModalForCreate = function() {
   document.getElementById('form-project').reset();
   document.getElementById('project-color-input').value = "#3b82f6";
   document.getElementById('project-status-input').value = "Ativo";
+  const featInput = document.getElementById('project-features-input');
+  if (featInput) featInput.value = "";
   openModal('modal-project');
 };
 
@@ -1819,6 +2058,10 @@ window.openProjectModalForEdit = function(projectId) {
   document.getElementById('project-status-input').value = project.status || "Ativo";
   document.getElementById('project-deadline-input').value = project.deadline || "";
   document.getElementById('project-color-input').value = project.color || "#3b82f6";
+  const featInput = document.getElementById('project-features-input');
+  if (featInput) {
+    featInput.value = Array.isArray(project.features) ? project.features.join(', ') : (project.features || "");
+  }
 
   openModal('modal-project');
 };
@@ -1842,7 +2085,12 @@ window.confirmDeleteProject = function(projectId, projectName) {
 // --- RENDERIZAR ABA: REQUISITOS (CRUD) ---
 function renderRequirements() {
   const container = document.getElementById('requirements-container');
+  if (!container) return;
   container.innerHTML = '';
+
+  const mode = getViewLayoutMode('requirements');
+  updateViewLayoutToggleUI('requirements', mode);
+  container.classList.toggle('is-list-view', mode === 'list');
 
   const requirements = store.getRequirements();
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
@@ -1851,7 +2099,7 @@ function renderRequirements() {
 
   if (requirements.length === 0) {
     container.innerHTML = `
-      <div class="glass-panel" style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
+      <div class="glass-panel" style="padding: 2.5rem; text-align: center; color: var(--text-muted); width: 100%;">
         <p style="font-size: 1.1rem; margin-bottom: 0.5rem;">Nenhum requisito encontrado para os filtros selecionados.</p>
         ${perms.canCreateReq ? '<button class="btn btn-secondary btn-sm" onclick="openReqModalForCreate()">+ Especificar Primeiro Requisito</button>' : ''}
       </div>
@@ -1866,76 +2114,167 @@ function renderRequirements() {
     "Won't": "Não Prioritário"
   };
 
-  requirements.forEach(req => {
-    const project = store.getProjectById(req.projectId);
-    const linkedTasks = store.state.tasks.filter(t => t.reqId === req.id);
-    const linkedTests = store.state.testCases.filter(tc => tc.reqId === req.id);
-    const moscowClass = req.moscow === 'Must' ? 'moscow-must' : (req.moscow === 'Should' ? 'moscow-should' : 'moscow-could');
+  if (mode === 'list') {
+    // Modo Lista: Tabela compacta de alta densidade
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'table-responsive list-mode-table-wrap';
 
-    let reqActionsHtml = '';
-    if (perms.canCreateTask) {
-      reqActionsHtml += `<button class="card-btn-action btn-add-task" onclick="openTaskModalForCreate('${req.id}')" title="Criar Demanda vinculada a este Requisito">➕ Criar Tarefa</button>`;
-    }
-    if (perms.canEditReq) {
-      reqActionsHtml += `<button class="card-btn-action" onclick="openReqModalForEdit('${req.id}')" title="Editar Requisito">✏️ Editar</button>`;
-    }
-    if (perms.canDeleteReq) {
-      reqActionsHtml += `<button class="card-btn-action btn-del" onclick="confirmDeleteRequirement('${req.id}', '${req.code}', '${req.title}')" title="Excluir Requisito">🗑️ Excluir</button>`;
-    }
+    let rowsHtml = '';
+    requirements.forEach(req => {
+      const project = store.getProjectById(req.projectId);
+      const linkedTasks = store.state.tasks.filter(t => t.reqId === req.id);
+      const linkedTests = store.state.testCases.filter(tc => tc.reqId === req.id);
+      const moscowClass = req.moscow === 'Must' ? 'moscow-must' : (req.moscow === 'Should' ? 'moscow-should' : 'moscow-could');
 
-    const card = document.createElement('article');
-    card.className = 'requirement-card glass-panel';
-    card.id = `req-card-${req.id}`;
-    card.setAttribute('data-req-id', req.id);
-    card.innerHTML = `
-      <div class="req-header-row">
-        <span class="req-code-badge">${req.code}</span>
-        <h3 class="req-title">${req.title}</h3>
-        <span class="moscow-badge ${moscowClass}">${moscowLabels[req.moscow] || req.moscow}</span>
-        <span class="badge-subtle">${project ? project.name : 'Geral'}</span>
-        
-        <div class="card-header-actions" style="margin-left: auto;">
-          ${reqActionsHtml ? reqActionsHtml : '<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">🔒 Somente leitura</span>'}
-        </div>
-      </div>
+      let reqActionsHtml = '';
+      if (perms.canCreateTask) {
+        reqActionsHtml += `<button class="btn-add-task-xs" onclick="openTaskModalForCreate('${req.id}')" title="Criar Demanda vinculada a este Requisito">➕ Tarefa</button>`;
+      }
+      if (perms.canEditReq) {
+        reqActionsHtml += `<button class="card-btn-action btn-xs" onclick="openReqModalForEdit('${req.id}')" title="Editar Requisito">✏️ Editar</button>`;
+      }
+      if (perms.canDeleteReq) {
+        reqActionsHtml += `<button class="card-btn-action btn-del btn-xs" onclick="confirmDeleteRequirement('${req.id}', '${req.code}', '${escapeHtml(req.title)}')" title="Excluir Requisito">🗑️ Excluir</button>`;
+      }
+      if (!reqActionsHtml) {
+        reqActionsHtml = `<span style="font-size: 0.72rem; color: var(--text-muted);">🔒 Leitura</span>`;
+      }
 
-      <div class="user-story-quote">
-        <strong>História de Usuário:</strong> ${req.userStory || 'Não preenchida.'}
-      </div>
-
-      <div class="bdd-container">
-        <div class="bdd-title">Critérios de Aceite (Cenário: Dado / Quando / Então):</div>
-        <div class="bdd-content">${req.bdd || 'Critérios não documentados.'}</div>
-      </div>
-
-      <div class="req-footer-row">
-        <div class="req-linked-tasks-block">
-          <div class="req-linked-tasks-header" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
-            <span class="req-linked-tasks-label">🔗 <strong>Demandas Vinculadas (${linkedTasks.length}):</strong></span>
-            ${perms.canCreateTask ? `
-              <button class="card-btn-action btn-add-task-pill" onclick="openTaskModalForCreate('${req.id}')" title="Criar Tarefa para este Requisito">
-                ➕ Criar Tarefa
-              </button>
+      rowsHtml += `
+        <tr id="req-row-${req.id}">
+          <td>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <span class="req-code-badge">${escapeHtml(req.code)}</span>
+              <span class="badge-subtle" style="font-size: 0.68rem; align-self: flex-start;">${req.type === 'non-functional' ? 'RNF' : 'RF'}</span>
+            </div>
+          </td>
+          <td>
+            <div class="cell-title-group">
+              <strong class="cell-main-title" ${perms.canEditReq ? `onclick="openReqModalForEdit('${req.id}')" style="cursor: pointer;"` : ''}>${escapeHtml(req.title)}</strong>
+              <div class="cell-sub-meta">
+                <span class="badge-subtle" style="font-size: 0.7rem;">${project ? escapeHtml(project.name) : 'Geral'}</span>
+                ${req.feature ? `<span class="badge-feature-pill" title="Feature / Módulo de Negócio">🧩 ${escapeHtml(req.feature)}</span>` : ''}
+                ${req.createdAt ? `<span class="badge-subtle req-date-badge" style="font-size: 0.7rem; color: var(--text-muted);" title="Data de Criação: ${formatDateTimeBR(req.createdAt)}">🕒 ${formatDateTimeBR(req.createdAt)}</span>` : ''}
+                <span class="cell-sub-desc" title="História de Usuário: ${escapeHtml(req.userStory || '')}">📖 ${escapeHtml(req.userStory || 'Sem User Story')}</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="moscow-badge ${moscowClass}">${moscowLabels[req.moscow] || req.moscow}</span>
+          </td>
+          <td>
+            <div class="mini-metrics-chips">
+              <span class="metric-mini-tag" title="Demandas Vinculadas">🔗 <strong>${linkedTasks.length}</strong> demandas</span>
+              <span class="metric-mini-tag" title="Casos de Teste QA">🧪 <strong>${linkedTests.length}</strong> testes</span>
+            </div>
+            ${linkedTasks.length > 0 ? `
+              <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">
+                ${linkedTasks.slice(0, 3).map(t => `
+                  <span class="task-role-tag ${t.role ? 'role-' + t.role : 'role-back'}" onclick="openTaskModalForEdit('${t.id}')" title="Demanda #${t.id}: ${escapeHtml(t.title)}" style="cursor: pointer; font-size: 0.68rem; padding: 1px 5px;">#${t.id.slice(-4)}</span>
+                `).join('')}
+                ${linkedTasks.length > 3 ? `<span style="font-size: 0.7rem; color: var(--text-muted);">+${linkedTasks.length - 3}</span>` : ''}
+              </div>
             ` : ''}
-          </div>
-          <div class="req-linked-tasks-list" style="display: flex; flex-wrap: wrap; gap: 6px;">
-            ${linkedTasks.length > 0 ? linkedTasks.map(t => {
-              const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(t.role) : { tagClass: 'role-back', icon: '💻', shortLabel: 'Dev' };
-              return `
-                <span class="task-role-tag ${spec.tagClass} linked-task-chip" onclick="openTaskModalForEdit('${t.id}')" title="Demanda #${t.id}: ${escapeHtml(t.title)} (Clique para inspecionar)" style="cursor: pointer;">
-                  ${spec.icon} ${spec.shortLabel || spec.label} <strong>#${t.id.slice(-5)}</strong>: ${escapeHtml(t.title)}
-                </span>
-              `;
-            }).join('') : '<span style="color: var(--text-muted); font-size: 0.82rem; font-style: italic;">Nenhuma demanda vinculada</span>'}
-          </div>
-        </div>
-        <div class="req-linked-tests-block" style="margin-left: auto; align-self: flex-start;">
-          <span>🧪 Casos de Teste QA: <strong>${linkedTests.length}</strong></span>
-        </div>
-      </div>
+          </td>
+          <td>
+            <div class="table-actions-cell">${reqActionsHtml}</div>
+          </td>
+        </tr>
+      `;
+    });
+
+    tableWrap.innerHTML = `
+      <table class="compact-data-table">
+        <thead>
+          <tr>
+            <th style="width: 100px;">Identificador</th>
+            <th>Nome / Título</th>
+            <th style="width: 160px;">Status</th>
+            <th style="width: 250px;">Métricas / Progresso</th>
+            <th style="width: 180px; text-align: right;">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
     `;
-    container.appendChild(card);
-  });
+    container.appendChild(tableWrap);
+  } else {
+    // Modo Cards (Grelha original)
+    requirements.forEach(req => {
+      const project = store.getProjectById(req.projectId);
+      const linkedTasks = store.state.tasks.filter(t => t.reqId === req.id);
+      const linkedTests = store.state.testCases.filter(tc => tc.reqId === req.id);
+      const moscowClass = req.moscow === 'Must' ? 'moscow-must' : (req.moscow === 'Should' ? 'moscow-should' : 'moscow-could');
+
+      let reqActionsHtml = '';
+      if (perms.canCreateTask) {
+        reqActionsHtml += `<button class="card-btn-action btn-add-task" onclick="openTaskModalForCreate('${req.id}')" title="Criar Demanda vinculada a este Requisito">➕ Criar Tarefa</button>`;
+      }
+      if (perms.canEditReq) {
+        reqActionsHtml += `<button class="card-btn-action" onclick="openReqModalForEdit('${req.id}')" title="Editar Requisito">✏️ Editar</button>`;
+      }
+      if (perms.canDeleteReq) {
+        reqActionsHtml += `<button class="card-btn-action btn-del" onclick="confirmDeleteRequirement('${req.id}', '${req.code}', '${escapeHtml(req.title)}')" title="Excluir Requisito">🗑️ Excluir</button>`;
+      }
+
+      const card = document.createElement('article');
+      card.className = 'requirement-card glass-panel';
+      card.id = `req-card-${req.id}`;
+      card.setAttribute('data-req-id', req.id);
+      card.innerHTML = `
+        <div class="req-header-row">
+          <span class="req-code-badge">${req.code}</span>
+          <h3 class="req-title">${escapeHtml(req.title)}</h3>
+          <span class="moscow-badge ${moscowClass}">${moscowLabels[req.moscow] || req.moscow}</span>
+          <span class="badge-subtle">${project ? escapeHtml(project.name) : 'Geral'}</span>
+          ${req.feature ? `<span class="badge-feature" title="Feature / Módulo de Negócio">🧩 ${escapeHtml(req.feature)}</span>` : ''}
+          ${req.createdAt ? `<span class="badge-subtle req-date-badge" style="font-size: 0.72rem; color: var(--text-muted);" title="Data de Criação: ${formatDateTimeBR(req.createdAt)}">🕒 ${formatDateTimeBR(req.createdAt)}</span>` : ''}
+          
+          <div class="card-header-actions" style="margin-left: auto;">
+            ${reqActionsHtml ? reqActionsHtml : '<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">🔒 Somente leitura</span>'}
+          </div>
+        </div>
+
+        <div class="user-story-quote">
+          <strong>História de Usuário:</strong> ${escapeHtml(req.userStory || 'Não preenchida.')}
+        </div>
+
+        <div class="bdd-container">
+          <div class="bdd-title">Critérios de Aceite (Cenário: Dado / Quando / Então):</div>
+          <div class="bdd-content">${escapeHtml(req.bdd || 'Critérios não documentados.')}</div>
+        </div>
+
+        <div class="req-footer-row">
+          <div class="req-linked-tasks-block">
+            <div class="req-linked-tasks-header" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+              <span class="req-linked-tasks-label">🔗 <strong>Demandas Vinculadas (${linkedTasks.length}):</strong></span>
+              ${perms.canCreateTask ? `
+                <button class="card-btn-action btn-add-task-pill" onclick="openTaskModalForCreate('${req.id}')" title="Criar Tarefa para este Requisito">
+                  ➕ Criar Tarefa
+                </button>
+              ` : ''}
+            </div>
+            <div class="req-linked-tasks-list" style="display: flex; flex-wrap: wrap; gap: 6px;">
+              ${linkedTasks.length > 0 ? linkedTasks.map(t => {
+                const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(t.role) : { tagClass: 'role-back', icon: '💻', shortLabel: 'Dev' };
+                return `
+                  <span class="task-role-tag ${spec.tagClass} linked-task-chip" onclick="openTaskModalForEdit('${t.id}')" title="Demanda #${t.id}: ${escapeHtml(t.title)} (Clique para inspecionar)" style="cursor: pointer;">
+                    ${spec.icon} ${spec.shortLabel || spec.label} <strong>#${t.id.slice(-5)}</strong>: ${escapeHtml(t.title)}
+                  </span>
+                `;
+              }).join('') : '<span style="color: var(--text-muted); font-size: 0.82rem; font-style: italic;">Nenhuma demanda vinculada</span>'}
+            </div>
+          </div>
+          <div class="req-linked-tests-block" style="margin-left: auto; align-self: flex-start;">
+            <span>🧪 Casos de Teste QA: <strong>${linkedTests.length}</strong></span>
+          </div>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  }
 }
 
 // ==============================================================================
@@ -2060,6 +2399,82 @@ function toggleReqCodeLock() {
 window.toggleReqCodeLock = toggleReqCodeLock;
 window.updateAutoReqCode = updateAutoReqCode;
 
+function updateModalFeaturesDropdown(selectedProjectId, currentFeatureValue = '') {
+  const featureSelect = document.getElementById('req-feature');
+  const customInput = document.getElementById('req-feature-custom');
+  if (!featureSelect) return;
+
+  const features = store.getProjectFeatures(selectedProjectId);
+  featureSelect.innerHTML = '';
+
+  const defaultOpt = document.createElement('option');
+  defaultOpt.value = '';
+  defaultOpt.textContent = features.length === 0 
+    ? '-- Nenhuma feature cadastrada neste projeto --' 
+    : '-- Selecione a Feature / Módulo --';
+  featureSelect.appendChild(defaultOpt);
+
+  let hasSelected = false;
+  features.forEach(feat => {
+    const opt = document.createElement('option');
+    opt.value = feat;
+    opt.textContent = `🧩 ${feat}`;
+    if (currentFeatureValue && feat.toLowerCase() === currentFeatureValue.toLowerCase()) {
+      opt.selected = true;
+      hasSelected = true;
+    }
+    featureSelect.appendChild(opt);
+  });
+
+  const newOpt = document.createElement('option');
+  newOpt.value = '__new__';
+  newOpt.textContent = '➕ Cadastrar Nova Feature / Módulo...';
+  featureSelect.appendChild(newOpt);
+
+  if (currentFeatureValue && !hasSelected) {
+    const customOpt = document.createElement('option');
+    customOpt.value = currentFeatureValue;
+    customOpt.textContent = `🧩 ${currentFeatureValue}`;
+    customOpt.selected = true;
+    featureSelect.insertBefore(customOpt, newOpt);
+    if (customInput) {
+      customInput.style.display = 'none';
+      customInput.value = '';
+    }
+  } else {
+    if (customInput) {
+      customInput.style.display = 'none';
+      customInput.value = '';
+    }
+  }
+}
+window.updateModalFeaturesDropdown = updateModalFeaturesDropdown;
+
+function populateFeatureFilterOptions() {
+  const select = document.getElementById('req-feature-filter');
+  if (!select) return;
+
+  const currentVal = store.reqFeatureFilter || 'all';
+  const features = store.getProjectFeatures(store.selectedProject);
+
+  select.innerHTML = '<option value="all">Todas as Features</option>';
+  features.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f;
+    opt.textContent = `🧩 ${f}`;
+    if (f.toLowerCase() === currentVal.toLowerCase()) {
+      opt.selected = true;
+    }
+    select.appendChild(opt);
+  });
+
+  if (currentVal !== 'all' && !features.some(f => f.toLowerCase() === currentVal.toLowerCase())) {
+    store.reqFeatureFilter = 'all';
+    select.value = 'all';
+  }
+}
+window.populateFeatureFilterOptions = populateFeatureFilterOptions;
+
 // Funções de CRUD de Requisitos
 window.openReqModalForCreate = function() {
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
@@ -2083,6 +2498,9 @@ window.openReqModalForCreate = function() {
     if (projSelect) projSelect.value = store.selectedProject;
   }
 
+  const currentProjId = document.getElementById('req-project')?.value;
+  updateModalFeaturesDropdown(currentProjId, '');
+
   // Define modo automático bloqueado e calcula o próximo código sequencial
   setReqCodeMode(false);
   updateAutoReqCode();
@@ -2105,6 +2523,7 @@ window.openReqModalForEdit = function(reqId) {
   document.getElementById('req-title').value = req.title;
   document.getElementById('req-code').value = req.code;
   document.getElementById('req-project').value = req.projectId;
+  updateModalFeaturesDropdown(req.projectId, req.feature || '');
   document.getElementById('req-type').value = req.type;
   document.getElementById('req-moscow').value = req.moscow;
   document.getElementById('req-user-story').value = req.userStory || "";
@@ -2138,6 +2557,19 @@ window.confirmDeleteRequirement = function(reqId, reqCode, reqTitle) {
 function renderKanban() {
   const columns = ['backlog', 'spec', 'dev', 'qa', 'done'];
   const tasks = store.getTasks();
+  const kanbanBoard = document.getElementById('kanban-board');
+  const listContainer = document.getElementById('kanban-list-container');
+
+  const mode = getViewLayoutMode('kanban');
+  updateViewLayoutToggleUI('kanban', mode);
+
+  if (mode === 'list') {
+    if (kanbanBoard) kanbanBoard.style.display = 'none';
+    if (listContainer) listContainer.style.display = 'block';
+  } else {
+    if (kanbanBoard) kanbanBoard.style.display = 'grid';
+    if (listContainer) listContainer.style.display = 'none';
+  }
 
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
   const currentRoleKey = currentUser ? currentUser.role : 'dev';
@@ -2160,138 +2592,254 @@ function renderKanban() {
     done: 'Concluído'
   };
 
-  tasks.forEach(task => {
-    const colStatus = task.status || 'backlog';
-    counts[colStatus] = (counts[colStatus] || 0) + 1;
+  if (mode === 'list' && listContainer) {
+    if (tasks.length === 0) {
+      listContainer.innerHTML = `
+        <div class="glass-panel" style="padding: 3rem; text-align: center; color: var(--text-muted); width: 100%;">
+          <p style="font-size: 1.15rem; margin-bottom: 0.85rem;">Nenhuma demanda encontrada com os filtros aplicados.</p>
+          ${perms.canCreateTask ? '<button class="btn btn-primary" onclick="openTaskModalForCreate()">+ Nova Demanda</button>' : ''}
+        </div>
+      `;
+    } else {
+      let rowsHtml = '';
+      tasks.forEach(task => {
+        const colStatus = task.status || 'backlog';
+        counts[colStatus] = (counts[colStatus] || 0) + 1;
 
-    const zone = document.getElementById(`zone-${colStatus}`);
-    if (!zone) return;
+        const project = store.getProjectById(task.projectId);
+        const assignee = store.getMemberById(task.assigneeId);
+        const priorityClass = task.priority === 'Alta' ? 'pri-alta' : (task.priority === 'Média' ? 'pri-media' : 'pri-baixa');
+        const taskSpec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(task.role) : { borderClass: 'task-back', tagClass: 'role-back', icon: '💻', label: 'Geral', shortLabel: 'Dev' };
 
-    const project = store.getProjectById(task.projectId);
-    const assignee = store.getMemberById(task.assigneeId);
-    const priorityClass = task.priority === 'Alta' ? 'pri-alta' : (task.priority === 'Média' ? 'pri-media' : 'pri-baixa');
-    const taskSpec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(task.role) : { borderClass: 'task-back', tagClass: 'role-back', icon: '💻', label: 'Geral', shortLabel: 'Dev' };
-    const roleBorderClass = taskSpec.borderClass;
-    const roleLabel = taskSpec.label;
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        const isOverEstimated = task.hoursSpent && (parseFloat(task.hoursSpent) > (parseFloat(task.hours) || 8));
+        const hoursText = task.hoursSpent ? `${task.hoursSpent}/${task.hours || 8}h` : `${task.hours || 8}h`;
+        const hoursColor = isOverEstimated ? '#f43f5e' : 'var(--text-muted)';
+        const hoursFontWeight = isOverEstimated ? '700' : 'normal';
+        const hoursTitle = isAdmin 
+          ? `👑 Admin: ${task.hoursSpent || 0}h apontadas / ${task.hours || 8}h estimadas. Clique para alterar o saldo de horas.` 
+          : (isOverEstimated ? `⚠️ Horas apontadas (${task.hoursSpent}h) excederam a estimativa (${task.hours || 8}h)!` : 'Horas gastas / estimadas');
 
-    const card = document.createElement('div');
-    card.className = `task-card ${roleBorderClass}`;
-    card.setAttribute('draggable', 'true');
-    card.dataset.taskId = task.id;
+        let badgesHtml = '';
+        if (task.impediment) {
+          badgesHtml += `<span class="task-impediment-badge" style="font-size: 0.68rem; padding: 1px 5px;" title="${escapeHtml(task.impediment)}">⚠️ Impedimento</span>`;
+        }
+        if (task.qaApproved) {
+          badgesHtml += `<span class="task-qa-approved-badge" style="font-size: 0.68rem; padding: 1px 5px;">✓ QA</span>`;
+        }
 
-    card.addEventListener('dragstart', (e) => {
-      e.dataTransfer.setData('text/plain', task.id);
-      card.style.opacity = '0.4';
-    });
-    card.addEventListener('dragend', () => {
-      card.style.opacity = '1';
-    });
+        let opBtnsHtml = '';
+        if (perms.canLogTime) {
+          opBtnsHtml += `<button class="card-btn-action btn-xs" onclick="openTimesheetModal('${task.id}')" title="Apontar Horas">⏱️</button>`;
+        }
+        if (colStatus === 'qa' && perms.canValidateQA && !task.qaApproved) {
+          opBtnsHtml += `<button class="card-btn-action btn-xs" onclick="openQAModal('${task.id}')" title="Validar QA">🧪</button>`;
+        }
+        opBtnsHtml += `<button class="card-btn-action btn-xs" onclick="openTaskModalForEdit('${task.id}')" title="${perms.canCreateTask ? 'Editar Demanda' : 'Ver Detalhes'}">${perms.canCreateTask ? '✏️' : '👁️'}</button>`;
+        if (perms.canDeleteTask) {
+          opBtnsHtml += `<button class="card-btn-action btn-del btn-xs" onclick="confirmDeleteTask('${task.id}', '${escapeHtml(task.title)}')" title="Excluir Demanda">🗑️</button>`;
+        }
 
-    const prevCol = getAdjacentColumn(colStatus, -1);
-    const nextCol = getAdjacentColumn(colStatus, 1);
+        rowsHtml += `
+          <tr>
+            <td>
+              <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                <span class="task-id-badge">#${task.id.slice(-5)}</span>
+                <span class="task-role-tag ${taskSpec.tagClass}" style="font-size: 0.72rem; padding: 2px 6px;">${taskSpec.icon} ${taskSpec.shortLabel || taskSpec.label}</span>
+                <span class="task-priority-tag ${priorityClass}" style="font-size: 0.7rem; padding: 2px 6px;">${task.priority}</span>
+              </div>
+            </td>
+            <td>
+              <div class="cell-title-group">
+                <strong class="cell-main-title" onclick="openTaskModalForEdit('${task.id}')" style="cursor: pointer;">${escapeHtml(task.title)}</strong>
+                <div class="cell-sub-meta">
+                  <span style="color: var(--text-muted); font-size: 0.73rem;">📁 ${project ? escapeHtml(project.name) : 'Geral'}</span>
+                  ${badgesHtml}
+                </div>
+              </div>
+            </td>
+            <td>
+              <select class="task-status-select" onchange="moveTaskAction('${task.id}', this.value)" title="Alterar status da demanda">
+                <option value="backlog" ${colStatus === 'backlog' ? 'selected' : ''}>⚪ A Fazer</option>
+                <option value="spec" ${colStatus === 'spec' ? 'selected' : ''}>🟣 Em Especificação</option>
+                <option value="dev" ${colStatus === 'dev' ? 'selected' : ''}>🔵 Em Desenvolvimento</option>
+                <option value="qa" ${colStatus === 'qa' ? 'selected' : ''}>🟡 Em Testes / QA</option>
+                <option value="done" ${colStatus === 'done' ? 'selected' : ''}>🟢 Concluído</option>
+              </select>
+            </td>
+            <td>
+              <div class="task-list-assignee-metrics">
+                <div class="task-assignee-wrap" title="${assignee ? escapeHtml(assignee.name) : 'Sem responsável'}">
+                  <div class="task-avatar-mini" style="background: ${assignee ? assignee.avatarBg : '#64748b'}; color: #fff; width: 22px; height: 22px; font-size: 0.7rem;">
+                    ${assignee ? assignee.name.charAt(0) : '?'}
+                  </div>
+                  <span class="task-assignee-name" style="font-size: 0.78rem;">${assignee ? escapeHtml(assignee.name.split(' ')[0]) : 'Livre'}</span>
+                </div>
+                <span class="task-hours-badge" style="color: ${hoursColor}; font-weight: ${hoursFontWeight}; font-size: 0.74rem;" title="${hoursTitle}">⏱️ ${hoursText}${isOverEstimated ? ' ⚠️' : ''}</span>
+                <span class="task-complexity-tag ${task.complexity === 'Alta' ? 'complexity-high' : (task.complexity === 'Baixa' ? 'complexity-low' : 'complexity-med')}" style="font-size: 0.7rem; padding: 1px 5px;">⚡ ${task.complexity || 'Média'}</span>
+              </div>
+            </td>
+            <td>
+              <div class="table-actions-cell">${opBtnsHtml}</div>
+            </td>
+          </tr>
+        `;
+      });
 
-    // Badges operacionais de RBAC (Impedimento / QA Aprovado / Notas Dev / Notas QA)
-    let badgesHtml = '';
-    if (task.impediment) {
-      badgesHtml += `<div class="task-impediment-badge" title="${task.impediment}">⚠️ ${task.impediment}</div>`;
+      listContainer.innerHTML = `
+        <div class="table-responsive list-mode-table-wrap">
+          <table class="compact-data-table">
+            <thead>
+              <tr>
+                <th style="width: 170px;">Identificador</th>
+                <th>Nome / Título</th>
+                <th style="width: 170px;">Status</th>
+                <th style="width: 250px;">Métricas / Responsável</th>
+                <th style="width: 150px; text-align: right;">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </div>
+      `;
     }
-    if (task.qaApproved) {
-      badgesHtml += `<div class="task-qa-approved-badge" ${perms.canValidateQA ? `onclick="openQAModal('${task.id}')" style="cursor: pointer;"` : ''} title="Aprovado por ${task.qaReviewer || 'QA'}. ${perms.canValidateQA ? 'Clique para revisar/alterar validação.' : ''}">✓ QA Aprovado</div>`;
-    }
-    if (task.devNotes && task.devNotes.trim()) {
-      const devExcerpt = task.devNotes.replace(/"/g, '&quot;').substring(0, 100);
-      badgesHtml += `<div class="task-notes-badge" onclick="openTaskModalForEdit('${task.id}')" style="cursor: pointer;" title="Notas do Desenvolvedor: ${devExcerpt}">💻 Notas Dev</div>`;
-    }
-    if (task.qaNotes && task.qaNotes.trim() && !task.qaApproved) {
-      const qaExcerpt = task.qaNotes.replace(/"/g, '&quot;').substring(0, 100);
-      badgesHtml += `<div class="task-qa-notes-badge" onclick="openTaskModalForEdit('${task.id}')" style="cursor: pointer;" title="Notas de QA: ${qaExcerpt}">🔍 Notas QA</div>`;
-    }
+  } else {
+    // Modo Cards (Quadro Kanban com colunas)
+    tasks.forEach(task => {
+      const colStatus = task.status || 'backlog';
+      counts[colStatus] = (counts[colStatus] || 0) + 1;
 
-    // Botões operacionais contextuais
-    let opBtnsHtml = '';
-    if (perms.canLogTime) {
-      opBtnsHtml += `<button class="task-timesheet-btn" onclick="openTimesheetModal('${task.id}')" title="Apontar Horas Gastas e Impedimentos">⏱️ Apontar</button>`;
-    }
-    if (colStatus === 'qa' && perms.canValidateQA && !task.qaApproved) {
-      opBtnsHtml += `<button class="task-qa-btn" onclick="openQAModal('${task.id}')" title="Validação Formal de QA">🧪 Validar QA</button>`;
-    }
+      const zone = document.getElementById(`zone-${colStatus}`);
+      if (!zone) return;
 
-    // Auto-atribuição de demanda para Dev / QA
-    let assignBtnHtml = '';
-    const isAssignedToMe = currentUser && (
-      task.assigneeId === currentUser.id ||
-      (assignee && (assignee.id === currentUser.id || assignee.name.toLowerCase() === currentUser.name.toLowerCase()))
-    );
+      const project = store.getProjectById(task.projectId);
+      const assignee = store.getMemberById(task.assigneeId);
+      const priorityClass = task.priority === 'Alta' ? 'pri-alta' : (task.priority === 'Média' ? 'pri-media' : 'pri-baixa');
+      const taskSpec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(task.role) : { borderClass: 'task-back', tagClass: 'role-back', icon: '💻', label: 'Geral', shortLabel: 'Dev' };
+      const roleBorderClass = taskSpec.borderClass;
+      const roleLabel = taskSpec.label;
 
-    if (perms.canSelfAssign) {
-      if (isAssignedToMe) {
-        assignBtnHtml = `<button class="task-assigned-me-btn" onclick="unassignTask('${task.id}')" title="Demanda atribuída a você (clique para desatribuir se desejar)">✓ Minha Demanda</button>`;
-      } else {
-        assignBtnHtml = `<button class="task-self-assign-btn" onclick="selfAssignTask('${task.id}')" title="Assumir esta demanda para mim">🙋 Assumir</button>`;
+      const card = document.createElement('div');
+      card.className = `task-card ${roleBorderClass}`;
+      card.setAttribute('draggable', 'true');
+      card.dataset.taskId = task.id;
+
+      card.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', task.id);
+        card.style.opacity = '0.4';
+      });
+      card.addEventListener('dragend', () => {
+        card.style.opacity = '1';
+      });
+
+      const prevCol = getAdjacentColumn(colStatus, -1);
+      const nextCol = getAdjacentColumn(colStatus, 1);
+
+      // Badges operacionais de RBAC (Impedimento / QA Aprovado / Notas Dev / Notas QA)
+      let badgesHtml = '';
+      if (task.impediment) {
+        badgesHtml += `<div class="task-impediment-badge" title="${task.impediment}">⚠️ ${task.impediment}</div>`;
       }
-    }
+      if (task.qaApproved) {
+        badgesHtml += `<div class="task-qa-approved-badge" ${perms.canValidateQA ? `onclick="openQAModal('${task.id}')" style="cursor: pointer;"` : ''} title="Aprovado por ${task.qaReviewer || 'QA'}. ${perms.canValidateQA ? 'Clique para revisar/alterar validação.' : ''}">✓ QA Aprovado</div>`;
+      }
+      if (task.devNotes && task.devNotes.trim()) {
+        const devExcerpt = task.devNotes.replace(/"/g, '&quot;').substring(0, 100);
+        badgesHtml += `<div class="task-notes-badge" onclick="openTaskModalForEdit('${task.id}')" style="cursor: pointer;" title="Notas do Desenvolvedor: ${devExcerpt}">💻 Notas Dev</div>`;
+      }
+      if (task.qaNotes && task.qaNotes.trim() && !task.qaApproved) {
+        const qaExcerpt = task.qaNotes.replace(/"/g, '&quot;').substring(0, 100);
+        badgesHtml += `<div class="task-qa-notes-badge" onclick="openTaskModalForEdit('${task.id}')" style="cursor: pointer;" title="Notas de QA: ${qaExcerpt}">🔍 Notas QA</div>`;
+      }
 
-    const isAdmin = currentUser && currentUser.role === 'admin';
-    const isOverEstimated = task.hoursSpent && (parseFloat(task.hoursSpent) > (parseFloat(task.hours) || 8));
-    const hoursText = task.hoursSpent ? `${task.hoursSpent}/${task.hours || 8}h` : `${task.hours || 8}h`;
-    const hoursColor = isOverEstimated ? '#f43f5e' : 'var(--text-muted)';
-    const hoursFontWeight = isOverEstimated ? '700' : 'normal';
-    const hoursTitle = isAdmin 
-      ? `👑 Admin: ${task.hoursSpent || 0}h apontadas / ${task.hours || 8}h estimadas. Clique para alterar o saldo de horas.` 
-      : (isOverEstimated ? `⚠️ Horas apontadas (${task.hoursSpent}h) excederam a estimativa (${task.hours || 8}h)!` : 'Horas gastas / estimadas');
+      // Botões operacionais contextuais
+      let opBtnsHtml = '';
+      if (perms.canLogTime) {
+        opBtnsHtml += `<button class="task-timesheet-btn" onclick="openTimesheetModal('${task.id}')" title="Apontar Horas Gastas e Impedimentos">⏱️ Apontar</button>`;
+      }
+      if (colStatus === 'qa' && perms.canValidateQA && !task.qaApproved) {
+        opBtnsHtml += `<button class="task-qa-btn" onclick="openQAModal('${task.id}')" title="Validação Formal de QA">🧪 Validar QA</button>`;
+      }
 
-    const hasControls = opBtnsHtml || prevCol || nextCol;
-    const controlsRowHtml = hasControls ? `
-      <div class="task-controls-row">
-        <div class="task-ops-group">
-          ${opBtnsHtml}
-        </div>
-        <div class="task-actions-btn-group">
-          ${prevCol ? `<button class="task-move-btn" onclick="moveTaskAction('${task.id}', '${prevCol}')" title="Mover para: ${colNames[prevCol]}">◀</button>` : ''}
-          ${nextCol ? `<button class="task-move-btn" onclick="moveTaskAction('${task.id}', '${nextCol}')" title="Mover para: ${colNames[nextCol]}">▶</button>` : ''}
-        </div>
-      </div>
-    ` : '';
+      // Auto-atribuição de demanda para Dev / QA
+      let assignBtnHtml = '';
+      const isAssignedToMe = currentUser && (
+        task.assigneeId === currentUser.id ||
+        (assignee && (assignee.id === currentUser.id || assignee.name.toLowerCase() === currentUser.name.toLowerCase()))
+      );
 
-    card.innerHTML = `
-      <div class="task-tags-row">
-        <div class="task-tags-left">
-          <span class="task-role-tag ${taskSpec.tagClass}">${taskSpec.icon} ${taskSpec.shortLabel || taskSpec.label}</span>
-          <span class="task-priority-tag ${priorityClass}">${task.priority}</span>
-          <span class="task-complexity-tag ${task.complexity === 'Alta' ? 'complexity-high' : (task.complexity === 'Baixa' ? 'complexity-low' : 'complexity-med')}" title="Complexidade Técnica">⚡ ${task.complexity || 'Média'}</span>
-        </div>
-        <div class="task-tags-right">
-          <span class="task-hours-badge" style="color: ${hoursColor}; font-weight: ${hoursFontWeight}; ${isAdmin ? 'cursor: pointer;' : ''}" title="${hoursTitle}" ${isAdmin ? `onclick="openTimesheetModal('${task.id}')"` : ''}>⏱️ ${hoursText}${isOverEstimated ? ' ⚠️' : ''}</span>
-          <div class="card-header-actions">
-            <button class="card-btn-action" onclick="openTaskModalForEdit('${task.id}')" title="${perms.canCreateTask ? 'Editar Demanda' : 'Ver Detalhes'}">${perms.canCreateTask ? '✏️' : '👁️'}</button>
-            ${perms.canDeleteTask ? `<button class="card-btn-action btn-del" onclick="confirmDeleteTask('${task.id}', '${task.title}')" title="Excluir Demanda">🗑️</button>` : ''}
+      if (perms.canSelfAssign) {
+        if (isAssignedToMe) {
+          assignBtnHtml = `<button class="task-assigned-me-btn" onclick="unassignTask('${task.id}')" title="Demanda atribuída a você (clique para desatribuir se desejar)">✓ Minha Demanda</button>`;
+        } else {
+          assignBtnHtml = `<button class="task-self-assign-btn" onclick="selfAssignTask('${task.id}')" title="Assumir esta demanda para mim">🙋 Assumir</button>`;
+        }
+      }
+
+      const isAdmin = currentUser && currentUser.role === 'admin';
+      const isOverEstimated = task.hoursSpent && (parseFloat(task.hoursSpent) > (parseFloat(task.hours) || 8));
+      const hoursText = task.hoursSpent ? `${task.hoursSpent}/${task.hours || 8}h` : `${task.hours || 8}h`;
+      const hoursColor = isOverEstimated ? '#f43f5e' : 'var(--text-muted)';
+      const hoursFontWeight = isOverEstimated ? '700' : 'normal';
+      const hoursTitle = isAdmin 
+        ? `👑 Admin: ${task.hoursSpent || 0}h apontadas / ${task.hours || 8}h estimadas. Clique para alterar o saldo de horas.` 
+        : (isOverEstimated ? `⚠️ Horas apontadas (${task.hoursSpent}h) excederam a estimativa (${task.hours || 8}h)!` : 'Horas gastas / estimadas');
+
+      const hasControls = opBtnsHtml || prevCol || nextCol;
+      const controlsRowHtml = hasControls ? `
+        <div class="task-controls-row">
+          <div class="task-ops-group">
+            ${opBtnsHtml}
+          </div>
+          <div class="task-actions-btn-group">
+            ${prevCol ? `<button class="task-move-btn" onclick="moveTaskAction('${task.id}', '${prevCol}')" title="Mover para: ${colNames[prevCol]}">◀</button>` : ''}
+            ${nextCol ? `<button class="task-move-btn" onclick="moveTaskAction('${task.id}', '${nextCol}')" title="Mover para: ${colNames[nextCol]}">▶</button>` : ''}
           </div>
         </div>
-      </div>
+      ` : '';
 
-      <div class="task-title">${task.title}</div>
-      <div class="task-project-name">📁 ${project ? project.name : 'Geral'}</div>
-
-      ${badgesHtml ? `<div class="task-badges-row">${badgesHtml}</div>` : ''}
-
-      <div class="task-card-footer">
-        <div class="task-assignee-row">
-          <div class="task-assignee-wrap" title="${assignee ? assignee.name : 'Sem responsável'}">
-            <div class="task-avatar-mini" style="background: ${assignee ? assignee.avatarBg : '#64748b'}; color: #fff;">
-              ${assignee ? assignee.name.charAt(0) : '?'}
+      card.innerHTML = `
+        <div class="task-tags-row">
+          <div class="task-tags-left">
+            <span class="task-role-tag ${taskSpec.tagClass}">${taskSpec.icon} ${taskSpec.shortLabel || taskSpec.label}</span>
+            <span class="task-priority-tag ${priorityClass}">${task.priority}</span>
+            <span class="task-complexity-tag ${task.complexity === 'Alta' ? 'complexity-high' : (task.complexity === 'Baixa' ? 'complexity-low' : 'complexity-med')}" title="Complexidade Técnica">⚡ ${task.complexity || 'Média'}</span>
+          </div>
+          <div class="task-tags-right">
+            <span class="task-hours-badge" style="color: ${hoursColor}; font-weight: ${hoursFontWeight}; ${isAdmin ? 'cursor: pointer;' : ''}" title="${hoursTitle}" ${isAdmin ? `onclick="openTimesheetModal('${task.id}')"` : ''}>⏱️ ${hoursText}${isOverEstimated ? ' ⚠️' : ''}</span>
+            <div class="card-header-actions">
+              <button class="card-btn-action" onclick="openTaskModalForEdit('${task.id}')" title="${perms.canCreateTask ? 'Editar Demanda' : 'Ver Detalhes'}">${perms.canCreateTask ? '✏️' : '👁️'}</button>
+              ${perms.canDeleteTask ? `<button class="card-btn-action btn-del" onclick="confirmDeleteTask('${task.id}', '${task.title}')" title="Excluir Demanda">🗑️</button>` : ''}
             </div>
-            <span class="task-assignee-name">${assignee ? assignee.name.split(' ')[0] : 'Livre'}</span>
-          </div>
-          <div class="task-assign-action">
-            ${assignBtnHtml}
           </div>
         </div>
-        ${controlsRowHtml}
-      </div>
-    `;
 
-    zone.appendChild(card);
-  });
+        <div class="task-title">${task.title}</div>
+        <div class="task-project-name">📁 ${project ? project.name : 'Geral'}</div>
+
+        ${badgesHtml ? `<div class="task-badges-row">${badgesHtml}</div>` : ''}
+
+        <div class="task-card-footer">
+          <div class="task-assignee-row">
+            <div class="task-assignee-wrap" title="${assignee ? assignee.name : 'Sem responsável'}">
+              <div class="task-avatar-mini" style="background: ${assignee ? assignee.avatarBg : '#64748b'}; color: #fff;">
+                ${assignee ? assignee.name.charAt(0) : '?'}
+              </div>
+              <span class="task-assignee-name">${assignee ? assignee.name.split(' ')[0] : 'Livre'}</span>
+            </div>
+            <div class="task-assign-action">
+              ${assignBtnHtml}
+            </div>
+          </div>
+          ${controlsRowHtml}
+        </div>
+      `;
+
+      zone.appendChild(card);
+    });
+  }
 
   columns.forEach(col => {
     const countEl = document.getElementById(`count-col-${col}`);
@@ -3062,13 +3610,18 @@ window.openQAModal = function(taskId) {
 // --- RENDERIZAR ABA: EQUIPE (CRUD DE DESENVOLVEDORES) ---
 function renderTeam() {
   const container = document.getElementById('team-cards-container');
+  if (!container) return;
   container.innerHTML = '';
+
+  const mode = getViewLayoutMode('team');
+  updateViewLayoutToggleUI('team', mode);
+  container.classList.toggle('is-list-view', mode === 'list');
 
   const members = store.getTeamMembers();
 
   if (members.length === 0) {
     container.innerHTML = `
-      <div class="glass-panel" style="padding: 3rem; text-align: center; color: var(--text-muted); grid-column: 1 / -1;">
+      <div class="glass-panel" style="padding: 3rem; text-align: center; color: var(--text-muted); grid-column: 1 / -1; width: 100%;">
         <p style="font-size: 1.15rem; margin-bottom: 0.85rem;">Nenhum desenvolvedor encontrado com os filtros aplicados.</p>
         <button class="btn btn-primary" onclick="openMemberModalForCreate()">+ Adicionar Desenvolvedor</button>
       </div>
@@ -3076,78 +3629,171 @@ function renderTeam() {
     return;
   }
 
-  members.forEach(member => {
-    const workload = store.calculateDevWorkload(member.id);
-    const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(member.role) : { icon: '💻', color: 'var(--accent-primary)', label: 'Dev' };
-    const roleIcon = spec.icon;
-    const roleColor = spec.color;
-    const roleLabel = (spec.shortLabel || spec.label).toUpperCase();
-    const statusBg = workload.percentage > 100 ? '#f43f5e' : (workload.percentage > 80 ? '#f59e0b' : '#10b981');
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
 
-    const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
-    const currentRole = currentUser ? currentUser.role : 'dev';
-    const perms = RolePermissions[currentRole] || RolePermissions.dev;
-    const isSelf = currentUser && (member.id === currentUser.id || member.name.toLowerCase() === currentUser.name.toLowerCase());
+  if (mode === 'list') {
+    // Modo Lista: Tabela compacta
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'table-responsive list-mode-table-wrap';
 
-    const canEditMember = perms.canManageTeam || (perms.canEditSelf && isSelf);
-    const canDeleteMember = perms.canManageTeam && !isSelf;
+    let rowsHtml = '';
+    members.forEach(member => {
+      const workload = store.calculateDevWorkload(member.id);
+      const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(member.role) : { icon: '💻', color: 'var(--accent-primary)', label: 'Dev' };
+      const roleIcon = spec.icon;
+      const roleColor = spec.color;
+      const roleLabel = (spec.shortLabel || spec.label).toUpperCase();
+      const statusBg = workload.percentage > 100 ? '#f43f5e' : (workload.percentage > 80 ? '#f59e0b' : '#10b981');
 
-    let memberActionButtons = '';
-    if (canEditMember) {
-      memberActionButtons += `<button class="card-btn-action" onclick="openMemberModalForEdit('${member.id}')" title="${isSelf ? 'Editar Meus Dados de Equipe' : 'Editar Desenvolvedor'}">✏️</button>`;
-    }
-    if (canDeleteMember) {
-      memberActionButtons += `<button class="card-btn-action btn-del" onclick="confirmDeleteMember('${member.id}', '${member.name}')" title="Excluir Desenvolvedor">🗑️</button>`;
-    }
+      const isSelf = currentUser && (member.id === currentUser.id || member.name.toLowerCase() === currentUser.name.toLowerCase());
+      const canEditMember = perms.canManageTeam || (perms.canEditSelf && isSelf);
+      const canDeleteMember = perms.canManageTeam && !isSelf;
 
-    const card = document.createElement('div');
-    card.className = 'team-card glass-panel';
-    card.innerHTML = `
-      <div class="team-card-header">
-        <div class="dev-avatar-lg" style="background: ${member.avatarBg}; color: #ffffff;">
-          ${member.name.charAt(0)}
-          <span class="dev-status-indicator" style="background: ${statusBg};" title="${workload.percentage > 100 ? 'Sobrecarga' : 'Disponível'}"></span>
-        </div>
-        <div class="dev-meta">
-          <h3>${member.name}</h3>
-          <div class="dev-role-title">
-            <span style="color: ${roleColor}; font-weight: 700;">${roleIcon} ${roleLabel}</span>
-            <span>•</span>
-            <span>${member.seniority}</span>
-          </div>
-        </div>
+      let memberActionButtons = '';
+      if (canEditMember) {
+        memberActionButtons += `<button class="card-btn-action btn-xs" onclick="openMemberModalForEdit('${member.id}')" title="${isSelf ? 'Editar Meus Dados de Equipe' : 'Editar Desenvolvedor'}">✏️</button>`;
+      }
+      if (canDeleteMember) {
+        memberActionButtons += `<button class="card-btn-action btn-del btn-xs" onclick="confirmDeleteMember('${member.id}', '${escapeHtml(member.name)}')" title="Excluir Desenvolvedor">🗑️</button>`;
+      }
 
-        <div class="card-header-actions" style="margin-left: auto;">
-          ${memberActionButtons}
-        </div>
-      </div>
+      rowsHtml += `
+        <tr>
+          <td>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div class="task-avatar-mini" style="background: ${member.avatarBg}; color: #ffffff; width: 28px; height: 28px; font-size: 0.8rem; position: relative;">
+                ${member.name.charAt(0)}
+                <span class="dev-status-indicator" style="background: ${statusBg}; width: 8px; height: 8px; position: absolute; bottom: -1px; right: -1px;" title="${workload.percentage > 100 ? 'Sobrecarga' : 'Disponível'}"></span>
+              </div>
+              <span class="task-id-badge" style="font-size: 0.72rem;">#${member.id.slice(-4)}</span>
+            </div>
+          </td>
+          <td>
+            <div class="cell-title-group">
+              <strong class="cell-main-title" ${canEditMember ? `onclick="openMemberModalForEdit('${member.id}')" style="cursor: pointer;"` : ''}>${escapeHtml(member.name)}</strong>
+              <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px;">
+                ${(member.skills || []).slice(0, 3).map(s => `<span class="skill-pill" style="font-size: 0.68rem; padding: 1px 5px;">${escapeHtml(s)}</span>`).join('')}
+                ${(member.skills || []).length > 3 ? `<span style="font-size: 0.68rem; color: var(--text-muted);">+${member.skills.length - 3}</span>` : ''}
+              </div>
+            </div>
+          </td>
+          <td>
+            <span style="color: ${roleColor}; font-weight: 700; font-size: 0.8rem;">${roleIcon} ${roleLabel}</span>
+            <div style="font-size: 0.72rem; color: var(--text-muted);">${member.seniority}</div>
+          </td>
+          <td>
+            <div class="mini-progress-row">
+              <div style="display: flex; justify-content: space-between; font-size: 0.74rem; font-weight: 600;">
+                <span>${workload.hours}h / ${workload.capacity}h</span>
+                <span style="color: ${statusBg};">${workload.percentage}%</span>
+              </div>
+              <div class="progress-track mini-track">
+                <div class="progress-fill" style="width: ${Math.min(workload.percentage, 100)}%; background: ${statusBg};"></div>
+              </div>
+              <div class="mini-metrics-chips">
+                <span class="metric-mini-tag">💻 ${workload.activeTasksCount} demandas ativas</span>
+                <span class="metric-mini-tag">⏱️ ${workload.hoursSpent}h apontadas</span>
+                ${workload.isOverloaded ? `<span class="metric-mini-tag" style="color: #f43f5e; border-color: rgba(244, 63, 94, 0.3);">⚠️ +${workload.overloadHours}h</span>` : ''}
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="table-actions-cell">${memberActionButtons || '<span style="font-size: 0.72rem; color: var(--text-muted);">🔒</span>'}</div>
+          </td>
+        </tr>
+      `;
+    });
 
-      <div class="skills-pill-group">
-        ${member.skills.map(s => `<span class="skill-pill">${s}</span>`).join('')}
-      </div>
-
-      <div class="capacity-section">
-        <div class="capacity-text-row">
-          <span>Carga Alocada: <strong>${workload.hours}h / ${workload.capacity}h</strong></span>
-          <span style="color: ${statusBg}; font-weight: 700;">${workload.percentage}%</span>
-        </div>
-        <div class="progress-track" title="Total alocado/consumido: ${workload.hours}h (${workload.hoursSpent}h apontadas, ${workload.hoursEstimated}h estimadas)">
-          <div class="progress-fill" style="width: ${Math.min(workload.percentage, 100)}%; background: ${statusBg}; ${workload.isOverloaded ? 'box-shadow: 0 0 10px rgba(244, 63, 94, 0.5);' : ''}"></div>
-        </div>
-        <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.4rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
-          <span>${workload.activeTasksCount} demandas ativas atribuídas</span>
-          <span>⏱️ ${workload.hoursSpent}h apontadas</span>
-        </div>
-        ${workload.isOverloaded ? `
-          <div style="margin-top: 0.6rem; padding: 0.45rem 0.75rem; border-radius: 6px; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.4); color: #f43f5e; font-size: 0.75rem; font-weight: 600; display: flex; align-items: center; gap: 6px;">
-            <span>⚠️</span>
-            <span><strong>Sobrecarga:</strong> Carga horária semanal excedida em +${workload.overloadHours}h (${workload.percentage}% da capacidade).</span>
-          </div>
-        ` : ''}
-      </div>
+    tableWrap.innerHTML = `
+      <table class="compact-data-table">
+        <thead>
+          <tr>
+            <th style="width: 110px;">Identificador</th>
+            <th>Nome / Membro</th>
+            <th style="width: 150px;">Status / Cargo</th>
+            <th style="width: 260px;">Métricas / Carga Horária</th>
+            <th style="width: 120px; text-align: right;">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
     `;
-    container.appendChild(card);
-  });
+    container.appendChild(tableWrap);
+  } else {
+    // Modo Cards (Grelha original)
+    members.forEach(member => {
+      const workload = store.calculateDevWorkload(member.id);
+      const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(member.role) : { icon: '💻', color: 'var(--accent-primary)', label: 'Dev' };
+      const roleIcon = spec.icon;
+      const roleColor = spec.color;
+      const roleLabel = (spec.shortLabel || spec.label).toUpperCase();
+      const statusBg = workload.percentage > 100 ? '#f43f5e' : (workload.percentage > 80 ? '#f59e0b' : '#10b981');
+
+      const isSelf = currentUser && (member.id === currentUser.id || member.name.toLowerCase() === currentUser.name.toLowerCase());
+      const canEditMember = perms.canManageTeam || (perms.canEditSelf && isSelf);
+      const canDeleteMember = perms.canManageTeam && !isSelf;
+
+      let memberActionButtons = '';
+      if (canEditMember) {
+        memberActionButtons += `<button class="card-btn-action" onclick="openMemberModalForEdit('${member.id}')" title="${isSelf ? 'Editar Meus Dados de Equipe' : 'Editar Desenvolvedor'}">✏️</button>`;
+      }
+      if (canDeleteMember) {
+        memberActionButtons += `<button class="card-btn-action btn-del" onclick="confirmDeleteMember('${member.id}', '${escapeHtml(member.name)}')" title="Excluir Desenvolvedor">🗑️</button>`;
+      }
+
+      const card = document.createElement('div');
+      card.className = 'team-card glass-panel';
+      card.innerHTML = `
+        <div class="team-card-header">
+          <div class="dev-avatar-lg" style="background: ${member.avatarBg}; color: #ffffff;">
+            ${member.name.charAt(0)}
+            <span class="dev-status-indicator" style="background: ${statusBg};" title="${workload.percentage > 100 ? 'Sobrecarga' : 'Disponível'}"></span>
+          </div>
+          <div class="dev-meta">
+            <h3>${escapeHtml(member.name)}</h3>
+            <div class="dev-role-title">
+              <span style="color: ${roleColor}; font-weight: 700;">${roleIcon} ${roleLabel}</span>
+              <span>•</span>
+              <span>${member.seniority}</span>
+            </div>
+          </div>
+
+          <div class="card-header-actions" style="margin-left: auto;">
+            ${memberActionButtons}
+          </div>
+        </div>
+
+        <div class="skills-pill-group">
+          ${(member.skills || []).map(s => `<span class="skill-pill">${escapeHtml(s)}</span>`).join('')}
+        </div>
+
+        <div class="capacity-section">
+          <div class="capacity-text-row">
+            <span>Carga Alocada: <strong>${workload.hours}h / ${workload.capacity}h</strong></span>
+            <span style="color: ${statusBg}; font-weight: 700;">${workload.percentage}%</span>
+          </div>
+          <div class="progress-track" title="Total alocado/consumido: ${workload.hours}h (${workload.hoursSpent}h apontadas, ${workload.hoursEstimated}h estimadas)">
+            <div class="progress-fill" style="width: ${Math.min(workload.percentage, 100)}%; background: ${statusBg}; ${workload.isOverloaded ? 'box-shadow: 0 0 10px rgba(244, 63, 94, 0.5);' : ''}"></div>
+          </div>
+          <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.4rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+            <span>${workload.activeTasksCount} demandas ativas atribuídas</span>
+            <span>⏱️ ${workload.hoursSpent}h apontadas</span>
+          </div>
+          ${workload.isOverloaded ? `
+            <div style="margin-top: 0.6rem; padding: 0.45rem 0.75rem; border-radius: 6px; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.4); color: #f43f5e; font-size: 0.75rem; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+              <span>⚠️</span>
+              <span><strong>Sobrecarga:</strong> Carga horária semanal excedida em +${workload.overloadHours}h (${workload.percentage}% da capacidade).</span>
+            </div>
+          ` : ''}
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  }
 }
 
 // Funções de CRUD de Desenvolvedores
@@ -4496,7 +5142,11 @@ function populateModalSelects() {
     if (curVal && projects.some(p => p.id === curVal)) {
       reqProjectSelect.value = curVal;
     }
+    const currentProjId = reqProjectSelect.value || (projects[0] ? projects[0].id : '');
+    updateModalFeaturesDropdown(currentProjId);
   }
+
+  populateFeatureFilterOptions();
 
   const testReqSelect = document.getElementById('test-req-select');
   if (testReqSelect) {
@@ -5015,6 +5665,809 @@ window.exportAuditLogsCSV = function() {
 
   showToast(`Trilha de auditoria exportada em CSV com sucesso (${logs.length} registros)!`);
 };
+
+// ==============================================================================
+// 4.2.5 Relatório de Medição & Documento de Requisitos (Faturamento & Aceite Formal)
+// ==============================================================================
+
+function getRequirementValidationStatus(req) {
+  if (!req) {
+    return {
+      isValidated: false,
+      statusLabel: 'Não Especificado',
+      statusColor: '#64748b',
+      badgeClass: 'badge-measurement-untested',
+      detailNote: 'Sem dados',
+      linkedTasks: [],
+      linkedTests: [],
+      hasBdd: false
+    };
+  }
+
+  const linkedTasks = (store.state.tasks || []).filter(t => t.reqId === req.id);
+  const linkedTests = (store.state.testCases || []).filter(tc => tc.reqId === req.id);
+
+  const hasTasks = linkedTasks.length > 0;
+  const hasTests = linkedTests.length > 0;
+
+  const allTasksDone = hasTasks && linkedTasks.every(t => t.status === 'done' || t.qaApproved);
+  const anyTaskApproved = linkedTasks.some(t => t.qaApproved);
+  const allTestsPass = hasTests && linkedTests.every(tc => tc.status === 'pass');
+  const hasFailedTests = linkedTests.some(tc => tc.status === 'fail');
+
+  let isValidated = false;
+  let statusLabel = 'Em Homologação / Testes';
+  let badgeClass = 'badge-measurement-pending';
+  let statusColor = '#f59e0b';
+  let detailNote = '';
+
+  if (hasFailedTests) {
+    isValidated = false;
+    statusLabel = 'Reprovado QA (Falhas em Testes)';
+    badgeClass = 'badge-measurement-pending';
+    statusColor = '#ef4444';
+    const failedCount = linkedTests.filter(tc => tc.status === 'fail').length;
+    detailNote = `Falha em ${failedCount} caso(s) de teste`;
+  } else if ((allTasksDone && (!hasTests || allTestsPass)) || (hasTests && allTestsPass) || anyTaskApproved) {
+    isValidated = true;
+    statusLabel = 'Concluído & Validado pelo QA';
+    badgeClass = 'badge-measurement-approved';
+    statusColor = '#10b981';
+    const qaApprovedTask = linkedTasks.find(t => t.qaApproved);
+    if (qaApprovedTask && qaApprovedTask.qaReviewer) {
+      detailNote = `Validado formalmente por ${qaApprovedTask.qaReviewer}`;
+    } else {
+      detailNote = `Critérios e tarefas 100% cumpridos`;
+    }
+  } else if (!hasTasks && !hasTests) {
+    isValidated = false;
+    statusLabel = 'Especificado (Aguardando Tarefas/Testes)';
+    badgeClass = 'badge-measurement-untested';
+    statusColor = '#94a3b8';
+    detailNote = 'Sem execuções vinculadas';
+  } else {
+    isValidated = false;
+    statusLabel = 'Em Execução / Homologação';
+    badgeClass = 'badge-measurement-pending';
+    statusColor = '#f59e0b';
+    const doneTasks = linkedTasks.filter(t => t.status === 'done').length;
+    detailNote = `${doneTasks}/${linkedTasks.length} tarefas concluídas`;
+  }
+
+  return {
+    isValidated,
+    statusLabel,
+    badgeClass,
+    statusColor,
+    detailNote,
+    linkedTasks,
+    linkedTests,
+    hasBdd: !!(req.bdd && req.bdd.trim())
+  };
+}
+
+function openMeasurementReportModal() {
+  const projectSelect = document.getElementById('measurement-project-select');
+  const featureSelect = document.getElementById('measurement-feature-select');
+  if (!projectSelect || !featureSelect) return;
+
+  projectSelect.innerHTML = '';
+  const projects = store.state.projects || [];
+  if (projects.length === 0) {
+    showToast('Cadastre ao menos um projeto antes de emitir relatório de medição.');
+    return;
+  }
+
+  projects.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = `${p.code ? `[${p.code}] ` : ''}${p.name}`;
+    projectSelect.appendChild(opt);
+  });
+
+  const initialProjectId = (store.selectedProject && store.selectedProject !== 'all')
+    ? store.selectedProject
+    : projects[0].id;
+  projectSelect.value = initialProjectId;
+
+  populateMeasurementFeatures(initialProjectId);
+
+  if (store.reqFeatureFilter && store.reqFeatureFilter !== 'all') {
+    featureSelect.value = store.reqFeatureFilter;
+  }
+
+  const project = store.getProjectById(initialProjectId) || projects[0];
+  const clientInput = document.getElementById('measurement-client-name');
+  if (clientInput) {
+    clientInput.value = project.client || 'Banco Alpha S.A. / Diretoria de Tecnologia';
+  }
+
+  const milestoneInput = document.getElementById('measurement-milestone-name');
+  if (milestoneInput) {
+    const activeFeature = featureSelect.value !== 'all' ? featureSelect.value : 'Entregáveis Principais';
+    milestoneInput.value = `Marco 01 - ${activeFeature} (Sprint de Homologação)`;
+  }
+
+  const contractInput = document.getElementById('measurement-contract-ref');
+  if (contractInput) {
+    contractInput.value = `CTR-${project.code || 'DEV'}-MED01`;
+  }
+
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const managerInput = document.getElementById('measurement-manager-name');
+  if (managerInput) {
+    managerInput.value = currentUser ? currentUser.name : 'Gestor de Projetos / Scrum Master';
+  }
+
+  const clientSigneeInput = document.getElementById('measurement-client-signee');
+  if (clientSigneeInput && !clientSigneeInput.value) {
+    clientSigneeInput.value = 'Product Owner / Fiscal do Contrato (Cliente)';
+  }
+
+  updateMeasurementReportPreview();
+  openModal('modal-measurement-report');
+}
+
+function populateMeasurementFeatures(projectId) {
+  const featureSelect = document.getElementById('measurement-feature-select');
+  if (!featureSelect) return;
+  featureSelect.innerHTML = '';
+
+  const features = store.getProjectFeatures(projectId);
+
+  const optAll = document.createElement('option');
+  optAll.value = 'all';
+  optAll.textContent = '🌟 Todas as Features do Projeto';
+  featureSelect.appendChild(optAll);
+
+  features.forEach(feat => {
+    const opt = document.createElement('option');
+    opt.value = feat;
+    opt.textContent = `🧩 ${feat}`;
+    featureSelect.appendChild(opt);
+  });
+
+  if (features.length > 0) {
+    featureSelect.value = features[0];
+  } else {
+    featureSelect.value = 'all';
+  }
+}
+
+function updateMeasurementReportPreview() {
+  const projectId = document.getElementById('measurement-project-select')?.value;
+  const feature = document.getElementById('measurement-feature-select')?.value;
+  const statusFilter = document.getElementById('measurement-status-filter')?.value || 'qa_approved';
+
+  if (!projectId) return;
+
+  const project = store.getProjectById(projectId);
+  let allReqsInScope = (store.state.requirements || []).filter(r => r.projectId === projectId);
+  if (feature && feature !== 'all') {
+    allReqsInScope = allReqsInScope.filter(r => r.feature === feature);
+  }
+
+  allReqsInScope.sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true }));
+
+  const analyzed = allReqsInScope.map(r => ({
+    req: r,
+    val: getRequirementValidationStatus(r)
+  }));
+
+  const totalInScope = analyzed.length;
+  const qaApprovedCount = analyzed.filter(item => item.val.isValidated).length;
+  const bddCount = analyzed.filter(item => item.val.hasBdd).length;
+  const completionRate = totalInScope > 0 ? Math.round((qaApprovedCount / totalInScope) * 100) : 0;
+
+  const totalEl = document.getElementById('m-preview-total-reqs');
+  const qaEl = document.getElementById('m-preview-qa-approved');
+  const bddEl = document.getElementById('m-preview-bdd-count');
+  const rateEl = document.getElementById('m-preview-rate');
+  const barEl = document.getElementById('m-preview-progress-bar');
+  const badgeEl = document.getElementById('measurement-billing-badge');
+
+  if (totalEl) totalEl.textContent = totalInScope;
+  if (qaEl) qaEl.textContent = qaApprovedCount;
+  if (bddEl) bddEl.textContent = bddCount;
+  if (rateEl) rateEl.textContent = `${completionRate}%`;
+  if (barEl) barEl.style.width = `${completionRate}%`;
+
+  if (badgeEl) {
+    if (totalInScope === 0) {
+      badgeEl.textContent = 'Sem requisitos no escopo';
+      badgeEl.className = 'badge-subtle';
+      badgeEl.style.color = '#94a3b8';
+      badgeEl.style.background = 'rgba(148, 163, 184, 0.15)';
+    } else if (completionRate === 100) {
+      badgeEl.textContent = '🟢 100% Homologado — Apto para Faturamento & Aceite';
+      badgeEl.className = 'badge-subtle';
+      badgeEl.style.color = '#34d399';
+      badgeEl.style.background = 'rgba(16, 185, 129, 0.18)';
+      badgeEl.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+    } else if (completionRate > 0) {
+      badgeEl.textContent = `🟡 Medição Parcial (${completionRate}% Homologado)`;
+      badgeEl.className = 'badge-subtle';
+      badgeEl.style.color = '#fbbf24';
+      badgeEl.style.background = 'rgba(245, 158, 11, 0.18)';
+      badgeEl.style.border = '1px solid rgba(245, 158, 11, 0.4)';
+    } else {
+      badgeEl.textContent = '⚪ Em Homologação Técnica (0% Validado QA)';
+      badgeEl.className = 'badge-subtle';
+      badgeEl.style.color = '#94a3b8';
+      badgeEl.style.background = 'rgba(148, 163, 184, 0.15)';
+      badgeEl.style.border = '1px solid rgba(148, 163, 184, 0.3)';
+    }
+  }
+
+  let displayItems = analyzed;
+  if (statusFilter === 'qa_approved') {
+    displayItems = analyzed.filter(item => item.val.isValidated);
+  }
+
+  const itemsListContainer = document.getElementById('m-preview-items-list');
+  if (itemsListContainer) {
+    if (displayItems.length === 0) {
+      itemsListContainer.innerHTML = `
+        <div style="padding: 1rem; text-align: center; color: var(--text-muted); font-size: 0.8rem; font-style: italic;">
+          ${statusFilter === 'qa_approved' && totalInScope > 0
+            ? 'Nenhum requisito com validação concluída pelo QA nesta feature ainda. Alterne o filtro para "Todos os Requisitos" ou valide as demandas e testes vinculados.'
+            : 'Nenhum requisito cadastrado para os parâmetros selecionados.'}
+        </div>
+      `;
+    } else {
+      itemsListContainer.innerHTML = displayItems.map(item => `
+        <div class="m-preview-item-row">
+          <div class="m-preview-item-info">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="req-code-badge" style="font-size: 0.72rem; padding: 1px 6px;">${escapeHtml(item.req.code)}</span>
+              <strong class="m-preview-item-title">${escapeHtml(item.req.title)}</strong>
+            </div>
+            <div class="m-preview-item-sub">
+              <span>Prioridade: <strong>${item.req.moscow || 'Must'}</strong></span>
+              ${item.req.feature ? `<span>🧩 ${escapeHtml(item.req.feature)}</span>` : ''}
+              ${item.val.hasBdd ? `<span class="badge-bdd-valid">✓ BDD Documentado</span>` : `<span style="color: var(--text-muted);">Sem BDD</span>`}
+              <span>${escapeHtml(item.val.detailNote)}</span>
+            </div>
+          </div>
+          <div>
+            <span class="${item.val.badgeClass}">${item.val.statusLabel}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+}
+
+window.exportMeasurementReportPDF = function() {
+  const jsPDFClass = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
+  if (!jsPDFClass) {
+    showToast('Aviso: Biblioteca jsPDF não disponível no navegador.');
+    return;
+  }
+
+  const projectId = document.getElementById('measurement-project-select')?.value;
+  const feature = document.getElementById('measurement-feature-select')?.value;
+  const statusFilter = document.getElementById('measurement-status-filter')?.value || 'qa_approved';
+
+  if (!projectId) {
+    showToast('Selecione um projeto válido para emissão do relatório.');
+    return;
+  }
+
+  const project = store.getProjectById(projectId);
+  if (!project) {
+    showToast('Projeto não encontrado.');
+    return;
+  }
+
+  let allReqsInScope = (store.state.requirements || []).filter(r => r.projectId === projectId);
+  if (feature && feature !== 'all') {
+    allReqsInScope = allReqsInScope.filter(r => r.feature === feature);
+  }
+
+  if (allReqsInScope.length === 0) {
+    showToast('Nenhum requisito cadastrado para este projeto/feature.');
+    return;
+  }
+
+  allReqsInScope.sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true }));
+
+  const analyzed = allReqsInScope.map(r => ({
+    req: r,
+    val: getRequirementValidationStatus(r)
+  }));
+
+  let exportItems = analyzed;
+  if (statusFilter === 'qa_approved') {
+    exportItems = analyzed.filter(i => i.val.isValidated);
+  }
+
+  if (exportItems.length === 0) {
+    showToast('Nenhum requisito concluído e validado pelo QA encontrado no escopo selecionado.');
+    return;
+  }
+
+  const totalInScope = analyzed.length;
+  const qaApprovedCount = analyzed.filter(i => i.val.isValidated).length;
+  const bddCount = analyzed.filter(i => i.val.hasBdd).length;
+  const completionRate = totalInScope > 0 ? Math.round((qaApprovedCount / totalInScope) * 100) : 0;
+
+  const clientName = document.getElementById('measurement-client-name')?.value.trim() || project.client || 'Empresa Contratante S.A.';
+  const milestoneName = document.getElementById('measurement-milestone-name')?.value.trim() || (feature !== 'all' ? `Marco: ${feature}` : 'Marco de Entrega do Projeto');
+  const contractRef = document.getElementById('measurement-contract-ref')?.value.trim() || `CTR-${project.code || 'DEV'}-MED01`;
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const managerName = document.getElementById('measurement-manager-name')?.value.trim() || (currentUser ? currentUser.name : 'Gestor de Projetos');
+  const clientSignee = document.getElementById('measurement-client-signee')?.value.trim() || 'Product Owner / Fiscal do Contrato (Cliente)';
+  const featureLabel = (feature && feature !== 'all') ? feature : 'Todas as Features do Escopo';
+  const issueDate = new Date().toLocaleString('pt-BR');
+
+  const doc = new jsPDFClass({
+    orientation: 'portrait',
+    unit: 'pt',
+    format: 'a4'
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  // 1. Cabeçalho Principal (Deep Slate & Sky Blue)
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, pageWidth, 64, 'F');
+
+  doc.setFillColor(14, 165, 233);
+  doc.rect(0, 61, pageWidth, 3, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(56, 189, 248);
+  doc.text('DEVSQUAD ALM PRO — PLATAFORMA DE ENGENHARIA & QUALIDADE', 36, 24);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(255, 255, 255);
+  doc.text('RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS', 36, 42);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text('Artefato Oficial de Comprovação de Entrega Técnica para Fins de Faturamento & Aceite', 36, 54);
+
+  // 2. Quadro de Metadados do Projeto, Contrato e Partes
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(36, 76, pageWidth - 72, 74, 3, 3, 'F');
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(36, 76, pageWidth - 72, 74, 3, 3, 'S');
+
+  // Coluna Esquerda
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 41, 59);
+  doc.text('Projeto:', 46, 92);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`${project.code ? `[${project.code}] ` : ''}${project.name}`.slice(0, 45), 90, 92);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Feature / Módulo:', 46, 107);
+  doc.setFont('helvetica', 'normal');
+  doc.text(featureLabel.slice(0, 38), 130, 107);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Marco de Entrega:', 46, 122);
+  doc.setFont('helvetica', 'normal');
+  doc.text(milestoneName.slice(0, 38), 130, 122);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Contratante / Cliente:', 46, 137);
+  doc.setFont('helvetica', 'normal');
+  doc.text(clientName.slice(0, 35), 145, 137);
+
+  // Coluna Direita
+  doc.setFont('helvetica', 'bold');
+  doc.text('Ref. Contratual:', 310, 92);
+  doc.setFont('helvetica', 'normal');
+  doc.text(contractRef.slice(0, 28), 390, 92);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Data de Emissão:', 310, 107);
+  doc.setFont('helvetica', 'normal');
+  doc.text(issueDate, 395, 107);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Responsável Técnico:', 310, 122);
+  doc.setFont('helvetica', 'normal');
+  doc.text(managerName.slice(0, 26), 415, 122);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Fiscal do Contrato:', 310, 137);
+  doc.setFont('helvetica', 'normal');
+  doc.text(clientSignee.slice(0, 26), 405, 137);
+
+  // 3. Indicadores de Medição & Aderência (Mini Cards)
+  const tileY = 158;
+  const tileH = 38;
+  const tileW = (pageWidth - 72 - 18) / 4;
+
+  const metricsData = [
+    { label: 'TOTAL REQUISITOS', val: `${totalInScope}`, color: [30, 41, 59] },
+    { label: 'VALIDADOS QA', val: `${qaApprovedCount}`, color: [16, 185, 129] },
+    { label: 'CRITÉRIOS BDD', val: `${bddCount}`, color: [14, 165, 233] },
+    { label: 'TAXA CONCLUSÃO', val: `${completionRate}%`, color: [168, 85, 247] }
+  ];
+
+  metricsData.forEach((m, idx) => {
+    const x = 36 + idx * (tileW + 6);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(x, tileY, tileW, tileH, 3, 3, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(x, tileY, tileW, tileH, 3, 3, 'S');
+
+    doc.setFontSize(6.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(100, 116, 139);
+    doc.text(m.label, x + tileW / 2, tileY + 12, { align: 'center' });
+
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(m.color[0], m.color[1], m.color[2]);
+    doc.text(m.val, x + tileW / 2, tileY + 30, { align: 'center' });
+  });
+
+  // Banner de Status da Medição
+  const statusBannerY = 202;
+  const is100 = completionRate === 100;
+  if (is100) {
+    doc.setFillColor(236, 253, 245);
+    doc.setDrawColor(16, 185, 129);
+    doc.roundedRect(36, statusBannerY, pageWidth - 72, 20, 3, 3, 'FD');
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(5, 150, 105);
+    doc.text('STATUS: 100% HOMOLOGADO & APROVADO PELO QA — APTO PARA EMISSÃO DE FATURA & ACEITE DEFINITIVO', pageWidth / 2, statusBannerY + 13, { align: 'center' });
+  } else {
+    doc.setFillColor(254, 243, 199);
+    doc.setDrawColor(245, 158, 11);
+    doc.roundedRect(36, statusBannerY, pageWidth - 72, 20, 3, 3, 'FD');
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(180, 83, 9);
+    doc.text(`STATUS: MEDIÇÃO PARCIAL (${completionRate}% HOMOLOGADO) — COMPROVAÇÃO DE ENTREGA PROPORCIONAL`, pageWidth / 2, statusBannerY + 13, { align: 'center' });
+  }
+
+  // 4. Tabela Estruturada de Requisitos & Critérios de Aceite via autoTable
+  const head = [['Identificador', 'Especificação & História de Usuário', 'Critérios de Aceite (BDD / Cenários)', 'Status de Validação QA']];
+  const body = exportItems.map(item => {
+    const r = item.req;
+    const v = item.val;
+    const idCell = `${r.code || 'RF'}\n${r.type === 'non-functional' ? 'RNF' : 'RF'}\n[${r.moscow || 'Must'}]`;
+    const specCell = `${r.title || '-'}\n\nUser Story:\n${r.userStory ? r.userStory : 'Não informada'}`;
+    const bddCell = r.bdd && r.bdd.trim() ? r.bdd.trim() : 'Critérios de aceite não documentados formalmente.';
+    const qaCell = `${v.isValidated ? 'VALIDADO QA\nAprovado' : 'EM HOMOLOGAÇÃO'}\n\n${v.detailNote}\nDemandas: ${v.linkedTasks.length}\nTestes: ${v.linkedTests.length}`;
+    return [idCell, specCell, bddCell, qaCell];
+  });
+
+  if (typeof doc.autoTable === 'function') {
+    doc.autoTable({
+      head: head,
+      body: body,
+      startY: 228,
+      margin: { top: 70, bottom: 40, left: 36, right: 36 },
+      theme: 'grid',
+      styles: {
+        fontSize: 7.2,
+        cellPadding: 5,
+        textColor: [30, 41, 59],
+        lineColor: [226, 232, 240],
+        lineWidth: 0.5,
+        overflow: 'linebreak',
+        font: 'helvetica'
+      },
+      headStyles: {
+        fillColor: [30, 41, 59],
+        textColor: [248, 250, 252],
+        fontStyle: 'bold',
+        fontSize: 7.8
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252]
+      },
+      columnStyles: {
+        0: { cellWidth: 70, fontStyle: 'bold' },
+        1: { cellWidth: 155 },
+        2: { cellWidth: 178 },
+        3: { cellWidth: 120 }
+      }
+    });
+
+    let finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 16 : 450;
+    if (finalY + 140 > pageHeight - 35) {
+      doc.addPage();
+      finalY = 50;
+    }
+
+    // 5. Termo de Aceite Formal & Autorização de Faturamento
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(36, finalY, pageWidth - 72, 48, 3, 3, 'F');
+    doc.setDrawColor(203, 213, 225);
+    doc.roundedRect(36, finalY, pageWidth - 72, 48, 3, 3, 'S');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.8);
+    doc.setTextColor(15, 23, 42);
+    doc.text('TERMO FORMAL DE HOMOLOGAÇÃO, ACEITE E AUTORIZAÇÃO DE FATURAMENTO', 46, finalY + 13);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.8);
+    doc.setTextColor(71, 85, 105);
+    const termo = 'Pelo presente instrumento, a CONTRATANTE atesta expressamente o pleno recebimento, homologação técnica e aceite formal dos requisitos de software e critérios de aceite descritos neste Relatório de Medição correspondentes à Feature / Marco acima especificado. Declara que os entregáveis foram devidamente verificados e aprovados pelo controle de qualidade (QA), em conformidade com as cláusulas contratuais, autorizando a emissão da Nota Fiscal de Serviços e o respectivo faturamento financeiro.';
+    const splitTermo = doc.splitTextToSize(termo, pageWidth - 92);
+    doc.text(splitTermo, 46, finalY + 24);
+
+    // 6. Campos Formais de Assinatura (Contratada e Contratante)
+    const signY = finalY + 48 + 36;
+    doc.setDrawColor(148, 163, 184);
+
+    // Assinatura Contratada
+    doc.line(48, signY, 260, signY);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text('PELA CONTRATADA (DEVSQUAD)', 154, signY + 11, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    doc.text(managerName, 154, signY + 21, { align: 'center' });
+    doc.text('Gestor de Projetos / Scrum Master', 154, signY + 30, { align: 'center' });
+    doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, 154, signY + 39, { align: 'center' });
+
+    // Assinatura Contratante
+    doc.line(335, signY, 547, signY);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text('PELA CONTRATANTE (CLIENTE)', 441, signY + 11, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    doc.text(clientSignee, 441, signY + 21, { align: 'center' });
+    doc.text('Fiscal do Contrato / Responsável pelo Aceite', 441, signY + 30, { align: 'center' });
+    doc.text('Data: _____ / _____ / _________', 441, signY + 39, { align: 'center' });
+
+    // Rodapé de Paginação e Autenticidade
+    const totalPages = doc.internal.getNumberOfPages();
+    const docHash = `DSQ-MED-${Date.now().toString(36).toUpperCase()}`;
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(6.8);
+      doc.setTextColor(148, 163, 184);
+      doc.text('DevSquad ALM Pro — Artefato Formal de Medição & Aceite Técnico de Entrega', 36, pageHeight - 16);
+      doc.text(`Doc Ref: ${docHash} | Página ${i} de ${totalPages}`, pageWidth - 36, pageHeight - 16, { align: 'right' });
+    }
+  }
+
+  const dateStr = new Date().toISOString().split('T')[0];
+  const cleanFeature = featureLabel.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+  const filename = `medicao_${project.code || 'proj'}_${cleanFeature}_${dateStr}.pdf`;
+  doc.save(filename);
+  showToast(`Relatório Formal de Medição gerado com sucesso! Arquivo: ${filename}`);
+};
+
+window.printMeasurementReport = function() {
+  const projectId = document.getElementById('measurement-project-select')?.value;
+  const feature = document.getElementById('measurement-feature-select')?.value;
+  const statusFilter = document.getElementById('measurement-status-filter')?.value || 'qa_approved';
+
+  if (!projectId) {
+    showToast('Selecione um projeto válido para visualização.');
+    return;
+  }
+
+  const project = store.getProjectById(projectId);
+  if (!project) return;
+
+  let allReqsInScope = (store.state.requirements || []).filter(r => r.projectId === projectId);
+  if (feature && feature !== 'all') {
+    allReqsInScope = allReqsInScope.filter(r => r.feature === feature);
+  }
+
+  allReqsInScope.sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true }));
+
+  const analyzed = allReqsInScope.map(r => ({
+    req: r,
+    val: getRequirementValidationStatus(r)
+  }));
+
+  let exportItems = analyzed;
+  if (statusFilter === 'qa_approved') {
+    exportItems = analyzed.filter(i => i.val.isValidated);
+  }
+
+  if (exportItems.length === 0) {
+    showToast('Nenhum requisito no escopo selecionado para impressão.');
+    return;
+  }
+
+  const totalInScope = analyzed.length;
+  const qaApprovedCount = analyzed.filter(i => i.val.isValidated).length;
+  const bddCount = analyzed.filter(i => i.val.hasBdd).length;
+  const completionRate = totalInScope > 0 ? Math.round((qaApprovedCount / totalInScope) * 100) : 0;
+
+  const clientName = document.getElementById('measurement-client-name')?.value.trim() || project.client || 'Empresa Contratante S.A.';
+  const milestoneName = document.getElementById('measurement-milestone-name')?.value.trim() || (feature !== 'all' ? `Marco: ${feature}` : 'Marco de Entrega do Projeto');
+  const contractRef = document.getElementById('measurement-contract-ref')?.value.trim() || `CTR-${project.code || 'DEV'}-MED01`;
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const managerName = document.getElementById('measurement-manager-name')?.value.trim() || (currentUser ? currentUser.name : 'Gestor de Projetos');
+  const clientSignee = document.getElementById('measurement-client-signee')?.value.trim() || 'Product Owner / Fiscal do Contrato (Cliente)';
+  const featureLabel = (feature && feature !== 'all') ? feature : 'Todas as Features do Escopo';
+  const issueDate = new Date().toLocaleString('pt-BR');
+
+  const rowsHtml = exportItems.map(item => `
+    <tr>
+      <td style="font-weight: 700; width: 85px;">
+        <div>${escapeHtml(item.req.code)}</div>
+        <small style="color: #64748b;">${item.req.type === 'non-functional' ? 'RNF' : 'RF'} [${item.req.moscow || 'Must'}]</small>
+      </td>
+      <td>
+        <strong>${escapeHtml(item.req.title)}</strong>
+        <div style="margin-top: 4px; font-size: 0.8rem; color: #475569;">
+          <em>User Story:</em> ${escapeHtml(item.req.userStory || 'Não documentada')}
+        </div>
+      </td>
+      <td style="white-space: pre-wrap; font-family: monospace; font-size: 0.78rem; color: #1e293b; background: #f8fafc;">${escapeHtml(item.req.bdd || 'Critérios não documentados.')}</td>
+      <td style="width: 140px;">
+        <span style="font-weight: 700; color: ${item.val.isValidated ? '#059669' : '#d97706'};">
+          ${item.val.isValidated ? '✓ VALIDADO QA' : 'EM HOMOLOGAÇÃO'}
+        </span>
+        <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">${escapeHtml(item.val.detailNote)}</div>
+        <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">Demandas: ${item.val.linkedTasks.length} | Testes: ${item.val.linkedTests.length}</div>
+      </td>
+    </tr>
+  `).join('');
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    showToast('Aviso: Pop-up bloqueado. Permita pop-ups para imprimir o relatório.');
+    return;
+  }
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <title>Relatório de Medição & Aceite - ${escapeHtml(project.name)}</title>
+      <style>
+        @page { size: A4 portrait; margin: 15mm; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #0f172a; margin: 0; padding: 20px; font-size: 12px; line-height: 1.4; background: #fff; }
+        .header { border-bottom: 3px solid #0ea5e9; padding-bottom: 12px; margin-bottom: 15px; }
+        .brand { font-size: 11px; font-weight: 800; color: #0284c7; text-transform: uppercase; letter-spacing: 0.5px; }
+        .title { font-size: 18px; font-weight: 800; color: #0f172a; margin: 4px 0 2px 0; }
+        .subtitle { font-size: 11px; color: #64748b; margin: 0; }
+        .meta-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; font-size: 11px; }
+        .meta-row { display: flex; gap: 6px; }
+        .meta-label { font-weight: 700; color: #334155; }
+        .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 15px; }
+        .kpi-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; text-align: center; }
+        .kpi-title { font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+        .kpi-val { font-size: 18px; font-weight: 800; margin-top: 2px; }
+        .banner { background: #ecfdf5; border: 1px solid #10b981; color: #065f46; border-radius: 6px; padding: 8px 12px; font-weight: 700; font-size: 11px; text-align: center; margin-bottom: 15px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; }
+        th { background: #1e293b; color: #fff; font-weight: 700; text-align: left; padding: 8px; border: 1px solid #1e293b; font-size: 10px; }
+        td { border: 1px solid #e2e8f0; padding: 8px; vertical-align: top; }
+        tr:nth-child(even) td { background: #fcfdfe; }
+        .termo-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; margin-bottom: 30px; font-size: 10px; color: #334155; }
+        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 40px; text-align: center; }
+        .sig-line { border-top: 1px solid #64748b; margin-bottom: 6px; }
+        .sig-title { font-weight: 800; font-size: 11px; color: #0f172a; }
+        .sig-sub { font-size: 10px; color: #64748b; }
+        .footer { margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 8px; font-size: 9px; color: #94a3b8; display: flex; justify-content: space-between; }
+        @media print {
+          body { padding: 0; }
+          .no-print { display: none; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="no-print" style="margin-bottom: 15px; text-align: right;">
+        <button onclick="window.print()" style="padding: 8px 16px; background: #0284c7; color: #fff; border: none; border-radius: 4px; font-weight: 700; cursor: pointer;">🖨️ Imprimir / Salvar em PDF</button>
+      </div>
+
+      <div class="header">
+        <div class="brand">DevSquad ALM Pro — Plataforma Integrada de Engenharia de Software</div>
+        <h1 class="title">RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS</h1>
+        <p class="subtitle">Artefato Oficial de Comprovação de Entrega Técnica para Fins de Faturamento & Aceite</p>
+      </div>
+
+      <div class="meta-box">
+        <div>
+          <div class="meta-row"><span class="meta-label">Projeto:</span> <span>${escapeHtml(project.code ? `[${project.code}] ` : '')}${escapeHtml(project.name)}</span></div>
+          <div class="meta-row"><span class="meta-label">Feature / Módulo:</span> <span>${escapeHtml(featureLabel)}</span></div>
+          <div class="meta-row"><span class="meta-label">Marco de Entrega:</span> <span>${escapeHtml(milestoneName)}</span></div>
+          <div class="meta-row"><span class="meta-label">Cliente / Contratante:</span> <span>${escapeHtml(clientName)}</span></div>
+        </div>
+        <div>
+          <div class="meta-row"><span class="meta-label">Ref. Contratual:</span> <span>${escapeHtml(contractRef)}</span></div>
+          <div class="meta-row"><span class="meta-label">Data de Emissão:</span> <span>${issueDate}</span></div>
+          <div class="meta-row"><span class="meta-label">Responsável Técnico:</span> <span>${escapeHtml(managerName)}</span></div>
+          <div class="meta-row"><span class="meta-label">Fiscal do Contrato:</span> <span>${escapeHtml(clientSignee)}</span></div>
+        </div>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-box">
+          <div class="kpi-title">Total Requisitos</div>
+          <div class="kpi-val" style="color: #0f172a;">${totalInScope}</div>
+        </div>
+        <div class="kpi-box">
+          <div class="kpi-title">Validados QA</div>
+          <div class="kpi-val" style="color: #059669;">${qaApprovedCount}</div>
+        </div>
+        <div class="kpi-box">
+          <div class="kpi-title">Critérios BDD</div>
+          <div class="kpi-val" style="color: #0284c7;">${bddCount}</div>
+        </div>
+        <div class="kpi-box">
+          <div class="kpi-title">Taxa Conclusão</div>
+          <div class="kpi-val" style="color: #9333ea;">${completionRate}%</div>
+        </div>
+      </div>
+
+      <div class="banner">
+        ${completionRate === 100 
+          ? 'STATUS: 100% HOMOLOGADO & APROVADO PELO QA — APTO PARA FATURAMENTO INTEGRAL & ACEITE DEFINITIVO' 
+          : `STATUS: MEDIÇÃO PARCIAL (${completionRate}% HOMOLOGADO) — COMPROVAÇÃO DE ENTREGA PROPORCIONAL`}
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Identificador</th>
+            <th>Especificação & User Story</th>
+            <th>Critérios de Aceite (BDD: Dado / Quando / Então)</th>
+            <th>Status de Validação QA</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+
+      <div class="termo-box">
+        <strong>TERMO FORMAL DE HOMOLOGAÇÃO, ACEITE E AUTORIZAÇÃO DE FATURAMENTO</strong><br>
+        Pelo presente instrumento, a CONTRATANTE atesta expressamente o pleno recebimento, homologação técnica e aceite formal dos requisitos de software e critérios de aceite descritos neste Relatório de Medição correspondentes à Feature / Marco acima especificado. Declara que os entregáveis foram devidamente verificados e aprovados pelo controle de qualidade (QA), em conformidade com as especificações contratadas, autorizando a emissão da respectiva Nota Fiscal de Serviços para faturamento.
+      </div>
+
+      <div class="signatures">
+        <div>
+          <div class="sig-line"></div>
+          <div class="sig-title">PELA CONTRATADA (DEVSQUAD)</div>
+          <div class="sig-sub">${escapeHtml(managerName)}</div>
+          <div class="sig-sub">Gestor de Projetos / Scrum Master</div>
+          <div class="sig-sub">Data: ${new Date().toLocaleDateString('pt-BR')}</div>
+        </div>
+        <div>
+          <div class="sig-line"></div>
+          <div class="sig-title">PELA CONTRATANTE (CLIENTE)</div>
+          <div class="sig-sub">${escapeHtml(clientSignee)}</div>
+          <div class="sig-sub">Fiscal do Contrato / PO Cliente</div>
+          <div class="sig-sub">Data: _____ / _____ / _________</div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <span>DevSquad ALM Pro — Artefato Formal de Medição & Aceite Técnico</span>
+        <span>Código de Autenticidade: DSQ-MED-${Date.now().toString(36).toUpperCase()}</span>
+      </div>
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+};
+
+window.openMeasurementReportModal = openMeasurementReportModal;
+window.populateMeasurementFeatures = populateMeasurementFeatures;
+window.updateMeasurementReportPreview = updateMeasurementReportPreview;
+window.getRequirementValidationStatus = getRequirementValidationStatus;
 
 // ==============================================================================
 // 4.3 Gestão de Metas & Métricas de Promoção (Promotion Goals Engine - Admin RBAC)
@@ -5547,12 +7000,14 @@ function applyRolePermissions(user) {
   const btnMember = document.getElementById('btn-open-member-modal');
   const btnTest = document.getElementById('btn-open-test-modal');
   const btnRunTests = document.getElementById('btn-run-all-tests');
+  const btnMeasurement = document.getElementById('btn-open-measurement-modal');
 
   if (btnProj) btnProj.style.display = perms.canCreateProject ? 'inline-flex' : 'none';
   if (btnTask) btnTask.style.display = perms.canCreateTask ? 'inline-flex' : 'none';
   if (btnReq) btnReq.style.display = perms.canCreateReq ? 'inline-flex' : 'none';
   if (btnMember) btnMember.style.display = perms.canManageTeam ? 'inline-flex' : 'none';
   if (btnTest) btnTest.style.display = perms.canCreateTest ? 'inline-flex' : 'none';
+  if (btnMeasurement) btnMeasurement.style.display = 'inline-flex';
   const btnCareerAdmin = document.getElementById('btn-open-career-modal');
   if (btnCareerAdmin) {
     btnCareerAdmin.style.display = (roleKey === 'admin') ? 'inline-flex' : 'none';
@@ -6124,6 +7579,25 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-open-req-modal')?.addEventListener('click', () => openReqModalForCreate());
   document.getElementById('btn-open-member-modal')?.addEventListener('click', () => openMemberModalForCreate());
   document.getElementById('btn-open-test-modal')?.addEventListener('click', () => openTestModalForCreate());
+  document.getElementById('btn-open-measurement-modal')?.addEventListener('click', () => openMeasurementReportModal());
+
+  // Listeners do Modal de Relatório de Medição
+  document.getElementById('measurement-project-select')?.addEventListener('change', (e) => {
+    populateMeasurementFeatures(e.target.value);
+    updateMeasurementReportPreview();
+  });
+  document.getElementById('measurement-feature-select')?.addEventListener('change', () => {
+    updateMeasurementReportPreview();
+  });
+  document.getElementById('measurement-status-filter')?.addEventListener('change', () => {
+    updateMeasurementReportPreview();
+  });
+  document.getElementById('btn-generate-measurement-pdf')?.addEventListener('click', () => {
+    exportMeasurementReportPDF();
+  });
+  document.getElementById('btn-print-measurement-doc')?.addEventListener('click', () => {
+    printMeasurementReport();
+  });
 
   // Fechamento de Modais
   document.querySelectorAll('[data-close]').forEach(btn => {
@@ -6161,6 +7635,8 @@ window.addEventListener('DOMContentLoaded', () => {
   // Filtro Global de Projetos no Topbar
   document.getElementById('project-filter-select')?.addEventListener('change', (e) => {
     store.selectedProject = e.target.value;
+    store.reqFeatureFilter = 'all';
+    populateFeatureFilterOptions();
     refreshAllUI();
   });
 
@@ -6227,6 +7703,19 @@ window.addEventListener('DOMContentLoaded', () => {
       btn.classList.add('active');
       store.teamRoleFilter = btn.dataset.teamRole;
       renderTeam();
+    });
+  });
+
+  // Alternadores de Modo de Exibição (Cards vs Lista Compacta)
+  document.querySelectorAll('.view-layout-toggle .view-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const toggle = btn.closest('.view-layout-toggle');
+      if (!toggle) return;
+      const viewName = toggle.dataset.view;
+      const mode = btn.dataset.mode;
+      if (viewName && mode) {
+        setViewLayoutMode(viewName, mode);
+      }
     });
   });
 
@@ -6301,12 +7790,14 @@ window.addEventListener('DOMContentLoaded', () => {
     const status = document.getElementById('project-status-input').value;
     const deadline = document.getElementById('project-deadline-input').value;
     const color = document.getElementById('project-color-input').value;
+    const featuresRaw = document.getElementById('project-features-input')?.value || '';
+    const features = featuresRaw.split(',').map(s => s.trim()).filter(Boolean);
 
     if (editId) {
-      store.updateProject(editId, { name, code, desc, status, deadline, color });
+      store.updateProject(editId, { name, code, desc, status, deadline, color, features });
       showToast(`Projeto "${name}" atualizado com sucesso!`);
     } else {
-      store.addProject({ name, code, desc, status, deadline, color });
+      store.addProject({ name, code, desc, status, deadline, color, features });
       showToast(`Novo projeto "${name}" criado com sucesso!`);
     }
 
@@ -6414,9 +7905,31 @@ window.addEventListener('DOMContentLoaded', () => {
     toggleTaskReqPreview(false);
   });
 
-  // Recálculo automático do código do requisito ao trocar Projeto ou Tipo (RF / RNF)
-  document.getElementById('req-project')?.addEventListener('change', () => {
+  // Recálculo automático do código do requisito e atualização de features ao trocar Projeto ou Tipo
+  document.getElementById('req-project')?.addEventListener('change', (e) => {
     updateAutoReqCode();
+    updateModalFeaturesDropdown(e.target.value);
+  });
+
+  document.getElementById('req-feature')?.addEventListener('change', (e) => {
+    const customInput = document.getElementById('req-feature-custom');
+    if (e.target.value === '__new__') {
+      if (customInput) {
+        customInput.style.display = 'block';
+        customInput.value = '';
+        customInput.focus();
+      }
+    } else {
+      if (customInput) {
+        customInput.style.display = 'none';
+        customInput.value = '';
+      }
+    }
+  });
+
+  document.getElementById('req-feature-filter')?.addEventListener('change', (e) => {
+    store.reqFeatureFilter = e.target.value;
+    renderRequirements();
   });
 
   document.getElementById('req-type')?.addEventListener('change', () => {
@@ -6452,17 +7965,70 @@ window.addEventListener('DOMContentLoaded', () => {
     const userStory = document.getElementById('req-user-story').value;
     const bdd = document.getElementById('req-bdd').value;
 
+    let feature = document.getElementById('req-feature')?.value || '';
+    const customFeature = document.getElementById('req-feature-custom')?.value?.trim();
+    if (feature === '__new__' && customFeature) {
+      feature = customFeature;
+    } else if (feature === '__new__') {
+      feature = '';
+    }
+
+    let newReq = null;
     if (editId) {
-      store.updateRequirement(editId, { title, code, projectId, type, moscow, userStory, bdd });
+      store.updateRequirement(editId, { title, code, projectId, feature, type, moscow, userStory, bdd });
       showToast(`Requisito ${code} atualizado com sucesso!`);
     } else {
-      store.addRequirement({ title, code, projectId, type, moscow, userStory, bdd });
+      newReq = store.addRequirement({ title, code, projectId, feature, type, moscow, userStory, bdd });
+
+      // Garante que o item recém-criado seja imediatamente visível ajustando filtros conflitantes
+      if (store.selectedProject !== 'all' && projectId && store.selectedProject !== projectId) {
+        store.selectedProject = projectId;
+        const mainProjSelect = document.getElementById('project-filter-select');
+        if (mainProjSelect) mainProjSelect.value = projectId;
+      }
+      if (store.reqTypeFilter !== 'all' && store.reqTypeFilter !== type) {
+        store.reqTypeFilter = 'all';
+        document.querySelectorAll('#req-type-filter .segment-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.type === 'all');
+        });
+      }
+      if (store.reqMoscowFilter !== 'all' && store.reqMoscowFilter !== moscow) {
+        store.reqMoscowFilter = 'all';
+        const moscowSelect = document.getElementById('req-moscow-filter');
+        if (moscowSelect) moscowSelect.value = 'all';
+      }
+      if (store.reqFeatureFilter !== 'all' && store.reqFeatureFilter !== feature) {
+        store.reqFeatureFilter = 'all';
+        const featFilter = document.getElementById('req-feature-filter');
+        if (featFilter) featFilter.value = 'all';
+      }
+      if (store.searchQuery) {
+        store.searchQuery = '';
+        const searchInput = document.getElementById('global-search-input');
+        if (searchInput) searchInput.value = '';
+      }
+
       showToast(`Requisito ${code} registrado com sucesso!`);
     }
 
     closeModal('modal-requirement');
     e.target.reset();
     refreshAllUI();
+
+    // Rola para o topo e destaca visualmente o requisito recém-criado na primeira posição
+    if (newReq && store.activeView === 'requirements') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      const reqContainer = document.getElementById('requirements-container');
+      if (reqContainer) reqContainer.scrollTop = 0;
+      setTimeout(() => {
+        const topEl = document.getElementById(`req-card-${newReq.id}`) || document.getElementById(`req-row-${newReq.id}`);
+        if (topEl) {
+          topEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          topEl.classList.add('highlight-pulse');
+          setTimeout(() => topEl.classList.remove('highlight-pulse'), 2500);
+        }
+      }, 80);
+    }
   });
 
   // 4. FORMULÁRIO DE CASO DE TESTE (CRUD)

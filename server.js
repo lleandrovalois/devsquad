@@ -59,6 +59,7 @@ db.exec(`
     color TEXT,
     status TEXT,
     deadline TEXT,
+    features TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -67,6 +68,7 @@ db.exec(`
     code TEXT NOT NULL,
     title TEXT NOT NULL,
     project_id TEXT,
+    feature TEXT,
     type TEXT,
     moscow TEXT,
     user_story TEXT,
@@ -184,6 +186,8 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN complexity TEXT DEFAULT 'Média'"); 
 try { db.exec("ALTER TABLE tasks ADD COLUMN dev_notes TEXT"); } catch (e) {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN created_at TEXT"); } catch (e) {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN updated_at TEXT"); } catch (e) {}
+try { db.exec("ALTER TABLE requirements ADD COLUMN feature TEXT"); } catch (e) {}
+try { db.exec("ALTER TABLE projects ADD COLUMN features TEXT"); } catch (e) {}
 
 // ==============================================================================
 // 2. Inicialização Segura do Banco (Apenas conta de Administrador se vazio)
@@ -787,15 +791,17 @@ function getFullAuditLogs(limit = 150) {
 }
 
 function getFullRequirements() {
-  return db.prepare('SELECT * FROM requirements').all().map(r => ({
+  return db.prepare('SELECT * FROM requirements ORDER BY created_at DESC, id DESC').all().map(r => ({
     id: r.id,
     code: r.code,
     title: r.title,
     projectId: r.project_id,
+    feature: r.feature || '',
     type: r.type,
     moscow: r.moscow,
     userStory: r.user_story,
-    bdd: r.bdd
+    bdd: r.bdd,
+    createdAt: r.created_at
   }));
 }
 
@@ -825,15 +831,26 @@ function getFullTeamMembers() {
 }
 
 function getFullProjects() {
-  return db.prepare('SELECT * FROM projects').all().map(p => ({
-    id: p.id,
-    code: p.code,
-    name: p.name,
-    desc: p.desc,
-    color: p.color,
-    status: p.status,
-    deadline: p.deadline
-  }));
+  return db.prepare('SELECT * FROM projects').all().map(p => {
+    let features = [];
+    if (p.features) {
+      try {
+        features = typeof p.features === 'string' ? JSON.parse(p.features) : p.features;
+      } catch(e) {
+        features = String(p.features).split(',').map(s => s.trim()).filter(Boolean);
+      }
+    }
+    return {
+      id: p.id,
+      code: p.code,
+      name: p.name,
+      desc: p.desc,
+      color: p.color,
+      status: p.status,
+      deadline: p.deadline,
+      features: Array.isArray(features) ? features : []
+    };
+  });
 }
 
 function getFullTestCases() {
@@ -1192,10 +1209,11 @@ const server = http.createServer(async (req, res) => {
         const p = await parseJsonBody(req);
         const id = p.id || 'p_' + Date.now();
         const now = new Date().toISOString();
+        const featuresJson = JSON.stringify(Array.isArray(p.features) ? p.features : []);
         db.prepare(`
-          INSERT INTO projects (id, code, name, desc, color, status, deadline, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, p.code || 'PROJ', p.name, p.desc || '', p.color || '#3b82f6', p.status || 'Ativo', p.deadline || '', now);
+          INSERT INTO projects (id, code, name, desc, color, status, deadline, features, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(id, p.code || 'PROJ', p.name, p.desc || '', p.color || '#3b82f6', p.status || 'Ativo', p.deadline || '', featuresJson, now);
 
         const actor = getActorFromReq(req);
         logAudit({
@@ -1221,11 +1239,24 @@ const server = http.createServer(async (req, res) => {
         }
         const p = await parseJsonBody(req);
         const existing = db.prepare('SELECT * FROM projects WHERE id = ?').get(projId);
+        let featuresJson = existing ? (existing.features || '[]') : '[]';
+        if (p.features !== undefined) {
+          featuresJson = JSON.stringify(Array.isArray(p.features) ? p.features : []);
+        }
         db.prepare(`
           UPDATE projects
-          SET name = ?, code = ?, desc = ?, color = ?, status = ?, deadline = ?
+          SET name = ?, code = ?, desc = ?, color = ?, status = ?, deadline = ?, features = ?
           WHERE id = ?
-        `).run(p.name || '', p.code || '', p.desc || '', p.color || '#3b82f6', p.status || 'Ativo', p.deadline || '', projId);
+        `).run(
+          p.name !== undefined ? p.name : (existing ? existing.name : ''),
+          p.code !== undefined ? p.code : (existing ? existing.code : 'PROJ'),
+          p.desc !== undefined ? p.desc : (existing ? existing.desc : ''),
+          p.color !== undefined ? p.color : (existing ? existing.color : '#3b82f6'),
+          p.status !== undefined ? p.status : (existing ? existing.status : 'Ativo'),
+          p.deadline !== undefined ? p.deadline : (existing ? existing.deadline : ''),
+          featuresJson,
+          projId
+        );
 
         const actor = getActorFromReq(req);
         logAudit({
@@ -1276,11 +1307,27 @@ const server = http.createServer(async (req, res) => {
         }
         const r = await parseJsonBody(req);
         const id = r.id || 'req_' + Date.now();
-        const now = new Date().toISOString();
+        const now = r.createdAt || new Date().toISOString();
+        const feature = (r.feature || '').trim();
         db.prepare(`
-          INSERT INTO requirements (id, code, title, project_id, type, moscow, user_story, bdd, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, r.code || 'RF', r.title, r.projectId || null, r.type || 'functional', r.moscow || 'Must', r.userStory || '', r.bdd || '', now);
+          INSERT INTO requirements (id, code, title, project_id, feature, type, moscow, user_story, bdd, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(id, r.code || 'RF', r.title, r.projectId || null, feature, r.type || 'functional', r.moscow || 'Must', r.userStory || '', r.bdd || '', now);
+
+        if (r.projectId && feature) {
+          try {
+            const proj = db.prepare('SELECT features FROM projects WHERE id = ?').get(r.projectId);
+            if (proj) {
+              let fList = [];
+              try { fList = JSON.parse(proj.features || '[]'); } catch(e) {}
+              if (!Array.isArray(fList)) fList = [];
+              if (!fList.some(f => f.toLowerCase() === feature.toLowerCase())) {
+                fList.push(feature);
+                db.prepare('UPDATE projects SET features = ? WHERE id = ?').run(JSON.stringify(fList), r.projectId);
+              }
+            }
+          } catch(e) {}
+        }
 
         const actor = getActorFromReq(req);
         logAudit({
@@ -1290,10 +1337,10 @@ const server = http.createServer(async (req, res) => {
           action: 'CREATE',
           ...actor,
           details: `Especificou novo requisito: [${r.code || 'RF'}] "${r.title}".`,
-          newState: r
+          newState: { ...r, id, feature, createdAt: now }
         });
 
-        return sendJson(res, 201, { id, ...r });
+        return sendJson(res, 201, { id, ...r, feature, createdAt: now });
       }
     }
 
@@ -1306,11 +1353,27 @@ const server = http.createServer(async (req, res) => {
         }
         const r = await parseJsonBody(req);
         const existing = db.prepare('SELECT * FROM requirements WHERE id = ?').get(reqId);
+        const feature = r.feature !== undefined ? (r.feature || '').trim() : (existing ? (existing.feature || '') : '');
         db.prepare(`
           UPDATE requirements
-          SET code = ?, title = ?, project_id = ?, type = ?, moscow = ?, user_story = ?, bdd = ?
+          SET code = ?, title = ?, project_id = ?, feature = ?, type = ?, moscow = ?, user_story = ?, bdd = ?
           WHERE id = ?
-        `).run(r.code || 'RF', r.title || '', r.projectId || null, r.type || 'functional', r.moscow || 'Must', r.userStory || '', r.bdd || '', reqId);
+        `).run(r.code || 'RF', r.title || '', r.projectId || null, feature, r.type || 'functional', r.moscow || 'Must', r.userStory || '', r.bdd || '', reqId);
+
+        if (r.projectId && feature) {
+          try {
+            const proj = db.prepare('SELECT features FROM projects WHERE id = ?').get(r.projectId);
+            if (proj) {
+              let fList = [];
+              try { fList = JSON.parse(proj.features || '[]'); } catch(e) {}
+              if (!Array.isArray(fList)) fList = [];
+              if (!fList.some(f => f.toLowerCase() === feature.toLowerCase())) {
+                fList.push(feature);
+                db.prepare('UPDATE projects SET features = ? WHERE id = ?').run(JSON.stringify(fList), r.projectId);
+              }
+            }
+          } catch(e) {}
+        }
 
         const actor = getActorFromReq(req);
         logAudit({
