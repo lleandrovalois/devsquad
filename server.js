@@ -286,6 +286,31 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_apf_project ON apf_items(project_id);
   CREATE INDEX IF NOT EXISTS idx_apf_feature ON apf_items(feature);
   CREATE INDEX IF NOT EXISTS idx_apf_type ON apf_items(function_type);
+
+  CREATE TABLE IF NOT EXISTS apf_inm_items (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL,
+    project_id TEXT,
+    feature TEXT,
+    req_id TEXT,
+    category TEXT NOT NULL,
+    catalog_key TEXT NOT NULL,
+    item_name TEXT NOT NULL,
+    description TEXT,
+    quantity REAL NOT NULL DEFAULT 1,
+    unit_weight REAL NOT NULL DEFAULT 0.8,
+    calculated_pf REAL NOT NULL DEFAULT 0.8,
+    evidence TEXT,
+    status TEXT NOT NULL DEFAULT 'Aprovado',
+    created_by TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+    FOREIGN KEY (req_id) REFERENCES requirements(id) ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_apf_inm_project ON apf_inm_items(project_id);
+  CREATE INDEX IF NOT EXISTS idx_apf_inm_req ON apf_inm_items(req_id);
+  CREATE INDEX IF NOT EXISTS idx_apf_inm_created ON apf_inm_items(created_at ASC);
 `);
 
 // Migrações seguras de colunas em bases já existentes
@@ -1354,6 +1379,144 @@ function getFullApfItems() {
   }
 }
 
+// Catálogo Pré-Definido de Itens Não-Mensuráveis (FPN • Métricas SISP / Contratuais)
+const DEFAULT_INM_CATALOG = [
+  {
+    key: 'code_table_inclusao',
+    name: 'Code Table - Inclusão / Nova Tabela de Apoio',
+    category: 'Tabelas de Apoio',
+    unitWeight: 0.80,
+    unitLabel: 'Tabela',
+    description: 'Criação ou configuração de nova tabela de domínio/código/apoio com carga inicial.'
+  },
+  {
+    key: 'code_table_alteracao',
+    name: 'Code Table - Alteração / Manutenção de Tabela',
+    category: 'Tabelas de Apoio',
+    unitWeight: 0.40,
+    unitLabel: 'Tabela',
+    description: 'Inclusão ou alteração de colunas/registros em tabela de código/apoio existente.'
+  },
+  {
+    key: 'menu_item',
+    name: 'Menus / Submenus - Inclusão ou Reestruturação',
+    category: 'Interface & Menus',
+    unitWeight: 0.10,
+    unitLabel: 'Item de Menu',
+    description: 'Inclusão, remoção ou reordenamento de item ou nó na árvore de menus da aplicação.'
+  },
+  {
+    key: 'layout_alteracao',
+    name: 'Layout / Template / Telas - Alteração Estética',
+    category: 'Interface & Menus',
+    unitWeight: 0.50,
+    unitLabel: 'Tela/Layout',
+    description: 'Modificação de layout visual, identidade CSS, template de apresentação sem alteração de regra transacional.'
+  },
+  {
+    key: 'componente_ui',
+    name: 'Componente Visual / Validação / Máscara de Campo',
+    category: 'Interface & Menus',
+    unitWeight: 0.25,
+    unitLabel: 'Componente',
+    description: 'Inclusão de máscara, formatador, validação de campo cliente ou ajuste simples de widget.'
+  },
+  {
+    key: 'parametro_sistema',
+    name: 'Parâmetro de Configuração / Setup de Sistema',
+    category: 'Parâmetros & Configuração',
+    unitWeight: 0.30,
+    unitLabel: 'Parâmetro',
+    description: 'Criação ou atualização de parâmetro global de configuração, chave de flag ou setup operacional.'
+  },
+  {
+    key: 'perfil_seguranca',
+    name: 'Perfis de Acesso / Permissões / Grupos de Segurança',
+    category: 'Parâmetros & Configuração',
+    unitWeight: 0.40,
+    unitLabel: 'Perfil',
+    description: 'Configuração de novo perfil funcional, grupo de segurança ou matriz de permissões.'
+  },
+  {
+    key: 'db_view_indice',
+    name: 'Criação / Ajuste de Views ou Índices de Banco',
+    category: 'Banco de Dados',
+    unitWeight: 0.50,
+    unitLabel: 'View/Índice',
+    description: 'Definição técnica de view, materialized view ou índice de performance em banco relacional.'
+  },
+  {
+    key: 'db_trigger_proc',
+    name: 'Triggers / Procedures / Rotinas de Banco',
+    category: 'Banco de Dados',
+    unitWeight: 1.00,
+    unitLabel: 'Procedure/Trigger',
+    description: 'Criação ou alteração de Stored Procedure, Function ou Trigger de banco de dados.'
+  },
+  {
+    key: 'script_saneamento',
+    name: 'Carga de Dados / Saneamento / Scripts de Migração',
+    category: 'Scripts & Migração',
+    unitWeight: 0.80,
+    unitLabel: 'Script',
+    description: 'Script de migração pontual, carga inicial de dados ou rotina técnica de saneamento.'
+  },
+  {
+    key: 'relatorio_simples',
+    name: 'Relatório Simples / Extração Direta / Exportação',
+    category: 'Integrações & Relatórios',
+    unitWeight: 0.60,
+    unitLabel: 'Relatório',
+    description: 'Extração tabular direta de dados ou relatório sem agregação multidimensional complexa.'
+  },
+  {
+    key: 'webhook_tecnico',
+    name: 'Webhook / Endpoint Auxiliar Técnico / Job de Fundo',
+    category: 'Integrações & Relatórios',
+    unitWeight: 0.75,
+    unitLabel: 'Endpoint/Job',
+    description: 'Configuração de webhook de notificação ou rotina de fila/job assíncrono auxiliar.'
+  }
+];
+
+function getFullApfInmItems() {
+  try {
+    return db.prepare(`
+      SELECT i.*, p.name as project_name, p.code as project_code, r.code as req_code, r.title as req_title
+      FROM apf_inm_items i
+      LEFT JOIN projects p ON i.project_id = p.id
+      LEFT JOIN requirements r ON i.req_id = r.id
+      ORDER BY i.created_at DESC, i.id DESC
+    `).all().map(i => ({
+      id: i.id,
+      code: i.code,
+      projectId: i.project_id || '',
+      projectName: i.project_name || '',
+      projectCode: i.project_code || '',
+      feature: i.feature || '',
+      reqId: i.req_id || '',
+      reqCode: i.req_code || '',
+      reqTitle: i.req_title || '',
+      category: i.category,
+      catalogKey: i.catalog_key,
+      itemName: i.item_name,
+      description: i.description || '',
+      quantity: i.quantity,
+      unitWeight: i.unit_weight,
+      calculatedPf: i.calculated_pf,
+      evidence: i.evidence || '',
+      status: i.status || 'Aprovado',
+      createdBy: i.created_by || '',
+      createdAt: i.created_at,
+      updatedAt: i.updated_at
+    }));
+  } catch (e) {
+    console.error('Erro ao buscar itens não-mensuráveis de APF:', e);
+    return [];
+  }
+}
+
+
 /**
  * Analisa semanticamente um Requisito e extrai funções candidatas de APF (ALI, AIE, EE, SE, CE)
  */
@@ -1695,6 +1858,8 @@ const server = http.createServer(async (req, res) => {
         documentTemplates: getFullDocumentTemplates(),
         templates: getFullDocumentTemplates(),
         apfItems: getFullApfItems(),
+        apfInmItems: getFullApfInmItems(),
+        inmCatalog: DEFAULT_INM_CATALOG,
         auditLogs: isAdmin ? getFullAuditLogs(150) : []
       });
     }
@@ -3576,8 +3741,8 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    if (pathname.startsWith('/api/apf/')) {
-      const apfId = pathname.split('/')[3];
+    if (pathname.startsWith('/api/apf/') && !pathname.startsWith('/api/apf/auto-generate') && !pathname.startsWith('/api/apf/inm')) {
+      const apfId = pathname.slice('/api/apf/'.length);
 
       if (method === 'PUT') {
         const callerRole = req.headers['x-user-role'] || req.headers['x-role'];
@@ -3706,6 +3871,288 @@ const server = http.createServer(async (req, res) => {
         });
 
         return sendJson(res, 200, { success: true, id: apfId });
+      }
+    }
+
+    // 13. API de Itens Não-Mensuráveis (FPN • Pontos de Função Não-Mensuráveis)
+    if (pathname === '/api/apf/inm/catalog' && method === 'GET') {
+      return sendJson(res, 200, DEFAULT_INM_CATALOG);
+    }
+
+    if (pathname === '/api/apf/inm') {
+      if (method === 'GET') {
+        const projectId = url.searchParams.get('projectId');
+        const feature = url.searchParams.get('feature');
+        const category = url.searchParams.get('category');
+        let items = getFullApfInmItems();
+        if (projectId && projectId !== 'all') {
+          items = items.filter(it => it.projectId === projectId);
+        }
+        if (feature && feature !== 'all') {
+          items = items.filter(it => it.feature === feature);
+        }
+        if (category && category !== 'all') {
+          items = items.filter(it => it.category === category);
+        }
+        return sendJson(res, 200, items);
+      }
+
+      if (method === 'POST') {
+        const callerRole = req.headers['x-user-role'] || req.headers['x-role'];
+        if (callerRole === 'dev' || callerRole === 'qa') {
+          return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para cadastrar itens não-mensuráveis de APF.' });
+        }
+
+        const body = await parseJsonBody(req);
+        if (!body.itemName) {
+          return sendJson(res, 400, { success: false, message: 'O nome do item ou intervenção técnica é obrigatório.' });
+        }
+
+        const quantity = Math.max(0.01, parseFloat(body.quantity) || 1);
+        const unitWeight = Math.max(0, parseFloat(body.unitWeight !== undefined ? body.unitWeight : 0.8));
+        const calculatedPf = Math.round((quantity * unitWeight) * 100) / 100;
+        const now = new Date().toISOString();
+
+        let resolvedProjectId = (body.projectId || '').trim() || null;
+        if (resolvedProjectId) {
+          const pExists = db.prepare('SELECT id FROM projects WHERE id = ?').get(resolvedProjectId);
+          if (!pExists) resolvedProjectId = null;
+        }
+
+        let resolvedReqId = (body.reqId || '').trim() || null;
+        if (resolvedReqId) {
+          const rExists = db.prepare('SELECT id FROM requirements WHERE id = ?').get(resolvedReqId);
+          if (!rExists) resolvedReqId = null;
+        }
+
+        const count = db.prepare('SELECT count(*) as count FROM apf_inm_items').get().count + 1;
+        const code = (body.code || '').trim() || `INM-${String(count).padStart(2, '0')}`;
+        const id = 'inm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+        const catalogKey = (body.catalogKey || 'custom').trim();
+        const category = (body.category || 'Tabelas de Apoio').trim();
+        const featureVal = (body.feature || '').trim();
+        const description = (body.description || '').trim();
+        const evidence = (body.evidence || '').trim();
+        const status = (body.status || 'Aprovado').trim();
+        const actor = getActorFromReq(req);
+
+        db.prepare(`
+          INSERT INTO apf_inm_items (
+            id, code, project_id, feature, req_id, category, catalog_key,
+            item_name, description, quantity, unit_weight, calculated_pf,
+            evidence, status, created_by, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          id, code, resolvedProjectId, featureVal, resolvedReqId, category, catalogKey,
+          body.itemName.trim(), description, quantity, unitWeight, calculatedPf,
+          evidence, status, (actor && actor.actorName) || 'Sistema', now, now
+        );
+
+        const createdItem = db.prepare(`
+          SELECT i.*, p.name as project_name, p.code as project_code, r.code as req_code, r.title as req_title
+          FROM apf_inm_items i
+          LEFT JOIN projects p ON i.project_id = p.id
+          LEFT JOIN requirements r ON i.req_id = r.id
+          WHERE i.id = ?
+        `).get(id);
+
+        const formattedItem = {
+          id: createdItem.id,
+          code: createdItem.code,
+          projectId: createdItem.project_id || '',
+          projectName: createdItem.project_name || '',
+          projectCode: createdItem.project_code || '',
+          feature: createdItem.feature || '',
+          reqId: createdItem.req_id || '',
+          reqCode: createdItem.req_code || '',
+          reqTitle: createdItem.req_title || '',
+          category: createdItem.category,
+          catalogKey: createdItem.catalog_key,
+          itemName: createdItem.item_name,
+          description: createdItem.description || '',
+          quantity: createdItem.quantity,
+          unitWeight: createdItem.unit_weight,
+          calculatedPf: createdItem.calculated_pf,
+          evidence: createdItem.evidence || '',
+          status: createdItem.status || 'Aprovado',
+          createdBy: createdItem.created_by || '',
+          createdAt: createdItem.created_at,
+          updatedAt: createdItem.updated_at
+        };
+
+        logAudit({
+          entityType: 'apf_inm',
+          entityId: id,
+          entityTitle: `${code} - ${formattedItem.itemName}`,
+          action: 'CREATE',
+          ...actor,
+          details: `Cadastrou item não-mensurável [${code}] "${formattedItem.itemName}": ${quantity} un x ${unitWeight} PF = ${calculatedPf} FPN.`
+        });
+
+        return sendJson(res, 201, { success: true, item: formattedItem });
+      }
+    }
+
+    if (pathname.startsWith('/api/apf/inm/')) {
+      const inmId = pathname.slice('/api/apf/inm/'.length);
+
+      if (method === 'GET') {
+        const item = db.prepare(`
+          SELECT i.*, p.name as project_name, p.code as project_code, r.code as req_code, r.title as req_title
+          FROM apf_inm_items i
+          LEFT JOIN projects p ON i.project_id = p.id
+          LEFT JOIN requirements r ON i.req_id = r.id
+          WHERE i.id = ?
+        `).get(inmId);
+
+        if (!item) {
+          return sendJson(res, 404, { success: false, message: 'Item não-mensurável de APF não encontrado.' });
+        }
+
+        return sendJson(res, 200, {
+          id: item.id,
+          code: item.code,
+          projectId: item.project_id || '',
+          projectName: item.project_name || '',
+          projectCode: item.project_code || '',
+          feature: item.feature || '',
+          reqId: item.req_id || '',
+          reqCode: item.req_code || '',
+          reqTitle: item.req_title || '',
+          category: item.category,
+          catalogKey: item.catalog_key,
+          itemName: item.item_name,
+          description: item.description || '',
+          quantity: item.quantity,
+          unitWeight: item.unit_weight,
+          calculatedPf: item.calculated_pf,
+          evidence: item.evidence || '',
+          status: item.status || 'Aprovado',
+          createdBy: item.created_by || '',
+          createdAt: item.created_at,
+          updatedAt: item.updated_at
+        });
+      }
+
+      if (method === 'PUT') {
+        const callerRole = req.headers['x-user-role'] || req.headers['x-role'];
+        if (callerRole === 'dev' || callerRole === 'qa') {
+          return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para atualizar itens não-mensuráveis de APF.' });
+        }
+
+        const existing = db.prepare('SELECT * FROM apf_inm_items WHERE id = ?').get(inmId);
+        if (!existing) {
+          return sendJson(res, 404, { success: false, message: 'Item não-mensurável de APF não encontrado.' });
+        }
+
+        const body = await parseJsonBody(req);
+        const itemName = (body.itemName !== undefined ? body.itemName : existing.item_name).trim();
+        const category = (body.category !== undefined ? body.category : existing.category).trim();
+        const catalogKey = (body.catalogKey !== undefined ? body.catalogKey : existing.catalog_key).trim();
+        const description = (body.description !== undefined ? body.description : existing.description).trim();
+        const featureVal = (body.feature !== undefined ? body.feature : existing.feature).trim();
+        const evidence = (body.evidence !== undefined ? body.evidence : existing.evidence).trim();
+        const status = (body.status !== undefined ? body.status : existing.status).trim();
+        const quantity = Math.max(0.01, parseFloat(body.quantity !== undefined ? body.quantity : existing.quantity) || 1);
+        const unitWeight = Math.max(0, parseFloat(body.unitWeight !== undefined ? body.unitWeight : existing.unit_weight));
+        const calculatedPf = Math.round((quantity * unitWeight) * 100) / 100;
+        const now = new Date().toISOString();
+
+        let resolvedProjectId = body.projectId !== undefined ? (body.projectId || '').trim() || null : existing.project_id;
+        if (resolvedProjectId) {
+          const pExists = db.prepare('SELECT id FROM projects WHERE id = ?').get(resolvedProjectId);
+          if (!pExists) resolvedProjectId = null;
+        }
+
+        let resolvedReqId = body.reqId !== undefined ? (body.reqId || '').trim() || null : existing.req_id;
+        if (resolvedReqId) {
+          const rExists = db.prepare('SELECT id FROM requirements WHERE id = ?').get(resolvedReqId);
+          if (!rExists) resolvedReqId = null;
+        }
+
+        db.prepare(`
+          UPDATE apf_inm_items
+          SET item_name = ?, category = ?, catalog_key = ?, description = ?,
+              feature = ?, project_id = ?, req_id = ?, quantity = ?,
+              unit_weight = ?, calculated_pf = ?, evidence = ?, status = ?,
+              updated_at = ?
+          WHERE id = ?
+        `).run(
+          itemName, category, catalogKey, description,
+          featureVal, resolvedProjectId, resolvedReqId, quantity,
+          unitWeight, calculatedPf, evidence, status,
+          now, inmId
+        );
+
+        const updatedItem = db.prepare(`
+          SELECT i.*, p.name as project_name, p.code as project_code, r.code as req_code, r.title as req_title
+          FROM apf_inm_items i
+          LEFT JOIN projects p ON i.project_id = p.id
+          LEFT JOIN requirements r ON i.req_id = r.id
+          WHERE i.id = ?
+        `).get(inmId);
+
+        const formattedItem = {
+          id: updatedItem.id,
+          code: updatedItem.code,
+          projectId: updatedItem.project_id || '',
+          projectName: updatedItem.project_name || '',
+          projectCode: updatedItem.project_code || '',
+          feature: updatedItem.feature || '',
+          reqId: updatedItem.req_id || '',
+          reqCode: updatedItem.req_code || '',
+          reqTitle: updatedItem.req_title || '',
+          category: updatedItem.category,
+          catalogKey: updatedItem.catalog_key,
+          itemName: updatedItem.item_name,
+          description: updatedItem.description || '',
+          quantity: updatedItem.quantity,
+          unitWeight: updatedItem.unit_weight,
+          calculatedPf: updatedItem.calculated_pf,
+          evidence: updatedItem.evidence || '',
+          status: updatedItem.status || 'Aprovado',
+          createdBy: updatedItem.created_by || '',
+          createdAt: updatedItem.created_at,
+          updatedAt: updatedItem.updated_at
+        };
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'apf_inm',
+          entityId: inmId,
+          entityTitle: `${existing.code} - ${formattedItem.itemName}`,
+          action: 'UPDATE',
+          ...actor,
+          details: `Atualizou item não-mensurável [${existing.code}] "${formattedItem.itemName}": Qtd ${quantity} x ${unitWeight} PF = ${calculatedPf} FPN.`
+        });
+
+        return sendJson(res, 200, { success: true, item: formattedItem });
+      }
+
+      if (method === 'DELETE') {
+        const callerRole = req.headers['x-user-role'] || req.headers['x-role'];
+        if (callerRole === 'dev' || callerRole === 'qa') {
+          return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para excluir itens não-mensuráveis de APF.' });
+        }
+
+        const existing = db.prepare('SELECT * FROM apf_inm_items WHERE id = ?').get(inmId);
+        if (!existing) {
+          return sendJson(res, 404, { success: false, message: 'Item não-mensurável de APF não encontrado.' });
+        }
+
+        db.prepare('DELETE FROM apf_inm_items WHERE id = ?').run(inmId);
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'apf_inm',
+          entityId: inmId,
+          entityTitle: `${existing.code} - ${existing.item_name}`,
+          action: 'DELETE',
+          ...actor,
+          details: `Excluiu item não-mensurável [${existing.code}] "${existing.item_name}" com ${existing.calculated_pf} FPN.`
+        });
+
+        return sendJson(res, 200, { success: true, id: inmId });
       }
     }
 

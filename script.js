@@ -27,7 +27,9 @@ const initialSeedData = {
   testCases: [],
   goals: [],
   documentTemplates: [],
-  apfItems: []
+  apfItems: [],
+  apfInmItems: [],
+  inmCatalog: []
 };
 
 // ==============================================================================
@@ -139,6 +141,28 @@ class SynchroAPI {
   async batchCreateApf(payload) {
     return await this.apiRequest('/api/apf/auto-generate/batch', 'POST', payload);
   }
+
+  // --- MÉTODOS DE ITENS NÃO-MENSURÁVEIS (FPN) ---
+  async getApfInmCatalog() {
+    return await this.apiRequest('/api/apf/inm/catalog', 'GET');
+  }
+
+  async getApfInmItems(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return await this.apiRequest(`/api/apf/inm${query ? '?' + query : ''}`, 'GET');
+  }
+
+  async createApfInmItem(item) {
+    return await this.apiRequest('/api/apf/inm', 'POST', item);
+  }
+
+  async updateApfInmItem(id, item) {
+    return await this.apiRequest(`/api/apf/inm/${id}`, 'PUT', item);
+  }
+
+  async deleteApfInmItem(id) {
+    return await this.apiRequest(`/api/apf/inm/${id}`, 'DELETE');
+  }
 }
 
 const api = new SynchroAPI();
@@ -170,6 +194,10 @@ class ALMStore {
     this.apfCountingFilter = 'all';
     this.apfFeatureFilter = 'all';
     this.apfViewMode = 'table';
+    this.apfInmCategoryFilter = 'all';
+    this.apfInmSearchQuery = '';
+    this.apfSubnavTab = 'ifpug';
+    this.apfInmViewMode = 'table';
   }
 
   loadState() {
@@ -232,6 +260,8 @@ class ALMStore {
     }
     state.documentTemplates = Array.isArray(state.documentTemplates) ? state.documentTemplates : [];
     state.apfItems = Array.isArray(state.apfItems) ? state.apfItems : [];
+    state.apfInmItems = Array.isArray(state.apfInmItems) ? state.apfInmItems : [];
+    state.inmCatalog = Array.isArray(state.inmCatalog) ? state.inmCatalog : [];
     return state;
   }
 
@@ -267,6 +297,8 @@ class ALMStore {
       if (Array.isArray(data.goals)) this.state.goals = data.goals;
       if (Array.isArray(data.documentTemplates || data.templates)) this.state.documentTemplates = data.documentTemplates || data.templates;
       if (Array.isArray(data.apfItems)) this.state.apfItems = data.apfItems;
+      if (Array.isArray(data.apfInmItems)) this.state.apfInmItems = data.apfInmItems;
+      if (Array.isArray(data.inmCatalog)) this.state.inmCatalog = data.inmCatalog;
       if (Array.isArray(data.auditLogs)) this.auditLogs = data.auditLogs;
       if (Array.isArray(data.careers) && typeof careerTracksData !== 'undefined') {
         data.careers.forEach(c => {
@@ -1501,7 +1533,254 @@ class ALMStore {
     }
     return { success: true, count: created.length, items: created };
   }
+
+  // --- CRUD: ITENS NÃO-MENSURÁVEIS (FPN • MÉTRICAS CONTRATUAIS / SISP) ---
+  getApfInmItems(filters = {}) {
+    let list = Array.isArray(this.state.apfInmItems) ? this.state.apfInmItems : [];
+
+    const proj = filters.projectId !== undefined ? filters.projectId : this.selectedProject;
+    if (proj && proj !== 'all') {
+      list = list.filter(it => it.projectId === proj);
+    }
+
+    const feat = filters.feature !== undefined ? filters.feature : this.apfFeatureFilter;
+    if (feat && feat !== 'all') {
+      list = list.filter(it => (it.feature || '').toLowerCase() === feat.toLowerCase());
+    }
+
+    const cat = filters.category !== undefined ? filters.category : this.apfInmCategoryFilter;
+    if (cat && cat !== 'all') {
+      list = list.filter(it => (it.category || '').toLowerCase() === cat.toLowerCase());
+    }
+
+    const q = filters.search !== undefined ? filters.search : this.apfInmSearchQuery;
+    if (q) {
+      const term = q.toLowerCase().trim();
+      list = list.filter(it =>
+        (it.code && it.code.toLowerCase().includes(term)) ||
+        (it.itemName && it.itemName.toLowerCase().includes(term)) ||
+        (it.description && it.description.toLowerCase().includes(term)) ||
+        (it.feature && it.feature.toLowerCase().includes(term)) ||
+        (it.evidence && it.evidence.toLowerCase().includes(term)) ||
+        (it.reqCode && it.reqCode.toLowerCase().includes(term))
+      );
+    }
+
+    return list;
+  }
+
+  getApfInmItemById(id) {
+    return (this.state.apfInmItems || []).find(it => it.id === id);
+  }
+
+  getInmCatalog() {
+    if (Array.isArray(this.state.inmCatalog) && this.state.inmCatalog.length > 0) {
+      return this.state.inmCatalog;
+    }
+    return DEFAULT_INM_CATALOG_CLIENT;
+  }
+
+  async addApfInmItem(itemData) {
+    if (typeof api !== 'undefined' && api.isOnline) {
+      const res = await api.createApfInmItem(itemData);
+      if (res && res.success && res.item) {
+        if (!Array.isArray(this.state.apfInmItems)) this.state.apfInmItems = [];
+        this.state.apfInmItems.unshift(res.item);
+        this.saveState();
+        return res.item;
+      }
+    }
+    // Fallback offline
+    const id = itemData.id || 'inm_' + Date.now();
+    const count = (this.state.apfInmItems || []).length + 1;
+    const code = (itemData.code || '').trim() || `INM-${String(count).padStart(2, '0')}`;
+    const quantity = Math.max(0.01, parseFloat(itemData.quantity) || 1);
+    const unitWeight = Math.max(0, parseFloat(itemData.unitWeight !== undefined ? itemData.unitWeight : 0.8));
+    const calculatedPf = Math.round((quantity * unitWeight) * 100) / 100;
+    const now = new Date().toISOString();
+
+    const proj = this.getProjectById(itemData.projectId);
+    const req = (this.state.requirements || []).find(r => r.id === itemData.reqId);
+
+    const newItem = {
+      id,
+      code,
+      projectId: itemData.projectId || '',
+      projectName: proj ? proj.name : '',
+      projectCode: proj ? proj.code : '',
+      feature: (itemData.feature || '').trim(),
+      reqId: itemData.reqId || '',
+      reqCode: req ? req.code : '',
+      reqTitle: req ? req.title : '',
+      category: itemData.category || 'Tabelas de Apoio',
+      catalogKey: itemData.catalogKey || 'custom',
+      itemName: (itemData.itemName || '').trim(),
+      description: (itemData.description || '').trim(),
+      quantity,
+      unitWeight,
+      calculatedPf,
+      evidence: (itemData.evidence || '').trim(),
+      status: itemData.status || 'Aprovado',
+      createdBy: (typeof authStore !== 'undefined' && authStore.getCurrentUser()) ? authStore.getCurrentUser().name : 'Sistema',
+      createdAt: now,
+      updatedAt: now
+    };
+
+    if (!Array.isArray(this.state.apfInmItems)) this.state.apfInmItems = [];
+    this.state.apfInmItems.unshift(newItem);
+    this.saveState();
+    return newItem;
+  }
+
+  async updateApfInmItem(id, updates) {
+    if (typeof api !== 'undefined' && api.isOnline) {
+      const res = await api.updateApfInmItem(id, updates);
+      if (res && res.success && res.item) {
+        const idx = (this.state.apfInmItems || []).findIndex(it => it.id === id);
+        if (idx !== -1) {
+          this.state.apfInmItems[idx] = res.item;
+          this.saveState();
+        }
+        return res.item;
+      }
+    }
+    // Fallback offline
+    const idx = (this.state.apfInmItems || []).findIndex(it => it.id === id);
+    if (idx !== -1) {
+      const existing = this.state.apfInmItems[idx];
+      const quantity = Math.max(0.01, parseFloat(updates.quantity !== undefined ? updates.quantity : existing.quantity) || 1);
+      const unitWeight = Math.max(0, parseFloat(updates.unitWeight !== undefined ? updates.unitWeight : existing.unitWeight));
+      const calculatedPf = Math.round((quantity * unitWeight) * 100) / 100;
+      const proj = updates.projectId ? this.getProjectById(updates.projectId) : (existing.projectId ? this.getProjectById(existing.projectId) : null);
+      const req = updates.reqId ? (this.state.requirements || []).find(r => r.id === updates.reqId) : null;
+
+      const updated = {
+        ...existing,
+        ...updates,
+        quantity,
+        unitWeight,
+        calculatedPf,
+        projectName: proj ? proj.name : existing.projectName,
+        projectCode: proj ? proj.code : existing.projectCode,
+        reqCode: req ? req.code : existing.reqCode,
+        reqTitle: req ? req.title : existing.reqTitle,
+        updatedAt: new Date().toISOString()
+      };
+      this.state.apfInmItems[idx] = updated;
+      this.saveState();
+      return updated;
+    }
+    return null;
+  }
+
+  async deleteApfInmItem(id) {
+    if (typeof api !== 'undefined' && api.isOnline) {
+      await api.deleteApfInmItem(id);
+    }
+    this.state.apfInmItems = (this.state.apfInmItems || []).filter(it => it.id !== id);
+    this.saveState();
+    return true;
+  }
 }
+
+const DEFAULT_INM_CATALOG_CLIENT = [
+  {
+    key: 'code_table_inclusao',
+    name: 'Code Table - Inclusão / Nova Tabela de Apoio',
+    category: 'Tabelas de Apoio',
+    unitWeight: 0.80,
+    unitLabel: 'Tabela',
+    description: 'Criação ou configuração de nova tabela de domínio/código/apoio com carga inicial.'
+  },
+  {
+    key: 'code_table_alteracao',
+    name: 'Code Table - Alteração / Manutenção de Tabela',
+    category: 'Tabelas de Apoio',
+    unitWeight: 0.40,
+    unitLabel: 'Tabela',
+    description: 'Inclusão ou alteração de colunas/registros em tabela de código/apoio existente.'
+  },
+  {
+    key: 'menu_item',
+    name: 'Menus / Submenus - Inclusão ou Reestruturação',
+    category: 'Interface & Menus',
+    unitWeight: 0.10,
+    unitLabel: 'Item de Menu',
+    description: 'Inclusão, remoção ou reordenamento de item ou nó na árvore de menus da aplicação.'
+  },
+  {
+    key: 'layout_alteracao',
+    name: 'Layout / Template / Telas - Alteração Estética',
+    category: 'Interface & Menus',
+    unitWeight: 0.50,
+    unitLabel: 'Tela/Layout',
+    description: 'Modificação de layout visual, identidade CSS, template de apresentação sem alteração de regra transacional.'
+  },
+  {
+    key: 'componente_ui',
+    name: 'Componente Visual / Validação / Máscara de Campo',
+    category: 'Interface & Menus',
+    unitWeight: 0.25,
+    unitLabel: 'Componente',
+    description: 'Inclusão de máscara, formatador, validação de campo cliente ou ajuste simples de widget.'
+  },
+  {
+    key: 'parametro_sistema',
+    name: 'Parâmetro de Configuração / Setup de Sistema',
+    category: 'Parâmetros & Configuração',
+    unitWeight: 0.30,
+    unitLabel: 'Parâmetro',
+    description: 'Criação ou atualização de parâmetro global de configuração, chave de flag ou setup operacional.'
+  },
+  {
+    key: 'perfil_seguranca',
+    name: 'Perfis de Acesso / Permissões / Grupos de Segurança',
+    category: 'Parâmetros & Configuração',
+    unitWeight: 0.40,
+    unitLabel: 'Perfil',
+    description: 'Configuração de novo perfil funcional, grupo de segurança ou matriz de permissões.'
+  },
+  {
+    key: 'db_view_indice',
+    name: 'Criação / Ajuste de Views ou Índices de Banco',
+    category: 'Banco de Dados',
+    unitWeight: 0.50,
+    unitLabel: 'View/Índice',
+    description: 'Definição técnica de view, materialized view ou índice de performance em banco relacional.'
+  },
+  {
+    key: 'db_trigger_proc',
+    name: 'Triggers / Procedures / Rotinas de Banco',
+    category: 'Banco de Dados',
+    unitWeight: 1.00,
+    unitLabel: 'Procedure/Trigger',
+    description: 'Criação ou alteração de Stored Procedure, Function ou Trigger de banco de dados.'
+  },
+  {
+    key: 'script_saneamento',
+    name: 'Carga de Dados / Saneamento / Scripts de Migração',
+    category: 'Scripts & Migração',
+    unitWeight: 0.80,
+    unitLabel: 'Script',
+    description: 'Script de migração pontual, carga inicial de dados ou rotina técnica de saneamento.'
+  },
+  {
+    key: 'relatorio_simples',
+    name: 'Relatório Simples / Extração Direta / Exportação',
+    category: 'Integrações & Relatórios',
+    unitWeight: 0.60,
+    unitLabel: 'Relatório',
+    description: 'Extração tabular direta de dados ou relatório sem agregação multidimensional complexa.'
+  },
+  {
+    key: 'webhook_tecnico',
+    name: 'Webhook / Endpoint Auxiliar Técnico / Job de Fundo',
+    category: 'Integrações & Relatórios',
+    unitWeight: 0.75,
+    unitLabel: 'Endpoint/Job',
+    description: 'Configuração de webhook de notificação ou rotina de fila/job assíncrono auxiliar.'
+  }
+];
 
 // Instância Global do Store
 const store = new ALMStore();
@@ -7556,8 +7835,10 @@ function updateSidebarCounters() {
   }
   const apfCounter = document.getElementById('counter-nav-apf');
   if (apfCounter && typeof store !== 'undefined') {
-    const totalPf = (store.state.apfItems || []).reduce((acc, it) => acc + (parseFloat(it.finalPf) || 0), 0);
-    apfCounter.textContent = `${Math.round(totalPf * 10) / 10} PF`;
+    const ifpugPf = (store.state.apfItems || []).reduce((acc, it) => acc + (parseFloat(it.finalPf) || 0), 0);
+    const inmPf = (store.state.apfInmItems || []).reduce((acc, it) => acc + (parseFloat(it.calculatedPf) || 0), 0);
+    const totalGlobal = Math.round((ifpugPf + inmPf) * 10) / 10;
+    apfCounter.textContent = `${totalGlobal} PF`;
   }
 }
 
@@ -11268,7 +11549,7 @@ function getApfCalculationExplanation(type, arTr, td, complexity, rawPf, countin
 }
 
 /**
- * Renderização Principal da Tela de APF
+ * Renderização Principal da Tela de APF & Faturamento Global
  */
 function renderApf() {
   const activeProjId = store.selectedProject;
@@ -11291,16 +11572,19 @@ function renderApf() {
       features.map(f => `<option value="${f}" ${f === curVal ? 'selected' : ''}>${f}</option>`).join('');
   }
 
-  // Obtém lista filtrada
+  // Obtém lista filtrada de Funções IFPUG e de Itens Não-Mensuráveis
   const items = store.getApfItems();
+  const inmItems = store.getApfInmItems();
 
-  // KPIs
+  // KPIs de Funções IFPUG
   let totalRawPf = 0;
   let totalFinalPf = 0;
   let dataItemsCount = 0;
   let dataPfSum = 0;
+  let dataRawPf = 0;
   let transItemsCount = 0;
   let transPfSum = 0;
+  let transRawPf = 0;
   let countLow = 0;
   let countMed = 0;
   let countHigh = 0;
@@ -11320,9 +11604,11 @@ function renderApf() {
     if (it.category === 'Dados' || it.functionType === 'ALI' || it.functionType === 'AIE') {
       dataItemsCount++;
       dataPfSum += finalVal;
+      dataRawPf += raw;
     } else {
       transItemsCount++;
       transPfSum += finalVal;
+      transRawPf += raw;
     }
 
     if (it.complexity === 'Baixa') countLow++;
@@ -11334,9 +11620,37 @@ function renderApf() {
     }
   });
 
-  // Atualiza badges e números dos KPIs
+  // KPIs de Itens Não-Mensuráveis (FPN)
+  let totalInmPf = 0;
+  inmItems.forEach(it => {
+    totalInmPf += parseFloat(it.calculatedPf) || 0;
+  });
+  totalInmPf = Math.round(totalInmPf * 100) / 100;
+
+  // Total Global Faturável da Entrega: IFPUG Líquido + FPN
+  const totalGlobalPf = Math.round((totalFinalPf + totalInmPf) * 100) / 100;
+
+  // Atualiza badges e números dos KPIs Principais
+  const elGlobalPf = document.getElementById('apf-kpi-global-pf');
+  if (elGlobalPf) elGlobalPf.textContent = totalGlobalPf.toFixed(2);
+
+  const elGlobalBreakdown = document.getElementById('apf-kpi-global-breakdown');
+  if (elGlobalBreakdown) elGlobalBreakdown.textContent = `IFPUG: ${totalFinalPf.toFixed(2)} PF | FPN: ${totalInmPf.toFixed(2)} PF`;
+
   const elFinal = document.getElementById('apf-kpi-total-final');
   if (elFinal) elFinal.textContent = totalFinalPf.toFixed(2);
+
+  const elTotalInm = document.getElementById('apf-kpi-total-inm');
+  if (elTotalInm) elTotalInm.textContent = totalInmPf.toFixed(2);
+
+  const elInmCount = document.getElementById('apf-kpi-inm-count');
+  if (elInmCount) elInmCount.textContent = `${inmItems.length} Intervenç${inmItems.length === 1 ? 'ão' : 'ões'} técnica${inmItems.length === 1 ? '' : 's'}`;
+
+  const elBadgeIfpug = document.getElementById('badge-tab-ifpug-count');
+  if (elBadgeIfpug) elBadgeIfpug.textContent = items.length;
+
+  const elBadgeInm = document.getElementById('badge-tab-inm-count');
+  if (elBadgeInm) elBadgeInm.textContent = inmItems.length;
 
   const elRaw = document.getElementById('apf-kpi-total-raw');
   if (elRaw) elRaw.textContent = Math.round(totalRawPf);
@@ -11350,26 +11664,11 @@ function renderApf() {
     elAvgFactor.textContent = `Fator médio ponderado: ${avgPct}%`;
   }
 
-  const elDataPf = document.getElementById('apf-kpi-data-pf');
-  if (elDataPf) elDataPf.textContent = dataPfSum.toFixed(1);
+  const elDataTransPf = document.getElementById('apf-kpi-data-trans-pf');
+  if (elDataTransPf) elDataTransPf.textContent = `${dataPfSum.toFixed(1)} / ${transPfSum.toFixed(1)}`;
 
-  const elDataCount = document.getElementById('apf-kpi-data-count');
-  if (elDataCount) {
-    const alis = items.filter(it => it.functionType === 'ALI').length;
-    const aies = items.filter(it => it.functionType === 'AIE').length;
-    elDataCount.textContent = `${alis} ALIs | ${aies} AIEs (${dataItemsCount} total)`;
-  }
-
-  const elTransPf = document.getElementById('apf-kpi-trans-pf');
-  if (elTransPf) elTransPf.textContent = transPfSum.toFixed(1);
-
-  const elTransCount = document.getElementById('apf-kpi-trans-count');
-  if (elTransCount) {
-    const ees = items.filter(it => it.functionType === 'EE').length;
-    const ses = items.filter(it => it.functionType === 'SE').length;
-    const ces = items.filter(it => it.functionType === 'CE').length;
-    elTransCount.textContent = `${ees} EE | ${ses} SE | ${ces} CE (${transItemsCount} total)`;
-  }
+  const elDataTransCount = document.getElementById('apf-kpi-data-trans-count');
+  if (elDataTransCount) elDataTransCount.textContent = `${dataItemsCount} Dados | ${transItemsCount} Transações`;
 
   const elLow = document.getElementById('apf-kpi-low-count');
   if (elLow) elLow.textContent = `${countLow} Baixa`;
@@ -11379,12 +11678,36 @@ function renderApf() {
   if (elHigh) elHigh.textContent = `${countHigh} Alta`;
 
   const elScopeBadge = document.getElementById('apf-scope-count-badge');
-  if (elScopeBadge) elScopeBadge.textContent = `${items.length} Itens Mensurados (${totalFinalPf.toFixed(2)} PF)`;
+  if (elScopeBadge) elScopeBadge.textContent = `${items.length + inmItems.length} Itens (${totalGlobalPf.toFixed(2)} PF Global)`;
 
   // Atualiza contador da sidebar
   updateSidebarCounters();
 
-  // Alterna Empty State vs Tabela / Cards
+  // Controle de Sub-Abas: IFPUG vs Não-Mensuráveis (FPN) vs Resumo
+  const activeSubnavTab = store.apfSubnavTab || 'ifpug';
+  const tabIfpug = document.getElementById('apf-ifpug-tab-content');
+  const tabInm = document.getElementById('apf-inm-tab-content');
+  const tabSummary = document.getElementById('apf-summary-tab-content');
+
+  document.querySelectorAll('#apf-subnav-tabs .segment-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-apf-tab') === activeSubnavTab);
+  });
+
+  if (tabIfpug) tabIfpug.style.display = activeSubnavTab === 'ifpug' ? 'block' : 'none';
+  if (tabInm) tabInm.style.display = activeSubnavTab === 'inm' ? 'block' : 'none';
+  if (tabSummary) tabSummary.style.display = activeSubnavTab === 'summary' ? 'block' : 'none';
+
+  if (activeSubnavTab === 'inm') {
+    renderApfInm();
+    return;
+  }
+
+  if (activeSubnavTab === 'summary') {
+    renderApfSummary(items, inmItems, totalRawPf, totalFinalPf, totalInmPf, totalGlobalPf, dataItemsCount, dataRawPf, dataPfSum, transItemsCount, transRawPf, transPfSum);
+    return;
+  }
+
+  // Renderização da Aba 1 (IFPUG): Alterna Empty State vs Tabela / Cards
   const emptyState = document.getElementById('apf-empty-state');
   const tableWrapper = document.getElementById('apf-table-wrapper');
   const cardsContainer = document.getElementById('apf-cards-container');
@@ -11416,6 +11739,433 @@ function renderApf() {
   }
 }
 window.renderApf = renderApf;
+
+/**
+ * Renderização dos Itens Não-Mensuráveis (FPN)
+ */
+function renderApfInm() {
+  const inmItems = store.getApfInmItems();
+  const emptyState = document.getElementById('apf-inm-empty-state');
+  const tableWrapper = document.getElementById('apf-inm-table-wrapper');
+  const cardsContainer = document.getElementById('apf-inm-cards-container');
+  const tbody = document.getElementById('apf-inm-tbody');
+
+  if (inmItems.length === 0) {
+    if (emptyState) emptyState.style.display = 'block';
+    if (tableWrapper) tableWrapper.style.display = 'none';
+    if (cardsContainer) cardsContainer.style.display = 'none';
+    return;
+  }
+
+  if (emptyState) emptyState.style.display = 'none';
+
+  const mode = store.apfInmViewMode || 'table';
+  if (mode === 'cards') {
+    if (tableWrapper) tableWrapper.style.display = 'none';
+    if (cardsContainer) {
+      cardsContainer.style.display = 'grid';
+      renderApfInmCards(inmItems, cardsContainer);
+    }
+  } else {
+    if (cardsContainer) cardsContainer.style.display = 'none';
+    if (tableWrapper) {
+      tableWrapper.style.display = 'block';
+      if (tbody) renderApfInmTable(inmItems, tbody);
+    }
+  }
+}
+window.renderApfInm = renderApfInm;
+
+function renderApfInmTable(items, tbody) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+  const canManage = perms.canManageApf;
+
+  tbody.innerHTML = items.map(it => {
+    const badgeClass = getInmCategoryBadgeClass(it.category);
+    const reqBadge = it.reqCode ?
+      `<a href="javascript:void(0)" onclick="switchView('requirements');" title="${it.reqTitle || ''}" style="color: #38bdf8; text-decoration: none; font-size: 0.76rem; font-weight: 600;">📋 ${it.reqCode}</a>` :
+      `<span style="color: var(--text-muted); font-size: 0.74rem;">-</span>`;
+
+    const evidenceHtml = it.evidence ?
+      `<span class="badge-subtle" title="${it.evidence}" style="max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block;">🔗 ${it.evidence}</span>` :
+      `<span style="color: var(--text-muted); font-size: 0.74rem;">-</span>`;
+
+    return `
+      <tr data-inm-id="${it.id}">
+        <td style="padding: 12px 14px;">
+          <span class="apf-code-badge" style="background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-weight: 800;">${it.code}</span>
+        </td>
+        <td style="padding: 12px 14px;">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <strong style="color: var(--text-main); font-size: 0.88rem;">${it.itemName}</strong>
+            <span class="tag-inm-badge ${badgeClass}" style="align-self: flex-start;">${it.category}</span>
+          </div>
+        </td>
+        <td style="padding: 12px 14px; max-width: 260px;">
+          <span style="color: var(--text-secondary); font-size: 0.82rem; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${it.description || 'Intervenção técnica sem descrição adicional.'}</span>
+        </td>
+        <td style="padding: 12px 14px;">
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <span style="font-size: 0.82rem; font-weight: 600; color: var(--text-main);">${it.projectCode || it.projectName || 'Geral'}</span>
+            ${it.feature ? `<small style="color: var(--text-muted); font-size: 0.74rem;">🧩 ${it.feature}</small>` : ''}
+            <div>${reqBadge}</div>
+          </div>
+        </td>
+        <td style="padding: 12px 14px; text-align: center;">
+          <strong style="font-size: 0.95rem; color: #38bdf8; font-family: 'Outfit', sans-serif;">${it.quantity}</strong>
+        </td>
+        <td style="padding: 12px 14px; text-align: center;">
+          <span style="color: #818cf8; font-weight: 700; font-size: 0.88rem;">${parseFloat(it.unitWeight).toFixed(2)}</span>
+          <small style="color: var(--text-muted); font-size: 0.72rem; display: block;">PF/un</small>
+        </td>
+        <td style="padding: 12px 14px; text-align: right;">
+          <strong class="apf-final-pf-value" style="color: #10b981; font-size: 1.1rem;">${parseFloat(it.calculatedPf).toFixed(2)}</strong>
+          <span style="color: #10b981; font-size: 0.78rem; font-weight: 700;">PF</span>
+        </td>
+        <td style="padding: 12px 14px;">
+          ${evidenceHtml}
+        </td>
+        <td style="padding: 12px 14px; text-align: right; white-space: nowrap;">
+          ${canManage ? `
+            <div style="display: flex; gap: 6px; justify-content: flex-end;">
+              <button class="btn btn-ghost btn-xs" onclick="openApfInmModal('${it.id}')" title="Editar item não-mensurável">
+                <span>✏️</span>
+              </button>
+              <button class="btn btn-ghost btn-xs text-danger" onclick="handleDeleteApfInmItem('${it.id}')" title="Excluir item não-mensurável">
+                <span>🗑️</span>
+              </button>
+            </div>
+          ` : `<span style="color: var(--text-muted); font-size: 0.74rem;">Somente Leitura</span>`}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderApfInmCards(items, container) {
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+  const canManage = perms.canManageApf;
+
+  container.innerHTML = items.map(it => {
+    const badgeClass = getInmCategoryBadgeClass(it.category);
+    return `
+      <div class="inm-item-card glass-panel" data-inm-id="${it.id}">
+        <div class="inm-card-header">
+          <div>
+            <span class="apf-code-badge" style="background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-weight: 800;">${it.code}</span>
+            <span class="tag-inm-badge ${badgeClass}" style="margin-left: 6px;">${it.category}</span>
+          </div>
+          <span class="badge-subtle" style="font-size: 0.72rem; color: #10b981;">${it.status || 'Aprovado'}</span>
+        </div>
+
+        <div>
+          <strong style="color: var(--text-main); font-size: 0.95rem; display: block; margin-bottom: 4px;">${it.itemName}</strong>
+          <p style="color: var(--text-secondary); font-size: 0.82rem; margin: 0; line-height: 1.4;">${it.description || 'Intervenção técnica sem descrição adicional.'}</p>
+        </div>
+
+        <div class="inm-card-metrics-grid">
+          <div class="inm-card-metric-item">
+            <small>Quantidade</small>
+            <strong style="color: #38bdf8;">${it.quantity}</strong>
+          </div>
+          <div class="inm-card-metric-item">
+            <small>Peso Unit.</small>
+            <strong style="color: #818cf8;">${parseFloat(it.unitWeight).toFixed(2)} PF</strong>
+          </div>
+          <div class="inm-card-metric-item">
+            <small>Total FPN</small>
+            <strong style="color: #10b981; font-size: 1.1rem;">${parseFloat(it.calculatedPf).toFixed(2)} PF</strong>
+          </div>
+        </div>
+
+        <div class="inm-card-footer">
+          <div>
+            <span style="font-weight: 600;">${it.projectCode || it.projectName || 'Geral'}</span>
+            ${it.feature ? ` • ${it.feature}` : ''}
+            ${it.evidence ? ` • 🔗 ${it.evidence}` : ''}
+          </div>
+          ${canManage ? `
+            <div style="display: flex; gap: 4px;">
+              <button class="btn btn-ghost btn-xs" onclick="openApfInmModal('${it.id}')" title="Editar">✏️</button>
+              <button class="btn btn-ghost btn-xs text-danger" onclick="handleDeleteApfInmItem('${it.id}')" title="Excluir">🗑️</button>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function getInmCategoryBadgeClass(category) {
+  const cat = (category || '').toLowerCase();
+  if (cat.includes('tabela')) return 'tag-inm-tabelas';
+  if (cat.includes('interface') || cat.includes('menu') || cat.includes('layout')) return 'tag-inm-interface';
+  if (cat.includes('parâmetro') || cat.includes('configur')) return 'tag-inm-parametros';
+  if (cat.includes('banco') || cat.includes('view') || cat.includes('trigger')) return 'tag-inm-banco';
+  if (cat.includes('script') || cat.includes('migra') || cat.includes('saneamento')) return 'tag-inm-scripts';
+  if (cat.includes('integra') || cat.includes('relat')) return 'tag-inm-integracoes';
+  return 'tag-inm-outros';
+}
+window.getInmCategoryBadgeClass = getInmCategoryBadgeClass;
+
+function openApfInmModal(inmId = null) {
+  const catalog = store.getInmCatalog();
+  const catalogSelect = document.getElementById('apf-inm-catalog-select');
+  const projectSelect = document.getElementById('apf-inm-project-select');
+  const reqSelect = document.getElementById('apf-inm-req-select');
+  const datalist = document.getElementById('apf-inm-features-datalist');
+  const modalTitle = document.getElementById('modal-apf-inm-title');
+
+  // Popula Projetos
+  if (projectSelect) {
+    const projects = store.state.projects || [];
+    projectSelect.innerHTML = `<option value="">Selecione um projeto...</option>` +
+      projects.map(p => `<option value="${p.id}" ${store.selectedProject === p.id ? 'selected' : ''}>[${p.code}] ${p.name}</option>`).join('');
+  }
+
+  // Popula Features
+  if (datalist) {
+    const features = store.getProjectFeatures ? store.getProjectFeatures(store.selectedProject) : [];
+    datalist.innerHTML = features.map(f => `<option value="${f}"></option>`).join('');
+  }
+
+  // Popula Requisitos
+  if (reqSelect) {
+    const reqs = store.getRequirements ? store.getRequirements({ projectId: store.selectedProject }) : (store.state.requirements || []);
+    reqSelect.innerHTML = `<option value="">Nenhum requisito vinculado</option>` +
+      reqs.map(r => `<option value="${r.id}">[${r.code}] ${r.title}</option>`).join('');
+  }
+
+  // Popula Catálogo agrupado por categorias
+  if (catalogSelect) {
+    const grouped = {};
+    catalog.forEach(item => {
+      if (!grouped[item.category]) grouped[item.category] = [];
+      grouped[item.category].push(item);
+    });
+
+    let optsHtml = '';
+    for (const catName of Object.keys(grouped)) {
+      optsHtml += `<optgroup label="${catName}">`;
+      grouped[catName].forEach(it => {
+        optsHtml += `<option value="${it.key}" data-category="${it.category}" data-weight="${it.unitWeight}" data-unit="${it.unitLabel}" data-desc="${it.description || ''}">${it.name} (${it.unitWeight} PF/${it.unitLabel})</option>`;
+      });
+      optsHtml += `</optgroup>`;
+    }
+    optsHtml += `<optgroup label="Personalizado"><option value="custom" data-category="Outros" data-weight="0.80" data-unit="Unidade">Outro Item Personalizado...</option></optgroup>`;
+    catalogSelect.innerHTML = optsHtml;
+  }
+
+  if (inmId) {
+    const item = store.getApfInmItemById(inmId);
+    if (!item) {
+      showToast('Item não encontrado.', 'error');
+      return;
+    }
+    if (modalTitle) modalTitle.textContent = 'Editar Intervenção Técnica Não-Mensurável (FPN)';
+    document.getElementById('apf-inm-id-edit').value = item.id;
+    if (projectSelect) projectSelect.value = item.projectId || '';
+    document.getElementById('apf-inm-feature-input').value = item.feature || '';
+    if (reqSelect) reqSelect.value = item.reqId || '';
+    if (catalogSelect) catalogSelect.value = item.catalogKey || 'custom';
+    document.getElementById('apf-inm-category-input').value = item.category || 'Tabelas de Apoio';
+    document.getElementById('apf-inm-desc-input').value = item.description || '';
+    document.getElementById('apf-inm-quantity-input').value = item.quantity || 1;
+    document.getElementById('apf-inm-weight-input').value = item.unitWeight || 0.8;
+    document.getElementById('apf-inm-status-select').value = item.status || 'Aprovado';
+    document.getElementById('apf-inm-evidence-input').value = item.evidence || '';
+  } else {
+    if (modalTitle) modalTitle.textContent = 'Registrar Intervenção Técnica Não-Mensurável (FPN)';
+    document.getElementById('apf-inm-id-edit').value = '';
+    document.getElementById('apf-inm-feature-input').value = (store.apfFeatureFilter && store.apfFeatureFilter !== 'all') ? store.apfFeatureFilter : '';
+    document.getElementById('apf-inm-desc-input').value = '';
+    document.getElementById('apf-inm-quantity-input').value = 1;
+    document.getElementById('apf-inm-evidence-input').value = '';
+    document.getElementById('apf-inm-status-select').value = 'Aprovado';
+
+    // Dispara preenchimento padrão do primeiro item do catálogo
+    if (catalogSelect && catalogSelect.options.length > 0) {
+      const firstOpt = catalogSelect.options[0];
+      catalogSelect.selectedIndex = 0;
+      document.getElementById('apf-inm-category-input').value = firstOpt.dataset.category || 'Tabelas de Apoio';
+      document.getElementById('apf-inm-weight-input').value = firstOpt.dataset.weight || '0.80';
+      const unitLabel = document.getElementById('apf-inm-unit-label');
+      if (unitLabel) unitLabel.textContent = `Unidade: ${firstOpt.dataset.unit || 'Tabela'}`;
+    }
+  }
+
+  updateApfInmLiveCalc();
+  openModal('modal-apf-inm');
+}
+window.openApfInmModal = openApfInmModal;
+
+function updateApfInmLiveCalc() {
+  const qtyInput = document.getElementById('apf-inm-quantity-input');
+  const weightInput = document.getElementById('apf-inm-weight-input');
+
+  const qty = Math.max(0, parseFloat(qtyInput ? qtyInput.value : 1) || 0);
+  const weight = Math.max(0, parseFloat(weightInput ? weightInput.value : 0.8) || 0);
+  const total = Math.round((qty * weight) * 100) / 100;
+
+  const hudQty = document.getElementById('inm-hud-qty');
+  if (hudQty) hudQty.textContent = qty;
+
+  const hudWeight = document.getElementById('inm-hud-weight');
+  if (hudWeight) hudWeight.textContent = weight.toFixed(2);
+
+  const hudTotal = document.getElementById('inm-hud-total-pf');
+  if (hudTotal) hudTotal.textContent = total.toFixed(2);
+}
+window.updateApfInmLiveCalc = updateApfInmLiveCalc;
+
+async function handleSaveApfInmItem(e) {
+  if (e) e.preventDefault();
+
+  const editId = document.getElementById('apf-inm-id-edit')?.value || '';
+  const projectId = document.getElementById('apf-inm-project-select')?.value || '';
+  const feature = document.getElementById('apf-inm-feature-input')?.value.trim() || '';
+  const reqId = document.getElementById('apf-inm-req-select')?.value || '';
+  const catalogSelect = document.getElementById('apf-inm-catalog-select');
+  const selectedOpt = catalogSelect ? catalogSelect.options[catalogSelect.selectedIndex] : null;
+  const catalogKey = catalogSelect ? catalogSelect.value : 'custom';
+  const itemName = selectedOpt ? selectedOpt.text.replace(/\s*\(.*?\)$/, '').trim() : 'Intervenção Técnica';
+  const category = document.getElementById('apf-inm-category-input')?.value.trim() || 'Tabelas de Apoio';
+  const description = document.getElementById('apf-inm-desc-input')?.value.trim() || '';
+  const quantity = Math.max(0.01, parseFloat(document.getElementById('apf-inm-quantity-input')?.value) || 1);
+  const unitWeight = Math.max(0, parseFloat(document.getElementById('apf-inm-weight-input')?.value) || 0.8);
+  const status = document.getElementById('apf-inm-status-select')?.value || 'Aprovado';
+  const evidence = document.getElementById('apf-inm-evidence-input')?.value.trim() || '';
+
+  if (!description) {
+    showToast('A descrição da intervenção técnica é obrigatória.', 'warn');
+    return;
+  }
+
+  const payload = {
+    projectId,
+    feature,
+    reqId,
+    catalogKey,
+    itemName,
+    category,
+    description,
+    quantity,
+    unitWeight,
+    status,
+    evidence
+  };
+
+  try {
+    if (editId) {
+      await store.updateApfInmItem(editId, payload);
+      showToast('Item não-mensurável atualizado com sucesso!', 'success');
+    } else {
+      await store.addApfInmItem(payload);
+      showToast('Intervenção técnica (FPN) registrada com sucesso!', 'success');
+    }
+    closeModal('modal-apf-inm');
+    renderApf();
+  } catch (err) {
+    console.error('Erro ao salvar item não-mensurável:', err);
+    showToast('Falha ao salvar item: ' + (err.message || 'Erro inesperado'), 'error');
+  }
+}
+window.handleSaveApfInmItem = handleSaveApfInmItem;
+
+async function handleDeleteApfInmItem(id) {
+  const item = store.getApfInmItemById(id);
+  if (!item) return;
+
+  if (!confirm(`Confirma a exclusão da intervenção [${item.code}] "${item.itemName}" com ${item.calculatedPf} FPN?`)) {
+    return;
+  }
+
+  try {
+    await store.deleteApfInmItem(id);
+    showToast(`Item [${item.code}] excluído com sucesso!`, 'info');
+    renderApf();
+  } catch (err) {
+    console.error('Erro ao excluir item não-mensurável:', err);
+    showToast('Falha ao excluir item: ' + (err.message || 'Erro inesperado'), 'error');
+  }
+}
+window.handleDeleteApfInmItem = handleDeleteApfInmItem;
+
+function renderApfSummary(items, inmItems, totalRawPf, totalFinalPf, totalInmPf, totalGlobalPf, dataCount, dataRaw, dataFinal, transCount, transRaw, transFinal) {
+  const elDataCount = document.getElementById('summary-data-count');
+  if (elDataCount) elDataCount.textContent = dataCount;
+  const elDataRaw = document.getElementById('summary-data-raw');
+  if (elDataRaw) elDataRaw.textContent = `${dataRaw.toFixed(1)} PF`;
+  const elDataFinal = document.getElementById('summary-data-final');
+  if (elDataFinal) elDataFinal.textContent = `${dataFinal.toFixed(2)} PF`;
+
+  const elTransCount = document.getElementById('summary-trans-count');
+  if (elTransCount) elTransCount.textContent = transCount;
+  const elTransRaw = document.getElementById('summary-trans-raw');
+  if (elTransRaw) elTransRaw.textContent = `${transRaw.toFixed(1)} PF`;
+  const elTransFinal = document.getElementById('summary-trans-final');
+  if (elTransFinal) elTransFinal.textContent = `${transFinal.toFixed(2)} PF`;
+
+  const elIfpugItems = document.getElementById('summary-ifpug-total-items');
+  if (elIfpugItems) elIfpugItems.textContent = items.length;
+  const elIfpugAvg = document.getElementById('summary-ifpug-avg-factor');
+  if (elIfpugAvg) {
+    const avg = totalRawPf > 0 ? Math.round((totalFinalPf / totalRawPf) * 100) : 100;
+    elIfpugAvg.textContent = `Fator: ${avg}%`;
+  }
+  const elIfpugRaw = document.getElementById('summary-ifpug-total-raw');
+  if (elIfpugRaw) elIfpugRaw.textContent = `${totalRawPf.toFixed(1)} PF`;
+  const elIfpugFinal = document.getElementById('summary-ifpug-total-final');
+  if (elIfpugFinal) elIfpugFinal.textContent = `${totalFinalPf.toFixed(2)} PF`;
+
+  const elInmCount = document.getElementById('summary-inm-count');
+  if (elInmCount) elInmCount.textContent = `${inmItems.length} Intervenções`;
+  const elInmFinal = document.getElementById('summary-inm-final');
+  if (elInmFinal) elInmFinal.textContent = `${totalInmPf.toFixed(2)} PF`;
+
+  const elGrandItems = document.getElementById('summary-grand-total-items');
+  if (elGrandItems) elGrandItems.textContent = `${items.length + inmItems.length} Itens Totais`;
+  const elGrandRaw = document.getElementById('summary-grand-raw');
+  if (elGrandRaw) elGrandRaw.textContent = `${totalRawPf.toFixed(1)} PF`;
+  const elGrandPf = document.getElementById('summary-grand-total-pf');
+  if (elGrandPf) elGrandPf.textContent = `${totalGlobalPf.toFixed(2)} PF`;
+
+  // Breakdown por categoria técnica
+  const breakdownGrid = document.getElementById('summary-inm-breakdown-grid');
+  if (breakdownGrid) {
+    const catMap = {};
+    inmItems.forEach(it => {
+      const c = it.category || 'Outros';
+      if (!catMap[c]) catMap[c] = { count: 0, pf: 0 };
+      catMap[c].count++;
+      catMap[c].pf += parseFloat(it.calculatedPf) || 0;
+    });
+
+    const cats = Object.keys(catMap);
+    if (cats.length === 0) {
+      breakdownGrid.innerHTML = `<span style="color: var(--text-muted); font-size: 0.82rem;">Nenhuma intervenção técnica não-mensurável registrada ainda.</span>`;
+    } else {
+      breakdownGrid.innerHTML = cats.map(c => {
+        const info = catMap[c];
+        const badgeClass = getInmCategoryBadgeClass(c);
+        return `
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <span class="tag-inm-badge ${badgeClass}" style="margin-bottom: 4px;">${c}</span>
+              <small style="display: block; color: var(--text-muted); font-size: 0.72rem;">${info.count} intervenção${info.count === 1 ? '' : 'ões'}</small>
+            </div>
+            <strong style="color: #34d399; font-size: 1.1rem; font-family: 'Outfit', sans-serif;">${info.pf.toFixed(2)} PF</strong>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+}
+window.renderApfSummary = renderApfSummary;
 
 function renderApfTableView(items, tbody) {
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
@@ -11947,7 +12697,87 @@ async function seedSampleApfData() {
 window.seedSampleApfData = seedSampleApfData;
 
 /**
- * Exportação Oficial de APF para Planilha Excel (.XLSX)
+ * Inserção de Itens Não-Mensuráveis (FPN) de Exemplo / Demonstração
+ */
+async function seedSampleApfInmData() {
+  const projects = store.getProjects ? store.getProjects() : (store.state.projects || []);
+  const currentProjId = store.selectedProject !== 'all' ? store.selectedProject : (projects[0]?.id || null);
+
+  const sampleInmItems = [
+    {
+      catalogKey: 'code_table_inclusao',
+      itemName: 'Code Table - Inclusão / Nova Tabela de Apoio',
+      category: 'Tabelas de Apoio',
+      description: 'Criação de tabelas de domínio para status de intervenção e tipos de parametrização externa com script de carga inicial.',
+      quantity: 2,
+      unitWeight: 0.80,
+      feature: 'Parametrização',
+      evidence: 'PR #104 (db-migrations) - scripts/v2_code_tables.sql',
+      status: 'Aprovado'
+    },
+    {
+      catalogKey: 'menu_item',
+      itemName: 'Menus / Submenus - Inclusão ou Reestruturação',
+      category: 'Interface & Menus',
+      description: 'Inclusão de 4 novos nós de submenu no painel de administração e auditoria de métricas de software.',
+      quantity: 4,
+      unitWeight: 0.10,
+      feature: 'Navegação',
+      evidence: 'PR #112 - sidebar-nav-update.tsx',
+      status: 'Aprovado'
+    },
+    {
+      catalogKey: 'layout_alteracao',
+      itemName: 'Layout / Template / Telas - Alteração Estética',
+      category: 'Interface & Menus',
+      description: 'Reestilização visual do template de exportação e ajuste de responsividade no grid de cards de auditoria.',
+      quantity: 1,
+      unitWeight: 0.50,
+      feature: 'Interface',
+      evidence: 'Commit c8a19f2 - redesign_cards.css',
+      status: 'Aprovado'
+    },
+    {
+      catalogKey: 'parametro_sistema',
+      itemName: 'Parâmetro de Configuração / Setup de Sistema',
+      category: 'Parâmetros & Configuração',
+      description: 'Definição de flags de configuração em runtime para timeout de relatórios e habilitação de deflatores automáticos.',
+      quantity: 3,
+      unitWeight: 0.30,
+      feature: 'Configuração',
+      evidence: 'Ticket JIRA-892 / config_runtime.json',
+      status: 'Aprovado'
+    },
+    {
+      catalogKey: 'db_trigger_proc',
+      itemName: 'Triggers / Procedures / Rotinas de Banco',
+      category: 'Banco de Dados',
+      description: 'Procedure de recálculo em lote de saldos acumulados e triggers de auditoria em tabelas históricas.',
+      quantity: 1,
+      unitWeight: 1.00,
+      feature: 'Banco de Dados',
+      evidence: 'Migration 20261012_proc_recalc_balance.sql',
+      status: 'Aprovado'
+    }
+  ];
+
+  for (const item of sampleInmItems) {
+    await store.addApfInmItem({
+      ...item,
+      projectId: currentProjId
+    });
+  }
+
+  showToast('5 Intervenções técnicas não-mensuráveis cadastradas com sucesso!');
+  renderApf();
+  updateSidebarCounters();
+  refreshAllUI();
+}
+window.seedSampleApfInmData = seedSampleApfInmData;
+
+/**
+ * Exportação Oficial de APF e Faturamento para Planilha Excel (.XLSX)
+ * Gera 3 abas consolidadas: Funções IFPUG, Não-Mensuráveis (FPN) e Demonstrativo de Faturamento
  */
 function exportApfToExcel() {
   if (typeof XLSX === 'undefined') {
@@ -11956,16 +12786,19 @@ function exportApfToExcel() {
   }
 
   const items = store.getApfItems();
-  if (items.length === 0) {
-    showToast('Nenhum item de APF para exportar.', 'warn');
+  const inmItems = store.getApfInmItems();
+  if (items.length === 0 && inmItems.length === 0) {
+    showToast('Nenhum item de APF ou intervenção não-mensurável para exportar.', 'warn');
     return;
   }
 
   const activeProj = store.selectedProject !== 'all' ? store.getProjectById(store.selectedProject) : null;
   const projectName = activeProj ? activeProj.name : 'Todos os Projetos';
 
-  // 1. Linhas Detalhadas da Planilha
-  const dataRows = items.map((it, idx) => ({
+  const wb = XLSX.utils.book_new();
+
+  // 1. Aba: Funções IFPUG (CPM 4.3.1)
+  const dataRowsIfpug = items.map((it, idx) => ({
     'Nº': idx + 1,
     'Código': it.code,
     'Processo Elementar / Grupo de Dados': it.name,
@@ -11984,13 +12817,12 @@ function exportApfToExcel() {
     'Notas / Justificativa Técnica': it.notes || ''
   }));
 
-  // Totais
   const totalRaw = items.reduce((acc, it) => acc + (parseFloat(it.rawPf) || 0), 0);
   const totalFinal = items.reduce((acc, it) => acc + (parseFloat(it.finalPf) || 0), 0);
 
-  dataRows.push({
+  dataRowsIfpug.push({
     'Nº': '',
-    'Código': 'TOTAL',
+    'Código': 'TOTAL IFPUG',
     'Processo Elementar / Grupo de Dados': `Total de ${items.length} itens mensurados`,
     'Projeto': '',
     'Feature / Módulo': '',
@@ -12004,17 +12836,105 @@ function exportApfToExcel() {
     'Tipo de Contagem': '',
     'Redutor (%)': '',
     'PF Final (Líquido)': totalFinal,
-    'Notas / Justificativa Técnica': 'Total apurado com deflatores'
+    'Notas / Justificativa Técnica': 'Total apurado com deflatores IFPUG'
   });
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(dataRows);
+  const wsIfpug = XLSX.utils.json_to_sheet(dataRowsIfpug);
+  XLSX.utils.book_append_sheet(wb, wsIfpug, '1. Funções IFPUG');
 
-  XLSX.utils.book_append_sheet(wb, ws, 'Contagem APF');
+  // 2. Aba: Não-Mensuráveis (FPN)
+  const dataRowsInm = inmItems.map((it, idx) => ({
+    'Nº': idx + 1,
+    'Código': it.code,
+    'Intervenção Técnica / Item': it.itemName,
+    'Categoria': it.category,
+    'Descrição Técnica': it.description || '',
+    'Projeto': it.projectName || it.projectCode || '',
+    'Feature / Módulo': it.feature || '',
+    'Requisito': it.reqCode || '',
+    'Quantidade': it.quantity,
+    'Peso Unitário (PF)': it.unitWeight,
+    'Total FPN (PF)': parseFloat(it.calculatedPf) || 0,
+    'Evidência / Ref.': it.evidence || '',
+    'Status': it.status || 'Aprovado'
+  }));
 
-  const filename = `Synchro_APF_Contagem_${(projectName || 'Geral').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const totalInmQty = inmItems.reduce((acc, it) => acc + (parseFloat(it.quantity) || 0), 0);
+  const totalInmPf = inmItems.reduce((acc, it) => acc + (parseFloat(it.calculatedPf) || 0), 0);
+
+  dataRowsInm.push({
+    'Nº': '',
+    'Código': 'TOTAL FPN',
+    'Intervenção Técnica / Item': `Total de ${inmItems.length} intervenções técnicas`,
+    'Categoria': '',
+    'Descrição Técnica': '',
+    'Projeto': '',
+    'Feature / Módulo': '',
+    'Requisito': '',
+    'Quantidade': totalInmQty,
+    'Peso Unitário (PF)': '',
+    'Total FPN (PF)': Math.round(totalInmPf * 100) / 100,
+    'Evidência / Ref.': '',
+    'Status': 'Apurado'
+  });
+
+  const wsInm = XLSX.utils.json_to_sheet(dataRowsInm);
+  XLSX.utils.book_append_sheet(wb, wsInm, '2. Não-Mensuráveis (FPN)');
+
+  // 3. Aba: Demonstrativo Consolidado de Faturamento
+  const totalGlobalPf = Math.round((totalFinal + totalInmPf) * 100) / 100;
+  const pctIfpug = totalGlobalPf > 0 ? ((totalFinal / totalGlobalPf) * 100).toFixed(1) + '%' : '0%';
+  const pctInm = totalGlobalPf > 0 ? ((totalInmPf / totalGlobalPf) * 100).toFixed(1) + '%' : '0%';
+
+  const dataRowsSummary = [
+    {
+      'Componente da Entrega': 'Funções de Dados (ALI / AIE)',
+      'Método': 'IFPUG CPM 4.3.1',
+      'Quantidade de Itens': items.filter(it => it.functionType === 'ALI' || it.functionType === 'AIE').length,
+      'PF Bruto': items.filter(it => it.functionType === 'ALI' || it.functionType === 'AIE').reduce((acc, it) => acc + (parseFloat(it.rawPf) || 0), 0),
+      'PF Faturável (Líquido / FPN)': items.filter(it => it.functionType === 'ALI' || it.functionType === 'AIE').reduce((acc, it) => acc + (parseFloat(it.finalPf) || 0), 0),
+      '% do Total Global': totalGlobalPf > 0 ? ((items.filter(it => it.functionType === 'ALI' || it.functionType === 'AIE').reduce((acc, it) => acc + (parseFloat(it.finalPf) || 0), 0) / totalGlobalPf) * 100).toFixed(1) + '%' : '0%'
+    },
+    {
+      'Componente da Entrega': 'Processos Elementares (EE / SE / CE)',
+      'Método': 'IFPUG CPM 4.3.1',
+      'Quantidade de Itens': items.filter(it => it.functionType === 'EE' || it.functionType === 'SE' || it.functionType === 'CE').length,
+      'PF Bruto': items.filter(it => it.functionType === 'EE' || it.functionType === 'SE' || it.functionType === 'CE').reduce((acc, it) => acc + (parseFloat(it.rawPf) || 0), 0),
+      'PF Faturável (Líquido / FPN)': items.filter(it => it.functionType === 'EE' || it.functionType === 'SE' || it.functionType === 'CE').reduce((acc, it) => acc + (parseFloat(it.finalPf) || 0), 0),
+      '% do Total Global': totalGlobalPf > 0 ? ((items.filter(it => it.functionType === 'EE' || it.functionType === 'SE' || it.functionType === 'CE').reduce((acc, it) => acc + (parseFloat(it.finalPf) || 0), 0) / totalGlobalPf) * 100).toFixed(1) + '%' : '0%'
+    },
+    {
+      'Componente da Entrega': 'SUBTOTAL IFPUG (CPM 4.3.1)',
+      'Método': 'Tamanho Funcional',
+      'Quantidade de Itens': items.length,
+      'PF Bruto': totalRaw,
+      'PF Faturável (Líquido / FPN)': totalFinal,
+      '% do Total Global': pctIfpug
+    },
+    {
+      'Componente da Entrega': 'INTERVENÇÕES NÃO-MENSURÁVEIS (FPN)',
+      'Método': 'Tabela SISP / Contratual',
+      'Quantidade de Itens': inmItems.length,
+      'PF Bruto': '-',
+      'PF Faturável (Líquido / FPN)': Math.round(totalInmPf * 100) / 100,
+      '% do Total Global': pctInm
+    },
+    {
+      'Componente da Entrega': 'TOTAL GERAL FATURÁVEL DA ENTREGA',
+      'Método': 'PF Global = IFPUG Líquido + FPN',
+      'Quantidade de Itens': items.length + inmItems.length,
+      'PF Bruto': totalRaw,
+      'PF Faturável (Líquido / FPN)': totalGlobalPf,
+      '% do Total Global': '100.0%'
+    }
+  ];
+
+  const wsSummary = XLSX.utils.json_to_sheet(dataRowsSummary);
+  XLSX.utils.book_append_sheet(wb, wsSummary, '3. Faturamento Consolidado');
+
+  const filename = `Synchro_APF_Faturamento_${(projectName || 'Geral').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
   XLSX.writeFile(wb, filename);
-  showToast(`Planilha "${filename}" exportada com sucesso!`);
+  showToast(`Planilha "${filename}" com 3 abas exportada com sucesso!`);
 }
 window.exportApfToExcel = exportApfToExcel;
 
@@ -12027,6 +12947,12 @@ function initApfEventListeners() {
   if (btnOpenModal && !btnOpenModal.dataset.init) {
     btnOpenModal.dataset.init = 'true';
     btnOpenModal.addEventListener('click', () => openApfModal());
+  }
+
+  const btnOpenInmModal = document.getElementById('btn-open-apf-inm-modal');
+  if (btnOpenInmModal && !btnOpenInmModal.dataset.init) {
+    btnOpenInmModal.dataset.init = 'true';
+    btnOpenInmModal.addEventListener('click', () => openApfInmModal());
   }
 
   const btnOpenGuide = document.getElementById('btn-open-ifpug-guide');
@@ -12047,7 +12973,21 @@ function initApfEventListeners() {
     actionNewApf.addEventListener('click', () => openApfModal());
   }
 
-  // 2. Filtros da View de APF
+  // Alternador de Sub-Abas de APF (IFPUG vs FPN vs Demonstrativo de Faturamento)
+  const subnavBtns = document.querySelectorAll('#apf-subnav-tabs .segment-btn');
+  subnavBtns.forEach(btn => {
+    if (!btn.dataset.init) {
+      btn.dataset.init = 'true';
+      btn.addEventListener('click', () => {
+        subnavBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        store.apfSubnavTab = btn.getAttribute('data-apf-tab') || 'ifpug';
+        renderApf();
+      });
+    }
+  });
+
+  // 2. Filtros da View de APF (IFPUG)
   const searchInput = document.getElementById('apf-search-input');
   if (searchInput && !searchInput.dataset.init) {
     searchInput.dataset.init = 'true';
@@ -12106,7 +13046,7 @@ function initApfEventListeners() {
     });
   }
 
-  // Alternador de layout (Tabela vs Cards)
+  // Alternador de layout IFPUG (Tabela vs Cards)
   const layoutBtns = document.querySelectorAll('.view-layout-toggle[data-view="apf"] .view-mode-btn');
   layoutBtns.forEach(btn => {
     if (!btn.dataset.init) {
@@ -12120,12 +13060,131 @@ function initApfEventListeners() {
     }
   });
 
-  // 3. Formulário do Modal de APF
+  // Filtros da Aba de Itens Não-Mensuráveis (FPN)
+  const inmSearchInput = document.getElementById('apf-inm-search-input');
+  if (inmSearchInput && !inmSearchInput.dataset.init) {
+    inmSearchInput.dataset.init = 'true';
+    inmSearchInput.addEventListener('input', (e) => {
+      store.apfInmSearchQuery = e.target.value.trim();
+      renderApfInm();
+    });
+  }
+
+  const inmCatFilter = document.getElementById('apf-inm-category-filter');
+  if (inmCatFilter && !inmCatFilter.dataset.init) {
+    inmCatFilter.dataset.init = 'true';
+    inmCatFilter.addEventListener('change', (e) => {
+      store.apfInmCategoryFilter = e.target.value;
+      renderApfInm();
+    });
+  }
+
+  // Alternador de layout FPN (Tabela vs Cards)
+  const inmLayoutBtns = document.querySelectorAll('.view-layout-toggle[data-view="apf-inm"] .view-mode-btn');
+  inmLayoutBtns.forEach(btn => {
+    if (!btn.dataset.init) {
+      btn.dataset.init = 'true';
+      btn.addEventListener('click', () => {
+        inmLayoutBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        store.apfInmViewMode = btn.dataset.mode || 'table';
+        renderApfInm();
+      });
+    }
+  });
+
+  // 3. Formulário do Modal de APF (IFPUG)
   const formApf = document.getElementById('form-apf');
   if (formApf && !formApf.dataset.init) {
     formApf.dataset.init = 'true';
     formApf.addEventListener('submit', handleSaveApfItem);
   }
+
+  // 3.2 Formulário do Modal de Itens Não-Mensuráveis (FPN)
+  const formInm = document.getElementById('form-apf-inm');
+  if (formInm && !formInm.dataset.init) {
+    formInm.dataset.init = 'true';
+    formInm.addEventListener('submit', handleSaveApfInmItem);
+  }
+
+  // Mudança no catálogo pré-definido preenche automaticamente categoria, peso tabelado e unidade
+  const inmCatalogSelect = document.getElementById('apf-inm-catalog-select');
+  if (inmCatalogSelect && !inmCatalogSelect.dataset.init) {
+    inmCatalogSelect.dataset.init = 'true';
+    inmCatalogSelect.addEventListener('change', (e) => {
+      const opt = e.target.options[e.target.selectedIndex];
+      if (opt) {
+        const catInput = document.getElementById('apf-inm-category-input');
+        if (catInput) catInput.value = opt.dataset.category || 'Outros';
+        const weightInput = document.getElementById('apf-inm-weight-input');
+        if (weightInput) weightInput.value = opt.dataset.weight || '0.80';
+        const unitLabel = document.getElementById('apf-inm-unit-label');
+        if (unitLabel) unitLabel.textContent = `Unidade: ${opt.dataset.unit || 'Item'}`;
+        const descInput = document.getElementById('apf-inm-desc-input');
+        if (descInput && !descInput.value && opt.dataset.desc) {
+          descInput.value = opt.dataset.desc;
+        }
+      }
+      updateApfInmLiveCalc();
+    });
+  }
+
+  // Select de projeto do modal FPN sincroniza datalist de features e requisitos
+  const inmModalProjSelect = document.getElementById('apf-inm-project-select');
+  if (inmModalProjSelect && !inmModalProjSelect.dataset.init) {
+    inmModalProjSelect.dataset.init = 'true';
+    inmModalProjSelect.addEventListener('change', (e) => {
+      const pId = e.target.value;
+      const datalist = document.getElementById('apf-inm-features-datalist');
+      if (datalist) {
+        const feats = store.getProjectFeatures ? store.getProjectFeatures(pId) : [];
+        datalist.innerHTML = feats.map(f => `<option value="${f}">`).join('');
+      }
+      const reqSelect = document.getElementById('apf-inm-req-select');
+      if (reqSelect) {
+        const filteredReqs = pId ? (store.state.requirements || []).filter(r => r.projectId === pId) : store.state.requirements;
+        reqSelect.innerHTML = `<option value="">Nenhum requisito vinculado</option>` +
+          filteredReqs.map(r => `<option value="${r.id}">[${r.code}] ${r.title}</option>`).join('');
+      }
+    });
+  }
+
+  // Botões Stepper de Quantidade FPN (+ / -)
+  const btnInmQtyPlus = document.getElementById('btn-inm-qty-plus');
+  if (btnInmQtyPlus && !btnInmQtyPlus.dataset.init) {
+    btnInmQtyPlus.dataset.init = 'true';
+    btnInmQtyPlus.addEventListener('click', () => {
+      const input = document.getElementById('apf-inm-quantity-input');
+      if (input) {
+        const cur = parseFloat(input.value) || 0;
+        input.value = (cur + 1).toString();
+        input.dispatchEvent(new Event('input'));
+      }
+    });
+  }
+
+  const btnInmQtyMinus = document.getElementById('btn-inm-qty-minus');
+  if (btnInmQtyMinus && !btnInmQtyMinus.dataset.init) {
+    btnInmQtyMinus.dataset.init = 'true';
+    btnInmQtyMinus.addEventListener('click', () => {
+      const input = document.getElementById('apf-inm-quantity-input');
+      if (input) {
+        const cur = parseFloat(input.value) || 1;
+        input.value = Math.max(0.5, cur - 1).toString();
+        input.dispatchEvent(new Event('input'));
+      }
+    });
+  }
+
+  // Gatilhos de input do cálculo em tempo real FPN
+  ['apf-inm-quantity-input', 'apf-inm-weight-input'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el.dataset.init) {
+      el.dataset.init = 'true';
+      el.addEventListener('input', updateApfInmLiveCalc);
+      el.addEventListener('change', updateApfInmLiveCalc);
+    }
+  });
 
   // Radios de Tipo
   const typeRadios = document.querySelectorAll('input[name="apf-type"]');

@@ -1917,6 +1917,9 @@
               <button class="btn btn-secondary" id="btn-export-apf-xlsx" title="Exportar Tabela de Pontos de Função para Planilha Excel (XLSX)">
                 <span>📥 Exportar XLSX</span>
               </button>
+              <button class="btn btn-secondary" id="btn-open-apf-inm-modal" style="background: linear-gradient(135deg, rgba(16,185,129,0.18), rgba(6,182,212,0.22)); border: 1px solid rgba(16,185,129,0.4); color: #34d399; font-weight: 700;" title="Registrar intervenção técnica não mensurável pelo IFPUG tradicional (Code Tables, Menus, Layouts, Parâmetros, etc.)">
+                <span>⚙️ + Item Não-Mensurável (FPN)</span>
+              </button>
               <button class="btn btn-secondary" id="btn-open-apf-auto-modal" style="background: linear-gradient(135deg, rgba(99,102,241,0.22), rgba(168,85,247,0.28)); border: 1px solid rgba(168,85,247,0.45); color: #c084fc; font-weight: 700;" title="Gerar Pontos de Função automaticamente a partir de um Requisito ou Feature selecionada">
                 <span>⚡ Gerar APF Automaticamente</span>
               </button>
@@ -1946,64 +1949,77 @@
             </div>
           </div>
 
-          <!-- KPIs e Indicadores Consolidados de APF -->
-          <div class="apf-kpis-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-            <!-- KPI 1: PF Líquido -->
-            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); position: relative; overflow: hidden; border-top: 3px solid #10b981;">
+          <!-- KPIs e Indicadores Consolidados de APF & Faturamento Global -->
+          <div class="apf-kpis-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+            <!-- KPI 1: PF Total Global Faturável (IFPUG Líquido + FPN) -->
+            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); position: relative; overflow: hidden; border-top: 3px solid #10b981; background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(15, 23, 42, 0.4) 100%);">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
-                <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">PF Líquido (Ajustado)</span>
+                <span style="font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #34d399;">PF Global (Faturamento)</span>
+                <span style="font-size: 1.2rem;">💰</span>
+              </div>
+              <div style="display: flex; align-items: baseline; gap: 6px;">
+                <strong id="apf-kpi-global-pf" style="font-size: 1.85rem; font-weight: 900; color: #10b981; font-family: 'Outfit', sans-serif;">0.00</strong>
+                <span style="font-size: 0.85rem; color: #10b981; font-weight: 700;">PF</span>
+              </div>
+              <span id="apf-kpi-global-breakdown" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">IFPUG: 0.00 | FPN: 0.00</span>
+            </div>
+
+            <!-- KPI 2: PF Líquido (IFPUG) -->
+            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); position: relative; overflow: hidden; border-top: 3px solid #6366f1;">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+                <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">PF Líquido (IFPUG)</span>
                 <span style="font-size: 1.2rem;">🎯</span>
               </div>
               <div style="display: flex; align-items: baseline; gap: 6px;">
-                <strong id="apf-kpi-total-final" style="font-size: 1.75rem; font-weight: 800; color: #10b981; font-family: 'Outfit', sans-serif;">0.00</strong>
-                <span style="font-size: 0.85rem; color: #10b981; font-weight: 600;">PF</span>
+                <strong id="apf-kpi-total-final" style="font-size: 1.75rem; font-weight: 800; color: #818cf8; font-family: 'Outfit', sans-serif;">0.00</strong>
+                <span style="font-size: 0.85rem; color: #818cf8; font-weight: 600;">PF</span>
               </div>
               <span id="apf-kpi-avg-factor" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">Fator de contagem médio: 100%</span>
             </div>
 
-            <!-- KPI 2: PF Bruto -->
-            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); position: relative; overflow: hidden; border-top: 3px solid #6366f1;">
+            <!-- KPI 3: PF Não-Mensuráveis (FPN) -->
+            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); position: relative; overflow: hidden; border-top: 3px solid #06b6d4;">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+                <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">Não-Mensuráveis (FPN)</span>
+                <span style="font-size: 1.2rem;">⚙️</span>
+              </div>
+              <div style="display: flex; align-items: baseline; gap: 6px;">
+                <strong id="apf-kpi-total-inm" style="font-size: 1.75rem; font-weight: 800; color: #38bdf8; font-family: 'Outfit', sans-serif;">0.00</strong>
+                <span style="font-size: 0.85rem; color: #38bdf8; font-weight: 600;">PF</span>
+              </div>
+              <span id="apf-kpi-inm-count" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">0 Intervenções técnicas</span>
+            </div>
+
+            <!-- KPI 4: PF Bruto (IFPUG) -->
+            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); position: relative; overflow: hidden; border-top: 3px solid #8b5cf6;">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
                 <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">PF Bruto (IFPUG)</span>
                 <span style="font-size: 1.2rem;">📐</span>
               </div>
               <div style="display: flex; align-items: baseline; gap: 6px;">
-                <strong id="apf-kpi-total-raw" style="font-size: 1.75rem; font-weight: 800; color: #818cf8; font-family: 'Outfit', sans-serif;">0</strong>
-                <span style="font-size: 0.85rem; color: #818cf8; font-weight: 600;">PF</span>
+                <strong id="apf-kpi-total-raw" style="font-size: 1.75rem; font-weight: 800; color: #c084fc; font-family: 'Outfit', sans-serif;">0</strong>
+                <span style="font-size: 0.85rem; color: #c084fc; font-weight: 600;">PF</span>
               </div>
               <span id="apf-kpi-total-items" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">0 Funções cadastradas</span>
             </div>
 
-            <!-- KPI 3: Funções de Dados -->
-            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); border-top: 3px solid #8b5cf6;">
+            <!-- KPI 5: Dados vs Transações -->
+            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); border-top: 3px solid #ec4899;">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
-                <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">Dados (ALI / AIE)</span>
-                <span style="font-size: 1.2rem;">🗄️</span>
-              </div>
-              <div style="display: flex; align-items: baseline; gap: 6px;">
-                <strong id="apf-kpi-data-pf" style="font-size: 1.5rem; font-weight: 700; color: #c084fc; font-family: 'Outfit', sans-serif;">0</strong>
-                <span style="font-size: 0.8rem; color: #c084fc;">PF</span>
-              </div>
-              <span id="apf-kpi-data-count" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">0 ALIs | 0 AIEs</span>
-            </div>
-
-            <!-- KPI 4: Funções de Transação -->
-            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); border-top: 3px solid #06b6d4;">
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
-                <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">Processos (EE/SE/CE)</span>
+                <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">Dados & Processos</span>
                 <span style="font-size: 1.2rem;">⚡</span>
               </div>
               <div style="display: flex; align-items: baseline; gap: 6px;">
-                <strong id="apf-kpi-trans-pf" style="font-size: 1.5rem; font-weight: 700; color: #38bdf8; font-family: 'Outfit', sans-serif;">0</strong>
-                <span style="font-size: 0.8rem; color: #38bdf8;">PF</span>
+                <strong id="apf-kpi-data-trans-pf" style="font-size: 1.4rem; font-weight: 700; color: #f472b6; font-family: 'Outfit', sans-serif;">0 / 0</strong>
+                <span style="font-size: 0.78rem; color: #f472b6;">PF</span>
               </div>
-              <span id="apf-kpi-trans-count" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">0 EE | 0 SE | 0 CE</span>
+              <span id="apf-kpi-data-trans-count" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">0 Dados | 0 Transações</span>
             </div>
 
-            <!-- KPI 5: Complexidade -->
+            <!-- KPI 6: Complexidade -->
             <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); border-top: 3px solid #f59e0b;">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
-                <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">Complexidade</span>
+                <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">Complexidade IFPUG</span>
                 <span style="font-size: 1.2rem;">📊</span>
               </div>
               <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px;">
@@ -2015,118 +2031,322 @@
             </div>
           </div>
 
-          <!-- Barra de Filtros e Visualização -->
-          <div class="filters-bar glass-subpanel" style="margin-bottom: 1.25rem;">
-            <!-- Busca Instantânea -->
-            <div class="filter-group" style="flex: 1; min-width: 220px;">
-              <span class="filter-label">Busca:</span>
-              <div class="input-with-icon" style="width: 100%;">
-                <span class="input-icon">🔍</span>
-                <input type="text" id="apf-search-input" class="custom-input-sm" placeholder="Filtrar por código, nome, feature...">
-              </div>
-            </div>
-
-            <!-- Filtro de Tipo de Função -->
-            <div class="filter-group">
-              <span class="filter-label">Tipo:</span>
-              <div class="segmented-control" id="apf-type-filter">
-                <button class="segment-btn active" data-type="all">Todos</button>
-                <button class="segment-btn" data-type="ALI">ALI</button>
-                <button class="segment-btn" data-type="AIE">AIE</button>
-                <button class="segment-btn" data-type="EE">EE</button>
-                <button class="segment-btn" data-type="SE">SE</button>
-                <button class="segment-btn" data-type="CE">CE</button>
-              </div>
-            </div>
-
-            <!-- Filtro de Categoria -->
-            <div class="filter-group">
-              <span class="filter-label">Categoria:</span>
-              <select id="apf-category-filter" class="custom-select-sm">
-                <option value="all">Todas as Categorias</option>
-                <option value="Dados">Dados (ALI / AIE)</option>
-                <option value="Transação">Transação (EE / SE / CE)</option>
-              </select>
-            </div>
-
-            <!-- Filtro de Complexidade -->
-            <div class="filter-group">
-              <span class="filter-label">Complexidade:</span>
-              <select id="apf-complexity-filter" class="custom-select-sm">
-                <option value="all">Todas</option>
-                <option value="Baixa">Baixa</option>
-                <option value="Média">Média</option>
-                <option value="Alta">Alta</option>
-              </select>
-            </div>
-
-            <!-- Filtro de Tipo de Contagem -->
-            <div class="filter-group">
-              <span class="filter-label">Tipo de Contagem:</span>
-              <select id="apf-counting-filter" class="custom-select-sm">
-                <option value="all">Todos os Tipos</option>
-                <option value="Desenvolvimento">Desenvolvimento (100%)</option>
-                <option value="Melhoria">Melhoria</option>
-                <option value="Testes">Testes (30%)</option>
-                <option value="Transferência Tecnológica">Transferência Tecnológica (20%)</option>
-              </select>
-            </div>
-
-            <!-- Seletor Modo Tabela vs Cards -->
-            <div class="filter-group view-mode-filter-group ml-auto">
-              <span class="filter-label">Modo:</span>
-              <div class="segmented-control view-layout-toggle" data-view="apf" role="group" aria-label="Modo de Visualização de APF">
-                <button type="button" class="segment-btn view-mode-btn active" data-mode="table" title="Modo Tabela Analítica Completa">
-                  <span>📋 Tabela</span>
-                </button>
-                <button type="button" class="segment-btn view-mode-btn" data-mode="cards" title="Modo Blocos de Funções">
-                  <span>🗂️ Cards</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Container da Tabela de Itens de APF -->
-          <div id="apf-table-wrapper" class="glass-panel" style="border-radius: var(--radius-md); overflow-x: auto; margin-bottom: 1.5rem;">
-            <table class="apf-table" id="apf-items-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
-              <thead>
-                <tr style="border-bottom: 1px solid var(--border-subtle); background: rgba(255, 255, 255, 0.02);">
-                  <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase;">Código</th>
-                  <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase;">Processo Elementar / Grupo de Dados</th>
-                  <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase;">Projeto / Feature</th>
-                  <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: center;">Tipo</th>
-                  <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: center;">TD</th>
-                  <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: center;">AR / TR</th>
-                  <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: center;">Complexidade</th>
-                  <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: center;">PF Bruto</th>
-                  <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: center;">Tipo Contagem & Redutor</th>
-                  <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: right;">PF Final</th>
-                  <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: right;">Ações</th>
-                </tr>
-              </thead>
-              <tbody id="apf-items-tbody">
-                <!-- Preenchido dinamicamente via renderApf() -->
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Container de Cards (Modo alternativo) -->
-          <div id="apf-cards-container" class="apf-cards-grid" style="display: none; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
-            <!-- Preenchido dinamicamente via renderApf() -->
-          </div>
-
-          <!-- Empty State quando vazio -->
-          <div id="apf-empty-state" class="glass-panel" style="display: none; padding: 3rem 1.5rem; text-align: center; border-radius: var(--radius-md); margin-bottom: 1.5rem;">
-            <div style="font-size: 3rem; margin-bottom: 0.75rem;">📐</div>
-            <h3 style="font-size: 1.2rem; margin-bottom: 0.4rem; color: var(--text-main);">Nenhuma Função de APF Mensurada</h3>
-            <p style="color: var(--text-secondary); max-width: 520px; margin: 0 auto 1.5rem auto; font-size: 0.88rem;">Cadastre processos elementares (EE, SE, CE) ou grupos de dados (ALI, AIE) informando TD e AR/TR para que o sistema aplique as matrizes IFPUG e determine os Pontos de Função com os redutores contratuais.</p>
-            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-              <button class="btn btn-primary btn-glow" onclick="openApfModal()">
-                <span>+ Cadastrar Primeira Função</span>
+          <!-- Sub-Navegação / Abas de Métricas de Software -->
+          <div class="apf-subnav-bar glass-subpanel" style="padding: 0.65rem 1rem; border-radius: var(--radius-md); margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <div class="segmented-control" id="apf-subnav-tabs" role="tablist">
+              <button type="button" class="segment-btn active" data-apf-tab="ifpug" id="tab-btn-apf-ifpug">
+                <span>📐 Funções IFPUG (CPM 4.3.1)</span>
+                <span class="badge-pill-xs" id="badge-tab-ifpug-count" style="margin-left: 6px; background: rgba(99, 102, 241, 0.25); color: #818cf8; padding: 1px 7px; border-radius: 10px; font-size: 0.72rem; font-weight: 700;">0</span>
               </button>
-              <button class="btn btn-secondary" onclick="seedSampleApfData()">
-                <span>💡 Inserir Funções de Demonstração IFPUG</span>
+              <button type="button" class="segment-btn" data-apf-tab="inm" id="tab-btn-apf-inm">
+                <span>⚙️ Não-Mensuráveis (FPN)</span>
+                <span class="badge-pill-xs" id="badge-tab-inm-count" style="margin-left: 6px; background: rgba(16, 185, 129, 0.25); color: #34d399; padding: 1px 7px; border-radius: 10px; font-size: 0.72rem; font-weight: 700;">0</span>
               </button>
+              <button type="button" class="segment-btn" data-apf-tab="summary" id="tab-btn-apf-summary">
+                <span>📊 Demonstrativo de Faturamento</span>
+              </button>
+            </div>
+            <div style="font-size: 0.82rem; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
+              <span>Regra Contratual:</span>
+              <span class="badge-subtle" style="font-weight: 700; color: #34d399; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3);">PF Global = PF Líquido IFPUG + FPN</span>
+            </div>
+          </div>
+
+          <!-- =================================================================
+               ABA 1: FUNÇÕES IFPUG (PROCESSOS ELEMENTARES E GRUPOS DE DADOS)
+               ================================================================= -->
+          <div id="apf-ifpug-tab-content">
+            <!-- Barra de Filtros e Visualização IFPUG -->
+            <div class="filters-bar glass-subpanel" style="margin-bottom: 1.25rem;">
+              <!-- Busca Instantânea -->
+              <div class="filter-group" style="flex: 1; min-width: 220px;">
+                <span class="filter-label">Busca:</span>
+                <div class="input-with-icon" style="width: 100%;">
+                  <span class="input-icon">🔍</span>
+                  <input type="text" id="apf-search-input" class="custom-input-sm" placeholder="Filtrar por código, nome, feature...">
+                </div>
+              </div>
+
+              <!-- Filtro de Tipo de Função -->
+              <div class="filter-group">
+                <span class="filter-label">Tipo:</span>
+                <div class="segmented-control" id="apf-type-filter">
+                  <button class="segment-btn active" data-type="all">Todos</button>
+                  <button class="segment-btn" data-type="ALI">ALI</button>
+                  <button class="segment-btn" data-type="AIE">AIE</button>
+                  <button class="segment-btn" data-type="EE">EE</button>
+                  <button class="segment-btn" data-type="SE">SE</button>
+                  <button class="segment-btn" data-type="CE">CE</button>
+                </div>
+              </div>
+
+              <!-- Filtro de Categoria -->
+              <div class="filter-group">
+                <span class="filter-label">Categoria:</span>
+                <select id="apf-category-filter" class="custom-select-sm">
+                  <option value="all">Todas as Categorias</option>
+                  <option value="Dados">Dados (ALI / AIE)</option>
+                  <option value="Transação">Transação (EE / SE / CE)</option>
+                </select>
+              </div>
+
+              <!-- Filtro de Complexidade -->
+              <div class="filter-group">
+                <span class="filter-label">Complexidade:</span>
+                <select id="apf-complexity-filter" class="custom-select-sm">
+                  <option value="all">Todas</option>
+                  <option value="Baixa">Baixa</option>
+                  <option value="Média">Média</option>
+                  <option value="Alta">Alta</option>
+                </select>
+              </div>
+
+              <!-- Filtro de Tipo de Contagem -->
+              <div class="filter-group">
+                <span class="filter-label">Tipo de Contagem:</span>
+                <select id="apf-counting-filter" class="custom-select-sm">
+                  <option value="all">Todos os Tipos</option>
+                  <option value="Desenvolvimento">Desenvolvimento (100%)</option>
+                  <option value="Melhoria">Melhoria</option>
+                  <option value="Testes">Testes (30%)</option>
+                  <option value="Transferência Tecnológica">Transferência Tecnológica (20%)</option>
+                </select>
+              </div>
+
+              <!-- Seletor Modo Tabela vs Cards -->
+              <div class="filter-group view-mode-filter-group ml-auto">
+                <span class="filter-label">Modo:</span>
+                <div class="segmented-control view-layout-toggle" data-view="apf" role="group" aria-label="Modo de Visualização de APF">
+                  <button type="button" class="segment-btn view-mode-btn active" data-mode="table" title="Modo Tabela Analítica Completa">
+                    <span>📋 Tabela</span>
+                  </button>
+                  <button type="button" class="segment-btn view-mode-btn" data-mode="cards" title="Modo Blocos de Funções">
+                    <span>🗂️ Cards</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Container da Tabela de Itens de APF -->
+            <div id="apf-table-wrapper" class="glass-panel" style="border-radius: var(--radius-md); overflow-x: auto; margin-bottom: 1.5rem;">
+              <table class="apf-table" id="apf-items-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+                <thead>
+                  <tr style="border-bottom: 1px solid var(--border-subtle); background: rgba(255, 255, 255, 0.02);">
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase;">Código</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase;">Processo Elementar / Grupo de Dados</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase;">Projeto / Feature</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: center;">Tipo</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: center;">TD</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: center;">AR / TR</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: center;">Complexidade</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: center;">PF Bruto</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: center;">Tipo Contagem & Redutor</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: right;">PF Final</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: right;">Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="apf-items-tbody">
+                  <!-- Preenchido dinamicamente via renderApf() -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Container de Cards (Modo alternativo) -->
+            <div id="apf-cards-container" class="apf-cards-grid" style="display: none; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
+              <!-- Preenchido dinamicamente via renderApf() -->
+            </div>
+
+            <!-- Empty State quando vazio -->
+            <div id="apf-empty-state" class="glass-panel" style="display: none; padding: 3rem 1.5rem; text-align: center; border-radius: var(--radius-md); margin-bottom: 1.5rem;">
+              <div style="font-size: 3rem; margin-bottom: 0.75rem;">📐</div>
+              <h3 style="font-size: 1.2rem; margin-bottom: 0.4rem; color: var(--text-main);">Nenhuma Função de APF Mensurada</h3>
+              <p style="color: var(--text-secondary); max-width: 520px; margin: 0 auto 1.5rem auto; font-size: 0.88rem;">Cadastre processos elementares (EE, SE, CE) ou grupos de dados (ALI, AIE) informando TD e AR/TR para que o sistema aplique as matrizes IFPUG e determine os Pontos de Função com os redutores contratuais.</p>
+              <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                <button class="btn btn-primary btn-glow" onclick="openApfModal()">
+                  <span>+ Cadastrar Primeira Função</span>
+                </button>
+                <button class="btn btn-secondary" onclick="seedSampleApfData()">
+                  <span>💡 Inserir Funções de Demonstração IFPUG</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- =================================================================
+               ABA 2: ITENS NÃO-MENSURÁVEIS (FPN)
+               ================================================================= -->
+          <div id="apf-inm-tab-content" style="display: none;">
+            <!-- Barra de Filtros de Itens Não-Mensuráveis -->
+            <div class="filters-bar glass-subpanel" style="margin-bottom: 1.25rem;">
+              <div class="filter-group" style="flex: 1; min-width: 220px;">
+                <span class="filter-label">Busca:</span>
+                <div class="input-with-icon" style="width: 100%;">
+                  <span class="input-icon">🔍</span>
+                  <input type="text" id="apf-inm-search-input" class="custom-input-sm" placeholder="Buscar por código, intervenção, feature, evidência...">
+                </div>
+              </div>
+
+              <div class="filter-group">
+                <span class="filter-label">Categoria:</span>
+                <select id="apf-inm-category-filter" class="custom-select-sm">
+                  <option value="all">Todas as Categorias</option>
+                  <option value="Tabelas de Apoio">Tabelas de Apoio (Code Tables)</option>
+                  <option value="Interface & Menus">Interface, Layouts & Menus</option>
+                  <option value="Parâmetros & Configuração">Parâmetros & Configurações</option>
+                  <option value="Banco de Dados">Banco de Dados (Views, Triggers)</option>
+                  <option value="Scripts & Migração">Scripts Técnicos & Migração</option>
+                  <option value="Integrações & Relatórios">Integrações & Relatórios</option>
+                  <option value="Outros">Outras Intervenções</option>
+                </select>
+              </div>
+
+              <div class="filter-group view-mode-filter-group ml-auto">
+                <span class="filter-label">Modo:</span>
+                <div class="segmented-control view-layout-toggle" data-view="apf-inm" role="group" aria-label="Modo de Visualização FPN">
+                  <button type="button" class="segment-btn view-mode-btn active" data-mode="table" id="btn-inm-view-table" title="Visualização em Tabela">
+                    <span>📋 Tabela</span>
+                  </button>
+                  <button type="button" class="segment-btn view-mode-btn" data-mode="cards" id="btn-inm-view-cards" title="Visualização em Cards">
+                    <span>🗂️ Cards</span>
+                  </button>
+                </div>
+              </div>
+
+              <button class="btn btn-primary btn-sm btn-glow" onclick="openApfInmModal()" title="Registrar nova intervenção técnica não-mensurável">
+                <span>+ Novo Item FPN</span>
+              </button>
+            </div>
+
+            <!-- Tabela de Itens Não-Mensuráveis -->
+            <div id="apf-inm-table-wrapper" class="glass-panel" style="border-radius: var(--radius-md); overflow-x: auto; margin-bottom: 1.5rem;">
+              <table class="apf-table" id="apf-inm-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+                <thead>
+                  <tr style="border-bottom: 1px solid var(--border-subtle); background: rgba(255, 255, 255, 0.02);">
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase;">Código</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase;">Categoria & Item do Catálogo</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase;">Descrição da Intervenção Técnica</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase;">Projeto / Feature / Req</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: center;">Quantidade</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: center;">Peso (PF)</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: right;">Total FPN</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase;">Evidência / Ref.</th>
+                    <th style="padding: 12px 14px; font-weight: 700; color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; text-align: right;">Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="apf-inm-tbody">
+                  <!-- Preenchido dinamicamente via renderApfInm() -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Cards de Itens Não-Mensuráveis -->
+            <div id="apf-inm-cards-container" class="apf-cards-grid" style="display: none; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
+              <!-- Preenchido dinamicamente via renderApfInm() -->
+            </div>
+
+            <!-- Empty State de Itens Não-Mensuráveis -->
+            <div id="apf-inm-empty-state" class="glass-panel" style="display: none; padding: 3rem 1.5rem; text-align: center; border-radius: var(--radius-md); margin-bottom: 1.5rem;">
+              <div style="font-size: 3rem; margin-bottom: 0.75rem;">⚙️</div>
+              <h3 style="font-size: 1.2rem; margin-bottom: 0.4rem; color: var(--text-main);">Nenhum Item Não-Mensurável Registrado</h3>
+              <p style="color: var(--text-secondary); max-width: 520px; margin: 0 auto 1.5rem auto; font-size: 0.88rem;">Registre intervenções complementares de escopo técnico (criação de Code Tables, reestruturação de menus, ajustes estéticos de layout, views e parâmetros) para converter o esforço em Pontos de Função e compor o faturamento do projeto.</p>
+              <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                <button class="btn btn-primary btn-glow" onclick="openApfInmModal()">
+                  <span>+ Registrar Primeira Intervenção</span>
+                </button>
+                <button class="btn btn-secondary" onclick="seedSampleApfInmData()">
+                  <span>💡 Inserir Exemplos de Demonstração (Code Table, Menus, Layout)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- =================================================================
+               ABA 3: DEMONSTRATIVO GLOBAL DE FATURAMENTO DA ENTREGA
+               ================================================================= -->
+          <div id="apf-summary-tab-content" style="display: none;">
+            <div class="glass-panel" style="padding: 1.5rem; border-radius: var(--radius-md); margin-bottom: 1.5rem; border-top: 3px solid #10b981;">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 12px;">
+                <div>
+                  <h3 style="font-size: 1.2rem; color: var(--text-main); font-weight: 700; margin-bottom: 4px;">Quadro Geral de Medição & Faturamento do Projeto</h3>
+                  <p style="font-size: 0.84rem; color: var(--text-secondary);">Demonstrativo unificado dos Pontos de Função Funcionais (IFPUG CPM 4.3.1) e Pontos de Função Não-Mensuráveis ($\text{FPN}$), em conformidade com as métricas SISP e contratuais.</p>
+                </div>
+                <button class="btn btn-primary btn-sm btn-glow" onclick="exportApfToExcel()">
+                  <span>📥 Exportar Demonstrativo Completo (XLSX)</span>
+                </button>
+              </div>
+
+              <!-- Tabela Demonstrativa de Faturamento -->
+              <div style="overflow-x: auto; margin-bottom: 1.5rem;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.88rem; text-align: left;">
+                  <thead>
+                    <tr style="border-bottom: 2px solid var(--border-subtle); background: rgba(255,255,255,0.03);">
+                      <th style="padding: 10px 14px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; font-size: 0.74rem;">Componente de Medição</th>
+                      <th style="padding: 10px 14px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; font-size: 0.74rem; text-align: center;">Itens / Ocorrências</th>
+                      <th style="padding: 10px 14px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; font-size: 0.74rem; text-align: center;">Metodologia / Regra</th>
+                      <th style="padding: 10px 14px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; font-size: 0.74rem; text-align: right;">PF Bruto</th>
+                      <th style="padding: 10px 14px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; font-size: 0.74rem; text-align: right;">PF Faturável</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style="border-bottom: 1px solid var(--border-subtle);">
+                      <td style="padding: 12px 14px;">
+                        <strong style="color: #818cf8;">Funções de Dados (ALI / AIE)</strong>
+                        <small style="display: block; color: var(--text-muted); font-size: 0.74rem;">Arquivos Lógicos Internos e de Interface Externa</small>
+                      </td>
+                      <td style="padding: 12px 14px; text-align: center;" id="summary-data-count">0</td>
+                      <td style="padding: 12px 14px; text-align: center;"><span class="badge-subtle">IFPUG CPM 4.3.1</span></td>
+                      <td style="padding: 12px 14px; text-align: right; font-weight: 700;" id="summary-data-raw">0 PF</td>
+                      <td style="padding: 12px 14px; text-align: right; font-weight: 700; color: #818cf8;" id="summary-data-final">0.00 PF</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid var(--border-subtle);">
+                      <td style="padding: 12px 14px;">
+                        <strong style="color: #38bdf8;">Processos Elementares (EE / SE / CE)</strong>
+                        <small style="display: block; color: var(--text-muted); font-size: 0.74rem;">Entradas, Saídas e Consultas Externas</small>
+                      </td>
+                      <td style="padding: 12px 14px; text-align: center;" id="summary-trans-count">0</td>
+                      <td style="padding: 12px 14px; text-align: center;"><span class="badge-subtle">IFPUG CPM 4.3.1</span></td>
+                      <td style="padding: 12px 14px; text-align: right; font-weight: 700;" id="summary-trans-raw">0 PF</td>
+                      <td style="padding: 12px 14px; text-align: right; font-weight: 700; color: #38bdf8;" id="summary-trans-final">0.00 PF</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid var(--border-subtle); background: rgba(99, 102, 241, 0.05);">
+                      <td style="padding: 12px 14px;">
+                        <strong style="color: var(--text-main);">Subtotal IFPUG Tradicional</strong>
+                      </td>
+                      <td style="padding: 12px 14px; text-align: center; font-weight: 700;" id="summary-ifpug-total-items">0</td>
+                      <td style="padding: 12px 14px; text-align: center;"><span class="badge-subtle" id="summary-ifpug-avg-factor">Fator: 100%</span></td>
+                      <td style="padding: 12px 14px; text-align: right; font-weight: 700;" id="summary-ifpug-total-raw">0 PF</td>
+                      <td style="padding: 12px 14px; text-align: right; font-weight: 800; color: #818cf8;" id="summary-ifpug-total-final">0.00 PF</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid var(--border-subtle);">
+                      <td style="padding: 12px 14px;">
+                        <strong style="color: #34d399;">Itens Não-Mensuráveis (FPN)</strong>
+                        <small style="display: block; color: var(--text-muted); font-size: 0.74rem;">Code Tables, Menus, Layouts, Parâmetros, Views, Scripts</small>
+                      </td>
+                      <td style="padding: 12px 14px; text-align: center;" id="summary-inm-count">0</td>
+                      <td style="padding: 12px 14px; text-align: center;"><span class="badge-subtle" style="color: #34d399; border-color: rgba(16,185,129,0.3);">Qtd &times; Peso Tabelado</span></td>
+                      <td style="padding: 12px 14px; text-align: right; font-weight: 700;" id="summary-inm-raw">-</td>
+                      <td style="padding: 12px 14px; text-align: right; font-weight: 800; color: #34d399;" id="summary-inm-final">0.00 PF</td>
+                    </tr>
+                    <tr style="background: linear-gradient(90deg, rgba(16, 185, 129, 0.15), rgba(6, 182, 212, 0.15)); border-top: 2px solid #10b981;">
+                      <td style="padding: 14px; font-size: 1rem;">
+                        <strong style="color: #10b981;">TOTAL GLOBAL FATURÁVEL DA ENTREGA</strong>
+                      </td>
+                      <td style="padding: 14px; text-align: center; font-size: 1rem; font-weight: 800;" id="summary-grand-total-items">0 Itens</td>
+                      <td style="padding: 14px; text-align: center; font-size: 0.85rem; font-weight: 700; color: var(--text-main);">IFPUG Líquido + FPN</td>
+                      <td style="padding: 14px; text-align: right; font-size: 0.95rem; font-weight: 700;" id="summary-grand-raw">0 PF</td>
+                      <td style="padding: 14px; text-align: right; font-size: 1.25rem; font-weight: 900; color: #10b981; font-family: 'Outfit', sans-serif;" id="summary-grand-total-pf">0.00 PF</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Breakdown por Categoria Não-Mensurável -->
+              <div class="glass-subpanel" style="padding: 1.25rem; border-radius: var(--radius-md);">
+                <h4 style="font-size: 0.95rem; color: var(--text-main); font-weight: 700; margin-bottom: 0.75rem;">Composição de Itens Não-Mensuráveis por Categoria Técnica</h4>
+                <div id="summary-inm-breakdown-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;">
+                  <!-- Preenchido via script -->
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -3721,6 +3941,155 @@
           <button type="submit" class="btn btn-primary btn-glow" id="btn-save-apf-item">
             <span>💾 Salvar Função APF</span>
           </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Cadastro e Edição de Item Não-Mensurável (FPN • Pontos de Função Não-Mensuráveis) -->
+  <div class="modal-backdrop" id="modal-apf-inm">
+    <div class="modal-dialog glass-panel" style="max-width: 760px; width: 95%; max-height: 92vh; overflow-y: auto;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.4rem;">⚙️</span>
+          <div>
+            <h2 class="modal-title" id="modal-apf-inm-title">Registrar Intervenção Técnica Não-Mensurável (FPN)</h2>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Conversão de esforço complementar não mensurado pelo IFPUG tradicional em Pontos de Função contratuais.</p>
+          </div>
+        </div>
+        <button class="modal-close" data-close="modal-apf-inm">&times;</button>
+      </div>
+
+      <form id="form-apf-inm" class="modal-body">
+        <input type="hidden" id="apf-inm-id-edit" value="">
+
+        <!-- Seção 1: Escopo e Vínculos -->
+        <div class="glass-subpanel" style="padding: 1rem; border-radius: var(--radius-md); margin-bottom: 1rem; border: 1px solid var(--border-subtle);">
+          <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 0.65rem;">
+            1. Escopo & Rastreabilidade do Item
+          </div>
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="apf-inm-project-select">Projeto Vinculado *</label>
+              <select id="apf-inm-project-select" class="custom-select" required>
+                <!-- Preenchido via script -->
+              </select>
+            </div>
+            <div class="form-group flex-1">
+              <label for="apf-inm-feature-input">Feature / Módulo</label>
+              <input type="text" id="apf-inm-feature-input" class="custom-input" list="apf-inm-features-datalist" placeholder="Ex: Autenticação, Banco de Dados, Setup">
+              <datalist id="apf-inm-features-datalist"></datalist>
+            </div>
+            <div class="form-group flex-1">
+              <label for="apf-inm-req-select">Requisito Vinculado (Opcional)</label>
+              <select id="apf-inm-req-select" class="custom-select">
+                <option value="">Nenhum requisito vinculado</option>
+                <!-- Preenchido via script -->
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Seção 2: Seleção do Item da Tabela de Não-Mensuráveis -->
+        <div class="glass-subpanel" style="padding: 1rem; border-radius: var(--radius-md); margin-bottom: 1rem; border: 1px solid var(--border-subtle);">
+          <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 0.65rem;">
+            2. Item da Tabela Pré-Definida de Não-Mensuráveis
+          </div>
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label for="apf-inm-catalog-select">Item Pré-Definido do Catálogo *</label>
+              <select id="apf-inm-catalog-select" class="custom-select" required>
+                <!-- Preenchido dinamicamente com optgroups por categoria -->
+              </select>
+            </div>
+            <div class="form-group flex-1">
+              <label for="apf-inm-category-input">Categoria</label>
+              <input type="text" id="apf-inm-category-input" class="custom-input" readonly style="background: rgba(255,255,255,0.03); cursor: not-allowed; color: var(--text-secondary);">
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 0.5rem;">
+            <label for="apf-inm-desc-input">Descrição da Intervenção Técnica / Justificativa *</label>
+            <textarea id="apf-inm-desc-input" class="custom-textarea" rows="2" required placeholder="Ex: Inclusão de tabela de domínio de tipos de logradouro e criação de índices auxiliares para otimização de consulta..."></textarea>
+          </div>
+        </div>
+
+        <!-- Seção 3: Quantidade, Peso e Cálculo em Tempo Real -->
+        <div class="glass-subpanel" style="padding: 1rem; border-radius: var(--radius-md); margin-bottom: 1rem; border: 1px solid var(--border-subtle);">
+          <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 0.65rem;">
+            3. Quantidade Executada & Peso Contratual
+          </div>
+          <div class="form-row" style="align-items: flex-end;">
+            <div class="form-group flex-1">
+              <label for="apf-inm-quantity-input">Quantidade Executada *</label>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-inm-qty-minus" style="width: 38px; height: 38px; padding: 0; font-size: 1.1rem; font-weight: bold;">-</button>
+                <input type="number" id="apf-inm-quantity-input" class="custom-input" min="0.1" step="0.5" value="1" required style="text-align: center; font-weight: 800; font-size: 1.1rem; color: #38bdf8;">
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-inm-qty-plus" style="width: 38px; height: 38px; padding: 0; font-size: 1.1rem; font-weight: bold;">+</button>
+              </div>
+              <small id="apf-inm-unit-label" style="display: block; margin-top: 4px; color: var(--text-muted); font-size: 0.74rem;">Unidade: Tabela</small>
+            </div>
+
+            <div class="form-group flex-1">
+              <label for="apf-inm-weight-input">Peso Tabelado Unitário (PF) *</label>
+              <input type="number" id="apf-inm-weight-input" class="custom-input" min="0" step="0.05" value="0.80" required style="font-weight: 700; color: #818cf8;">
+              <small style="display: block; margin-top: 4px; color: var(--text-muted); font-size: 0.74rem;">Preenchido conforme tabela SISP/contratual</small>
+            </div>
+
+            <div class="form-group flex-1">
+              <label for="apf-inm-status-select">Status da Intervenção</label>
+              <select id="apf-inm-status-select" class="custom-select">
+                <option value="Aprovado" selected>🟢 Aprovado (Medido)</option>
+                <option value="Em Análise">🟡 Em Análise Técnica</option>
+                <option value="Faturado">💰 Faturado</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- HUD Visual de Multiplicação em Tempo Real -->
+          <div class="inm-live-calc-box" style="margin-top: 1rem;">
+            <div class="calc-header" style="display: flex; align-items: center; justify-content: space-between;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="calc-pulse-dot"></span>
+                <strong style="color: #34d399; font-size: 0.82rem; letter-spacing: 0.5px; text-transform: uppercase;">Cálculo Contratual de Pontos de Função Não-Mensuráveis (FPN)</strong>
+              </div>
+              <span class="badge-subtle" style="font-size: 0.72rem; color: #38bdf8;">Fórmula: FPN = Quantidade × Peso</span>
+            </div>
+            <div class="inm-calc-formula-display" style="display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 10px; flex-wrap: wrap;">
+              <div class="inm-formula-term">
+                <small style="display: block; font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Quantidade</small>
+                <strong id="inm-hud-qty" style="font-size: 1.5rem; color: #38bdf8; font-family: 'Outfit', sans-serif;">1</strong>
+              </div>
+              <span style="font-size: 1.4rem; color: var(--text-muted); font-weight: 300;">&times;</span>
+              <div class="inm-formula-term">
+                <small style="display: block; font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Peso Unitário</small>
+                <strong id="inm-hud-weight" style="font-size: 1.5rem; color: #818cf8; font-family: 'Outfit', sans-serif;">0.80</strong>
+                <span style="font-size: 0.85rem; color: #818cf8;">PF</span>
+              </div>
+              <span style="font-size: 1.4rem; color: var(--text-muted); font-weight: 300;">=</span>
+              <div class="inm-formula-term inm-term-result" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); padding: 4px 14px; border-radius: 8px;">
+                <small style="display: block; font-size: 0.72rem; color: #34d399; text-transform: uppercase; font-weight: 700;">Total FPN Apurado</small>
+                <strong id="inm-hud-total-pf" style="font-size: 1.85rem; color: #10b981; font-family: 'Outfit', sans-serif; font-weight: 900;">0.80</strong>
+                <span style="font-size: 0.95rem; color: #10b981; font-weight: 700;">PF</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Seção 4: Evidências e Referência Técnica -->
+        <div class="glass-subpanel" style="padding: 1rem; border-radius: var(--radius-md); margin-bottom: 1.25rem; border: 1px solid var(--border-subtle);">
+          <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 0.65rem;">
+            4. Evidência Técnica & Comprovação de Execução
+          </div>
+          <div class="form-group">
+            <label for="apf-inm-evidence-input">Evidência / Link de Pull Request / Ticket / Script</label>
+            <input type="text" id="apf-inm-evidence-input" class="custom-input" placeholder="Ex: PR #142 (db-migrations), Script sql/v2_tables.sql ou Ticket JIRA-892">
+          </div>
+        </div>
+
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn btn-ghost" data-close="modal-apf-inm">Cancelar</button>
+          <button type="submit" class="btn btn-primary btn-glow" id="btn-save-apf-inm">Salvar Intervenção (FPN)</button>
         </div>
       </form>
     </div>
