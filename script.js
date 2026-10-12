@@ -2020,15 +2020,24 @@ class UserAuthStore {
 
   async login(email, password) {
     const cleanEmail = (email || '').trim().toLowerCase();
+    const aliasEmail = cleanEmail.endsWith('@devsquad.com')
+      ? cleanEmail.replace(/@devsquad\.com$/, '@synchro.com')
+      : (cleanEmail.endsWith('@synchro.com') ? cleanEmail.replace(/@synchro\.com$/, '@devsquad.com') : cleanEmail);
 
     // 1. Autenticação direta no Backend SQLite quando online
     if (typeof api !== 'undefined' && api.isOnline) {
       try {
-        const res = await api.apiRequest('/api/auth/login', 'POST', { email: cleanEmail, password });
+        let res = await api.apiRequest('/api/auth/login', 'POST', { email: cleanEmail, password });
+        if ((!res || !res.success) && aliasEmail !== cleanEmail) {
+          res = await api.apiRequest('/api/auth/login', 'POST', { email: aliasEmail, password });
+        }
         if (res && res.success && res.user) {
           const sessionUser = this.setSession(res.user);
           const users = this.getUsers();
-          const idx = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+          const idx = users.findIndex(u => {
+            const ue = (u.email || '').toLowerCase();
+            return ue === cleanEmail || ue === aliasEmail;
+          });
           const fullUser = { ...res.user, password };
           if (idx !== -1) {
             users[idx] = fullUser;
@@ -2037,7 +2046,7 @@ class UserAuthStore {
           }
           this.saveUsers(users);
           return { success: true, user: sessionUser };
-        } else if (res && res.message) {
+        } else if (res && res.message && aliasEmail === cleanEmail) {
           return { success: false, message: res.message };
         }
       } catch (e) {
@@ -2047,7 +2056,10 @@ class UserAuthStore {
 
     // 2. Fallback de Autenticação Offline (LocalStorage)
     const users = this.getUsers();
-    const user = users.find(u => u.email.toLowerCase() === cleanEmail);
+    const user = users.find(u => {
+      const ue = (u.email || '').toLowerCase();
+      return ue === cleanEmail || ue === aliasEmail;
+    });
 
     if (!user) {
       return { success: false, message: 'Usuário não encontrado com este e-mail. Verifique a digitação ou contate o Administrador.' };
