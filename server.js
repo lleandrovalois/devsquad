@@ -14,22 +14,65 @@ const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
 
 let defaultDbPath = path.join(__dirname, 'synchro.db');
-const legacyDbPath = path.join(__dirname, 'devsquad.db');
-if (!process.env.DB_PATH && !fs.existsSync(defaultDbPath) && fs.existsSync(legacyDbPath)) {
-  try {
-    fs.copyFileSync(legacyDbPath, defaultDbPath);
-    if (fs.existsSync(legacyDbPath + '-wal')) fs.copyFileSync(legacyDbPath + '-wal', defaultDbPath + '-wal');
-    if (fs.existsSync(legacyDbPath + '-shm')) fs.copyFileSync(legacyDbPath + '-shm', defaultDbPath + '-shm');
-    console.log('🔄 Banco legado devsquad.db migrado com sucesso para synchro.db');
-  } catch (err) {
-    defaultDbPath = legacyDbPath;
-  }
-}
 const DB_PATH = process.env.DB_PATH || defaultDbPath;
 
 const dbDir = path.dirname(DB_PATH);
 if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { recursive: true });
+}
+
+// --------------------------------------------------------------------------
+// Migração Segura e Transparente do Banco Legado (devsquad.db -> synchro.db)
+// --------------------------------------------------------------------------
+const legacyCandidates = [
+  path.join(dbDir, 'devsquad.db'),
+  path.join(__dirname, 'devsquad.db'),
+  '/app/data/devsquad.db'
+];
+const foundLegacyPath = legacyCandidates.find(p => fs.existsSync(p));
+
+if (foundLegacyPath && foundLegacyPath !== DB_PATH) {
+  const targetExists = fs.existsSync(DB_PATH);
+  let shouldMigrate = !targetExists;
+
+  if (targetExists) {
+    try {
+      const targetStat = fs.statSync(DB_PATH);
+      const legacyStat = fs.statSync(foundLegacyPath);
+      // Se o target for menor ou igual a 64KB (recém-inicializado vazio) e a base legada tiver mais dados
+      if (targetStat.size <= 65536 && legacyStat.size > targetStat.size) {
+        shouldMigrate = true;
+      } else {
+        // Verificar se a base atual tem 0 projetos enquanto a legada possui projetos
+        const testTarget = new DatabaseSync(DB_PATH);
+        const pCount = testTarget.prepare("SELECT count(*) as count FROM projects").get()?.count || 0;
+        testTarget.close();
+        if (pCount === 0) {
+          const testLegacy = new DatabaseSync(foundLegacyPath);
+          const legacyPCount = testLegacy.prepare("SELECT count(*) as count FROM projects").get()?.count || 0;
+          testLegacy.close();
+          if (legacyPCount > 0) {
+            shouldMigrate = true;
+            console.log(`📦 Banco legado possui ${legacyPCount} projetos e o atual possui 0. Disparando migração.`);
+          }
+        }
+      }
+    } catch (checkErr) {
+      // Ignora erro de inspeção prévia
+    }
+  }
+
+  if (shouldMigrate) {
+    try {
+      console.log(`🔄 Migrando banco legado devsquad.db (${foundLegacyPath}) para synchro.db (${DB_PATH})...`);
+      fs.copyFileSync(foundLegacyPath, DB_PATH);
+      if (fs.existsSync(foundLegacyPath + '-wal')) fs.copyFileSync(foundLegacyPath + '-wal', DB_PATH + '-wal');
+      if (fs.existsSync(foundLegacyPath + '-shm')) fs.copyFileSync(foundLegacyPath + '-shm', DB_PATH + '-shm');
+      console.log('✅ Banco legado devsquad.db migrado com sucesso para synchro.db!');
+    } catch (migErr) {
+      console.warn('⚠️ Falha ao migrar arquivo de banco legado:', migErr.message);
+    }
+  }
 }
 
 console.log('--------------------------------------------------');

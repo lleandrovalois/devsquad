@@ -100,7 +100,33 @@ if [ "$APP_PORT" != "$DEFAULT_PORT" ]; then
   sed -i "s/127.0.0.1:3001:3001/127.0.0.1:$APP_PORT:3001/g" docker-compose.yml
 fi
 
-# 6. Build e execução via Docker Compose
+# 6. Preservação e migração automática de dados de volumes legados
+echo "🛡️ Verificando integridade e persistência de dados legados..."
+LEGACY_VOL=$(docker volume ls -q | grep -E 'devsquad.*data|devsquad' | head -n 1 || true)
+if [ -n "$LEGACY_VOL" ]; then
+  LEGACY_DB_PATH="/var/lib/docker/volumes/$LEGACY_VOL/_data/devsquad.db"
+  if [ -f "$LEGACY_DB_PATH" ]; then
+    echo "📦 Base de dados legada detectada em $LEGACY_VOL..."
+    SYNCHRO_VOL="synchro_synchro_data"
+    docker volume create "$SYNCHRO_VOL" >/dev/null 2>&1 || true
+    TARGET_DIR="/var/lib/docker/volumes/$SYNCHRO_VOL/_data"
+    mkdir -p "$TARGET_DIR"
+
+    LEGACY_SZ=$(stat -c%s "$LEGACY_DB_PATH" 2>/dev/null || echo 0)
+    TARGET_SZ=$(stat -c%s "$TARGET_DIR/synchro.db" 2>/dev/null || echo 0)
+    if [ ! -f "$TARGET_DIR/synchro.db" ] || [ "$LEGACY_SZ" -gt "$TARGET_SZ" ]; then
+      echo "🔄 Migrando base legada para o novo volume do Synchro ($SYNCHRO_VOL)..."
+      cp -p "$LEGACY_DB_PATH" "$TARGET_DIR/synchro.db"
+      [ -f "${LEGACY_DB_PATH}-wal" ] && cp -p "${LEGACY_DB_PATH}-wal" "$TARGET_DIR/synchro.db-wal" || true
+      [ -f "${LEGACY_DB_PATH}-shm" ] && cp -p "${LEGACY_DB_PATH}-shm" "$TARGET_DIR/synchro.db-shm" || true
+      cp -p "$LEGACY_DB_PATH" "$TARGET_DIR/devsquad.db"
+      chmod 666 "$TARGET_DIR"/* 2>/dev/null || true
+      echo "✅ Base de dados migrada com sucesso para o Synchro PRO!"
+    fi
+  fi
+fi
+
+# 7. Build e execução via Docker Compose
 echo "🐳 Construindo e iniciando o container isolado (synchro-app)..."
 docker compose down || true
 docker compose up -d --build
