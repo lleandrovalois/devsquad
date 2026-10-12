@@ -1,7 +1,7 @@
 {
-  "name": "devsquad-manager",
+  "name": "synchro",
   "version": "1.0.0",
-  "description": "DevSquad ALM - Plataforma Integrada de Gestão de Requisitos, Equipe Dev (Front & Back), Demandas Multi-Projetos e Camada de Testes/QA",
+  "description": "Synchro ALM - Plataforma Integrada de Gestão de Requisitos, Equipe Dev (Front & Back), Demandas Multi-Projetos e Camada de Testes/QA",
   "main": "server.js",
   "scripts": {
     "start": "node --no-warnings --experimental-sqlite server.js",

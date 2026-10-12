@@ -2,5 +2,8 @@
 devsquad.db
 devsquad.db-wal
 devsquad.db-shm
+synchro.db
+synchro.db-wal
+synchro.db-shm
 .tools/
 scratch/

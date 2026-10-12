@@ -1,8 +1,8 @@
 @echo off
 chcp 65001 >nul
-title DevSquad PRO - Plataforma ALM (SQLite Server)
+title Synchro PRO - Plataforma ALM (SQLite Server)
 echo ==============================================================================
-echo        DevSquad PRO - Plataforma ALM ^& Gestao de Demandas e Testes
+echo        Synchro PRO - Plataforma ALM ^& Gestao de Demandas e Testes
 echo                 Iniciando Servidor Local com SQLite
 echo ==============================================================================
 echo.
@@ -29,10 +29,10 @@ if "%NODE_BIN%"=="" (
 
 echo [1/3] Verificando runtime Node.js...
 echo       Usando: %NODE_BIN%
-echo [2/3] Abrindo DevSquad PRO no navegador padrao...
+echo [2/3] Abrindo Synchro PRO no navegador padrao...
 start http://localhost:3001
 
-echo [3/3] Iniciando servidor HTTP e banco relacional devsquad.db na porta 3001...
+echo [3/3] Iniciando servidor HTTP e banco relacional synchro.db na porta 3001...
 echo       Acesso Local: http://localhost:3001
 echo       Acesso na Rede: consulte o IP exibido abaixo pelo servidor.
 echo       Pressione Ctrl + C para encerrar o servidor a qualquer momento.

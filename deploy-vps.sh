@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script de Deploy Seguro - DevSquad PRO
+# Script de Deploy Seguro - Synchro PRO
 # Servidor: Ubuntu 24.04 (Docker + Nginx)
 # Objetivo: Deploy isolado sem risco de conflito com aplicações existentes
 # ==============================================================================
 
 set -e
 
-APP_DIR="/opt/devsquad"
+# Se existir a pasta legada /opt/devsquad e não existir /opt/synchro, migra automaticamente
+if [ -d "/opt/devsquad" ] && [ ! -d "/opt/synchro" ]; then
+  echo "🔄 Migrando diretório legado /opt/devsquad para /opt/synchro..."
+  mv /opt/devsquad /opt/synchro
+fi
+
+APP_DIR="/opt/synchro"
 REPO_URL="https://github.com/lleandrovalois/devsquad.git"
 DEFAULT_PORT=3001
 
 echo "========================================================"
-echo "🚀 Iniciando Deploy Seguro - DevSquad PRO"
+echo "🚀 Iniciando Deploy Seguro - Synchro PRO"
 echo "========================================================"
 
 # 1. Verificar permissões de root/sudo
@@ -28,17 +34,17 @@ DOMAIN_NAME="${1:-$DOMAIN}"
 
 if [ -z "$DOMAIN_NAME" ]; then
   if [ -t 0 ]; then
-    read -p "👉 Informe o domínio ou subdomínio para o DevSquad (ex: devsquad.meudominio.com): " DOMAIN_NAME
+    read -p "👉 Informe o domínio ou subdomínio para o Synchro (ex: synchro.meudominio.com): " DOMAIN_NAME
   elif [ -e /dev/tty ]; then
-    read -p "👉 Informe o domínio ou subdomínio para o DevSquad (ex: devsquad.meudominio.com): " DOMAIN_NAME < /dev/tty
+    read -p "👉 Informe o domínio ou subdomínio para o Synchro (ex: synchro.meudominio.com): " DOMAIN_NAME < /dev/tty
   fi
 fi
 
 if [ -z "$DOMAIN_NAME" ]; then
   echo "❌ Domínio não informado."
   echo "👉 Dica: Você pode passar o domínio diretamente no comando, por exemplo:"
-  echo "   curl -fsSL https://raw.githubusercontent.com/lleandrovalois/devsquad/main/deploy-vps.sh | sudo bash -s -- devsquad.meudominio.com"
-  echo "   ou clonar e rodar: sudo bash deploy-vps.sh devsquad.meudominio.com"
+  echo "   curl -fsSL https://raw.githubusercontent.com/lleandrovalois/devsquad/main/deploy-vps.sh | sudo bash -s -- synchro.meudominio.com"
+  echo "   ou clonar e rodar: sudo bash deploy-vps.sh synchro.meudominio.com"
   exit 1
 fi
 
@@ -95,16 +101,16 @@ if [ "$APP_PORT" != "$DEFAULT_PORT" ]; then
 fi
 
 # 6. Build e execução via Docker Compose
-echo "🐳 Construindo e iniciando o container isolado (devsquad-app)..."
+echo "🐳 Construindo e iniciando o container isolado (synchro-app)..."
 docker compose down || true
 docker compose up -d --build
 
 # 7. Criar arquivo de configuração isolado no Nginx
-NGINX_CONF="/etc/nginx/sites-available/devsquad.conf"
+NGINX_CONF="/etc/nginx/sites-available/synchro.conf"
 echo "🌐 Configurando VirtualHost do Nginx em $NGINX_CONF..."
 
 cat <<EOF > "$NGINX_CONF"
-# Configuração DevSquad PRO - Isolada para evitar conflitos
+# Configuração Synchro PRO - Isolada para evitar conflitos
 server {
     listen 80;
     server_name $DOMAIN_NAME;
@@ -130,8 +136,8 @@ server {
 EOF
 
 # 8. Habilitar o site no Nginx (link simbólico)
-if [ ! -f "/etc/nginx/sites-enabled/devsquad.conf" ]; then
-  ln -s "$NGINX_CONF" /etc/nginx/sites-enabled/devsquad.conf
+if [ ! -f "/etc/nginx/sites-enabled/synchro.conf" ]; then
+  ln -s "$NGINX_CONF" /etc/nginx/sites-enabled/synchro.conf
 fi
 
 # 9. Testar sintaxe do Nginx com segurança total
@@ -140,8 +146,8 @@ if nginx -t; then
   echo "✅ Sintaxe do Nginx 100% OK! Aplicando recarga suave (zero downtime para outros apps)..."
   systemctl reload nginx
 else
-  echo "❌ Erro na sintaxe do Nginx! Revertendo ativação do DevSquad para proteger os outros sites..."
-  rm -f /etc/nginx/sites-enabled/devsquad.conf
+  echo "❌ Erro na sintaxe do Nginx! Revertendo ativação do Synchro para proteger os outros sites..."
+  rm -f /etc/nginx/sites-enabled/synchro.conf
   nginx -t && systemctl reload nginx
   echo "❌ Configuração cancelada. Seus outros sites continuam operando normalmente."
   exit 1
@@ -152,8 +158,8 @@ echo "========================================================"
 echo "🎉 DEPLOY CONCLUÍDO COM SUCESSO E TOTAL ISOLAMENTO!"
 echo "========================================================"
 echo "Aplicação respondendo em: http://$DOMAIN_NAME"
-echo "Container: devsquad-app (127.0.0.1:$APP_PORT)"
-echo "Volume persistente: devsquad_data"
+echo "Container: synchro-app (127.0.0.1:$APP_PORT)"
+echo "Volume persistente: synchro_data"
 echo ""
 echo "💡 Para habilitar HTTPS gratuito com Let's Encrypt (Certbot), execute:"
 echo "   sudo certbot --nginx -d $DOMAIN_NAME"

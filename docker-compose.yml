@@ -1,7 +1,7 @@
 services:
-  devsquad:
+  synchro:
     build: .
-    container_name: devsquad-app
+    container_name: synchro-app
     restart: unless-stopped
     ports:
       # Vincula exclusivamente à interface local (127.0.0.1) para não expor na WAN
@@ -11,10 +11,10 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - HOST=0.0.0.0
-      - DB_PATH=/app/data/devsquad.db
+      - DB_PATH=/app/data/synchro.db
     volumes:
-      - devsquad_data:/app/data
+      - synchro_data:/app/data
 
 volumes:
-  devsquad_data:
+  synchro_data:
     driver: local

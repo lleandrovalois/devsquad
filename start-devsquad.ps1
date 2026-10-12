@@ -1,13 +1,13 @@
 # ==============================================================================
-# DevSquad PRO - Launcher PowerShell
+# Synchro PRO - Launcher PowerShell
 # Inicia o Servidor HTTP + SQLite e abre o navegador automaticamente
 # ==============================================================================
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$Host.UI.RawUI.WindowTitle = "DevSquad PRO - Plataforma ALM (SQLite Server)"
+$Host.UI.RawUI.WindowTitle = "Synchro PRO - Plataforma ALM (SQLite Server)"
 
 Write-Host "==============================================================================" -ForegroundColor Cyan
-Write-Host "       DevSquad PRO - Plataforma ALM & Gestão de Demandas e Testes            " -ForegroundColor White
+Write-Host "       Synchro PRO - Plataforma ALM & Gestão de Demandas e Testes             " -ForegroundColor White
 Write-Host "                Iniciando Servidor Local com SQLite                           " -ForegroundColor Green
 Write-Host "==============================================================================" -ForegroundColor Cyan
 Write-Host ""
@@ -35,7 +35,7 @@ Write-Host "[1/3] Runtime Node.js detectado: $nodeBin" -ForegroundColor Gray
 Write-Host "[2/3] Abrindo http://localhost:3001 no navegador padrão..." -ForegroundColor Gray
 Start-Process "http://localhost:3001"
 
-Write-Host "[3/3] Iniciando servidor e banco relacional devsquad.db na porta 3001..." -ForegroundColor Green
+Write-Host "[3/3] Iniciando servidor e banco relacional synchro.db na porta 3001..." -ForegroundColor Green
 Write-Host "      Acesso Local: http://localhost:3001" -ForegroundColor Cyan
 Write-Host "      Acesso na Rede (LAN): consulte o IP exibido pelo servidor abaixo." -ForegroundColor Cyan
 Write-Host "      Pressione Ctrl + C para encerrar o servidor a qualquer momento." -ForegroundColor Yellow

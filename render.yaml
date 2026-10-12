@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: devsquad-pro
+    name: synchro-pro
     runtime: node
     plan: free
     buildCommand: ""

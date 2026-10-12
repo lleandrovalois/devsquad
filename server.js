@@ -1,7 +1,7 @@
 /**
  * ==============================================================================
- * DevSquad PRO - Servidor Backend REST API & Banco Relacional SQLite
- * Arquitetura Cliente-Servidor com persistência transacional em devsquad.db
+ * Synchro PRO - Servidor Backend REST API & Banco Relacional SQLite
+ * Arquitetura Cliente-Servidor com persistência transacional em synchro.db
  * ==============================================================================
  */
 
@@ -12,7 +12,20 @@ const { DatabaseSync } = require('node:sqlite');
 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'devsquad.db');
+
+let defaultDbPath = path.join(__dirname, 'synchro.db');
+const legacyDbPath = path.join(__dirname, 'devsquad.db');
+if (!process.env.DB_PATH && !fs.existsSync(defaultDbPath) && fs.existsSync(legacyDbPath)) {
+  try {
+    fs.copyFileSync(legacyDbPath, defaultDbPath);
+    if (fs.existsSync(legacyDbPath + '-wal')) fs.copyFileSync(legacyDbPath + '-wal', defaultDbPath + '-wal');
+    if (fs.existsSync(legacyDbPath + '-shm')) fs.copyFileSync(legacyDbPath + '-shm', defaultDbPath + '-shm');
+    console.log('🔄 Banco legado devsquad.db migrado com sucesso para synchro.db');
+  } catch (err) {
+    defaultDbPath = legacyDbPath;
+  }
+}
+const DB_PATH = process.env.DB_PATH || defaultDbPath;
 
 const dbDir = path.dirname(DB_PATH);
 if (!fs.existsSync(dbDir)) {
@@ -20,7 +33,7 @@ if (!fs.existsSync(dbDir)) {
 }
 
 console.log('--------------------------------------------------');
-console.log('🚀 Inicializando DevSquad PRO Backend Server...');
+console.log('🚀 Inicializando Synchro PRO Backend Server...');
 console.log('📁 Banco de Dados SQLite:', DB_PATH);
 console.log('--------------------------------------------------');
 
@@ -192,7 +205,7 @@ db.exec(`
     primary_color TEXT DEFAULT '#0284c7',
     footer_text TEXT,
     approval_terms TEXT,
-    signee_contratada_title TEXT DEFAULT 'PELA CONTRATADA (DEVSQUAD)',
+    signee_contratada_title TEXT DEFAULT 'PELA CONTRATADA (SYNCHRO)',
     signee_contratante_title TEXT DEFAULT 'PELA CONTRATANTE (CLIENTE)',
     include_user_story INTEGER DEFAULT 1,
     include_acceptance_criteria INTEGER DEFAULT 1,
@@ -204,6 +217,32 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_doc_templates_created ON document_templates(created_at ASC);
+
+  CREATE TABLE IF NOT EXISTS apf_items (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    project_id TEXT,
+    feature TEXT,
+    req_id TEXT,
+    function_type TEXT NOT NULL,
+    category TEXT NOT NULL,
+    td INTEGER NOT NULL DEFAULT 1,
+    ar_tr INTEGER NOT NULL DEFAULT 1,
+    complexity TEXT NOT NULL,
+    raw_pf REAL NOT NULL DEFAULT 0,
+    counting_type TEXT NOT NULL DEFAULT 'Desenvolvimento',
+    factor REAL NOT NULL DEFAULT 1.0,
+    final_pf REAL NOT NULL DEFAULT 0,
+    notes TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+    FOREIGN KEY (req_id) REFERENCES requirements(id) ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_apf_project ON apf_items(project_id);
+  CREATE INDEX IF NOT EXISTS idx_apf_feature ON apf_items(feature);
+  CREATE INDEX IF NOT EXISTS idx_apf_type ON apf_items(function_type);
 `);
 
 // Migrações seguras de colunas em bases já existentes
@@ -561,7 +600,7 @@ function seedDatabaseIfEmpty() {
     `);
 
     const defaultUsers = [
-      { id: "u_admin", name: "Carlos Valois (Admin)", email: "admin@devsquad.com", password: "admin123", role: "admin", dev_role: null, seniority: "Workspace Owner / Diretor", skills: JSON.stringify(["Arquitetura", "Governança", "DevOps", "Segurança", "Go"]), avatar_bg: "#f59e0b", created_at: "2026-01-01T00:00:00.000Z" }
+      { id: "u_admin", name: "Carlos Valois (Admin)", email: "admin@synchro.com", password: "admin123", role: "admin", dev_role: null, seniority: "Workspace Owner / Diretor", skills: JSON.stringify(["Arquitetura", "Governança", "DevOps", "Segurança", "Go"]), avatar_bg: "#f59e0b", created_at: "2026-01-01T00:00:00.000Z" }
     ];
 
     defaultUsers.forEach(u => {
@@ -572,6 +611,26 @@ function seedDatabaseIfEmpty() {
   seedDefaultGoals(false);
   seedDefaultCareers(false);
   seedDefaultDocumentTemplates(false);
+
+  // Auto-migração transparente de registros legados DevSquad -> Synchro
+  try {
+    db.prepare(`
+      UPDATE document_templates
+      SET 
+        name = REPLACE(name, 'DevSquad', 'Synchro'),
+        description = REPLACE(description, 'DevSquad', 'Synchro'),
+        header_institution = REPLACE(header_institution, 'DEVSQUAD', 'SYNCHRO'),
+        footer_text = REPLACE(REPLACE(footer_text, 'DevSquad', 'Synchro'), 'DEVSQUAD', 'SYNCHRO'),
+        signee_contratada_title = REPLACE(signee_contratada_title, 'DEVSQUAD', 'SYNCHRO')
+      WHERE name LIKE '%DevSquad%' OR header_institution LIKE '%DEVSQUAD%' OR footer_text LIKE '%DevSquad%' OR signee_contratada_title LIKE '%DEVSQUAD%'
+    `).run();
+
+    db.prepare(`
+      UPDATE users
+      SET email = REPLACE(email, '@devsquad.com', '@synchro.com')
+      WHERE email LIKE '%@devsquad.com'
+    `).run();
+  } catch (e) {}
 
   console.log('✅ Banco de dados SQLite verificado e pronto para operações!');
 }
@@ -599,17 +658,17 @@ function seedDefaultDocumentTemplates(force = false) {
     const defaultTemplates = [
       {
         id: "tpl_default",
-        name: "Padrão Corporativo DevSquad (Oficial)",
-        description: "Template institucional padrão do DevSquad ALM com paleta Sky Blue (#0284c7), todos os blocos ativados e termo padrão de aceite contratual e medição.",
+        name: "Padrão Corporativo Synchro (Oficial)",
+        description: "Template institucional padrão do Synchro ALM com paleta Sky Blue (#0284c7), todos os blocos ativados e termo padrão de aceite contratual e medição.",
         is_default: 1,
         logo_url: "",
         doc_title: "RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS",
         doc_subtitle: "Artefato Oficial de Comprovação de Entrega Técnica para Fins de Faturamento & Aceite",
-        header_institution: "DEVSQUAD ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE",
+        header_institution: "SYNCHRO ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE",
         primary_color: "#0284c7",
-        footer_text: "DevSquad ALM Pro — Artefato Formal de Medição & Aceite Técnico",
+        footer_text: "Synchro ALM Pro — Artefato Formal de Medição & Aceite Técnico",
         approval_terms: "Pelo presente instrumento, a CONTRATANTE atesta expressamente o pleno recebimento, homologação técnica e aceite formal dos requisitos de software e critérios de aceite descritos neste Relatório de Medição correspondentes à Feature / Marco acima especificado. Declara que os entregáveis foram devidamente verificados e aprovados pelo controle de qualidade (QA), em conformidade com as especificações contratadas, autorizando a emissão da respectiva Nota Fiscal de Serviços para faturamento.",
-        signee_contratada_title: "PELA CONTRATADA (DEVSQUAD)",
+        signee_contratada_title: "PELA CONTRATADA (SYNCHRO)",
         signee_contratante_title: "PELA CONTRATANTE (CLIENTE)",
         include_user_story: 1,
         include_acceptance_criteria: 1,
@@ -653,7 +712,7 @@ function seedDefaultDocumentTemplates(force = false) {
         doc_subtitle: "Alinhamento Contínuo de Escopo, Critérios de Aceite e Histórias de Usuário",
         header_institution: "SQUAD DE ENGENHARIA DE PRODUTO & ARQUITETURA ÁGIL",
         primary_color: "#059669",
-        footer_text: "DevSquad Agile Spec — Uso Interno e Alinhamento Técnico de Produto",
+        footer_text: "Synchro Agile Spec — Uso Interno e Alinhamento Técnico de Produto",
         approval_terms: "Os requisitos funcionais descritos neste documento foram refinados e validados conjuntamente pelo time de produto e engenharia, servindo como especificação oficial e critérios de aceite da sprint corrente.",
         signee_contratada_title: "PRODUCT OWNER (PO)",
         signee_contratante_title: "TECH LEAD / ENGENHEIRO RESPONSÁVEL",
@@ -1075,7 +1134,7 @@ function getFullDocumentTemplates() {
     primaryColor: r.primary_color || '#0284c7',
     footerText: r.footer_text || '',
     approvalTerms: r.approval_terms || '',
-    signeeContratadaTitle: r.signee_contratada_title || 'PELA CONTRATADA (DEVSQUAD)',
+    signeeContratadaTitle: r.signee_contratada_title || 'PELA CONTRATADA (SYNCHRO)',
     signeeContratanteTitle: r.signee_contratante_title || 'PELA CONTRATANTE (CLIENTE)',
     includeUserStory: r.include_user_story === 1,
     includeAcceptanceCriteria: r.include_acceptance_criteria === 1,
@@ -1087,6 +1146,462 @@ function getFullDocumentTemplates() {
     updatedAt: r.updated_at
   }));
 }
+
+// ------------------------------------------------------------------------------
+// Funções de Cálculo e Matrizes de Decisão IFPUG CPM 4.3.1 (APF)
+// ------------------------------------------------------------------------------
+function getApfCategory(type) {
+  const t = (type || '').toUpperCase().trim();
+  if (t === 'ALI' || t === 'AIE') return 'Dados';
+  return 'Transação'; // EE, SE, CE
+}
+
+function calculateApfComplexity(type, arTr, td) {
+  const normType = (type || '').toUpperCase().trim();
+  const arTrVal = Math.max(0, parseInt(arTr, 10) || 0);
+  const tdVal = Math.max(1, parseInt(td, 10) || 1);
+
+  if (normType === 'ALI' || normType === 'AIE') {
+    // Para ALI / AIE: arTr é TR (Tipos de Registro)
+    const tr = Math.max(1, arTrVal);
+    if (tr === 1) {
+      if (tdVal <= 19) return 'Baixa';
+      if (tdVal <= 50) return 'Baixa';
+      return 'Média'; // 51+
+    } else if (tr >= 2 && tr <= 5) {
+      if (tdVal <= 19) return 'Baixa';
+      if (tdVal <= 50) return 'Média';
+      return 'Alta'; // 51+
+    } else { // tr >= 6
+      if (tdVal <= 19) return 'Média';
+      if (tdVal <= 50) return 'Alta';
+      return 'Alta'; // 51+
+    }
+  }
+
+  if (normType === 'EE') {
+    // Para EE: arTr é AR (Arquivos Referenciados)
+    const ar = arTrVal;
+    if (ar <= 1) {
+      if (tdVal <= 4) return 'Baixa';
+      if (tdVal <= 15) return 'Baixa';
+      return 'Média'; // 16+
+    } else if (ar === 2) {
+      if (tdVal <= 4) return 'Baixa';
+      if (tdVal <= 15) return 'Média';
+      return 'Alta'; // 16+
+    } else { // ar >= 3
+      if (tdVal <= 4) return 'Média';
+      if (tdVal <= 15) return 'Alta';
+      return 'Alta'; // 16+
+    }
+  }
+
+  if (normType === 'SE') {
+    // Para SE: arTr é AR (Arquivos Referenciados)
+    const ar = arTrVal;
+    if (ar <= 1) {
+      if (tdVal <= 5) return 'Baixa';
+      if (tdVal <= 19) return 'Baixa';
+      return 'Média'; // 20+
+    } else if (ar >= 2 && ar <= 3) {
+      if (tdVal <= 5) return 'Baixa';
+      if (tdVal <= 19) return 'Média';
+      return 'Alta'; // 20+
+    } else { // ar >= 4
+      if (tdVal <= 5) return 'Média';
+      if (tdVal <= 19) return 'Alta';
+      return 'Alta'; // 20+
+    }
+  }
+
+  if (normType === 'CE') {
+    // Para CE: arTr é AR (Arquivos Referenciados)
+    const ar = arTrVal;
+    if (ar <= 1) {
+      if (tdVal <= 4) return 'Baixa';
+      if (tdVal <= 19) return 'Baixa';
+      return 'Média'; // 20+
+    } else if (ar >= 2 && ar <= 3) {
+      if (tdVal <= 4) return 'Baixa';
+      if (tdVal <= 19) return 'Média';
+      return 'Alta'; // 20+
+    } else { // ar >= 4
+      if (tdVal <= 4) return 'Média';
+      if (tdVal <= 19) return 'Alta';
+      return 'Alta'; // 20+
+    }
+  }
+
+  return 'Média';
+}
+
+const IFPUG_RAW_PF = {
+  ALI: { 'Baixa': 7, 'Média': 10, 'Alta': 15 },
+  AIE: { 'Baixa': 5, 'Média': 7,  'Alta': 10 },
+  EE:  { 'Baixa': 3, 'Média': 4,  'Alta': 6  },
+  SE:  { 'Baixa': 4, 'Média': 5,  'Alta': 7  },
+  CE:  { 'Baixa': 3, 'Média': 4,  'Alta': 6  }
+};
+
+function calculateApfRawPf(type, complexity) {
+  const normType = (type || '').toUpperCase().trim();
+  const c = complexity || 'Média';
+  if (IFPUG_RAW_PF[normType] && IFPUG_RAW_PF[normType][c] !== undefined) {
+    return IFPUG_RAW_PF[normType][c];
+  }
+  return 4;
+}
+
+const COUNTING_TYPE_FACTORS = {
+  'Desenvolvimento': 1.0,
+  'Melhoria': 1.0,
+  'Testes': 0.30,
+  'Transferência Tecnológica': 0.20
+};
+
+function getCountingTypeFactor(countingType, customFactor) {
+  if (customFactor !== undefined && customFactor !== null && !isNaN(parseFloat(customFactor))) {
+    return Math.max(0, parseFloat(customFactor));
+  }
+  return COUNTING_TYPE_FACTORS[countingType] !== undefined ? COUNTING_TYPE_FACTORS[countingType] : 1.0;
+}
+
+function calculateApfFinalPf(rawPf, factor) {
+  const f = parseFloat(factor);
+  const factorVal = isNaN(f) ? 1.0 : f;
+  return Math.round((rawPf * factorVal) * 100) / 100;
+}
+
+function getFullApfItems() {
+  try {
+    return db.prepare(`
+      SELECT a.*, p.name as project_name, p.code as project_code, r.code as req_code, r.title as req_title
+      FROM apf_items a
+      LEFT JOIN projects p ON a.project_id = p.id
+      LEFT JOIN requirements r ON a.req_id = r.id
+      ORDER BY a.created_at DESC, a.id DESC
+    `).all().map(a => ({
+      id: a.id,
+      code: a.code,
+      name: a.name,
+      projectId: a.project_id || '',
+      projectName: a.project_name || '',
+      projectCode: a.project_code || '',
+      feature: a.feature || '',
+      reqId: a.req_id || '',
+      reqCode: a.req_code || '',
+      reqTitle: a.req_title || '',
+      functionType: a.function_type,
+      category: a.category,
+      td: a.td,
+      arTr: a.ar_tr,
+      complexity: a.complexity,
+      rawPf: a.raw_pf,
+      countingType: a.counting_type,
+      factor: a.factor,
+      finalPf: a.final_pf,
+      notes: a.notes || '',
+      createdAt: a.created_at,
+      updatedAt: a.updated_at
+    }));
+  } catch (e) {
+    console.error('Erro ao buscar itens de APF:', e);
+    return [];
+  }
+}
+
+/**
+ * Analisa semanticamente um Requisito e extrai funções candidatas de APF (ALI, AIE, EE, SE, CE)
+ */
+function inferApfFromRequirement(req, options = {}) {
+  const countingType = options.countingType || 'Desenvolvimento';
+  const factor = getCountingTypeFactor(countingType, options.factor);
+  const title = (req.title || '').trim();
+  const userStory = (req.userStory || '').trim();
+  const bdd = (req.bdd || '').trim();
+  const feature = (req.feature || '').trim();
+  const fullText = `${title} ${feature} ${userStory} ${bdd}`.toLowerCase();
+
+  // 1. Identificar Entidade Principal do Requisito
+  let entityName = feature || title || 'Entidade de Negócio';
+  const entityMatch = title.match(/(?:gestão|cadastro|módulo|controle|extensão|consulta|registro|administração|relatório|fluxo|trilha)\s+de\s+([^,\.\n-]+)/i)
+    || title.match(/para\s+([^,\.\n-]+)/i);
+  if (entityMatch && entityMatch[1] && entityMatch[1].trim().length > 2) {
+    entityName = entityMatch[1].trim();
+  }
+  entityName = entityName.split(/\s+/).map(w => {
+    if (['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'para', 'com'].includes(w.toLowerCase())) {
+      return w.toLowerCase();
+    }
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  }).join(' ');
+
+  // 2. Extração de atributos e contagem de Tipos de Dados (TD)
+  const commonFieldKeywords = [
+    'nome', 'título', 'descrição', 'email', 'e-mail', 'cpf', 'cnpj', 'telefone', 'celular',
+    'endereço', 'rua', 'número', 'bairro', 'cidade', 'estado', 'cep', 'país', 'login', 'senha',
+    'perfil', 'cargo', 'departamento', 'área', 'data', 'data de nascimento', 'data de criação',
+    'horário', 'status', 'situação', 'valor', 'preço', 'saldo', 'total', 'taxa', 'desconto',
+    'código', 'id', 'identificador', 'tipo', 'categoria', 'observação', 'motivo', 'arquivo',
+    'anexo', 'foto', 'avatar', 'competência', 'meta', 'trilha', 'feedback', 'nota', 'pontuação',
+    'resultado', 'nível', 'permissão', 'papel', 'role', 'token', 'chave', 'quantidade', 'origem',
+    'destino', 'banco', 'agência', 'conta', 'pix', 'cartão', 'responsável', 'liderança', 'colaborador'
+  ];
+  const detectedFields = commonFieldKeywords.filter(k => fullText.includes(k));
+  const baseTd = Math.max(detectedFields.length + 3, 6);
+
+  const candidates = [];
+
+  // 3. Reconhecimento de Funções de Dados:
+  // AIE: Se houver indícios de APIs ou integrações com terceiros/sistemas externos
+  const isExternal = /(api|integração|externo|externa|terceiros|gateway|correios|receita|serasa|banco central|webhook|legado|webservice|parceiro)/i.test(fullText);
+  if (isExternal) {
+    const aieTd = Math.min(Math.max(baseTd, 8), 16);
+    const aieTr = 1;
+    const complexity = calculateApfComplexity('AIE', aieTr, aieTd);
+    const rawPf = calculateApfRawPf('AIE', complexity);
+    const finalPf = calculateApfFinalPf(rawPf, factor);
+    candidates.push({
+      id: `cand_aie_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: `AIE - Interface Externa: ${entityName}`,
+      functionType: 'AIE',
+      category: 'Dados',
+      td: aieTd,
+      arTr: aieTr,
+      complexity,
+      rawPf,
+      countingType,
+      factor,
+      finalPf,
+      notes: `Identificada dependência de serviço/API externa (${detectedFields.slice(0, 5).join(', ') || 'atributos externos'}).`,
+      rationale: `Reconhecido como Arquivo de Interface Externa (AIE) devido a menção de barramento/API de terceiros. ${aieTd} TDs e ${aieTr} TR.`
+    });
+  }
+
+  // ALI: Quase todo requisito funcional que mantém dados do sistema possui um ALI interno
+  const isDataStorage = !isExternal || /(banco|armazen|persist|tabela|entidade|cadastro|registro|salvar|histórico|dados|perfil|trilha)/i.test(fullText);
+  if (isDataStorage) {
+    const aliTd = Math.min(Math.max(baseTd + 4, 10), 28);
+    const aliTr = detectedFields.length > 7 ? 2 : 1;
+    const complexity = calculateApfComplexity('ALI', aliTr, aliTd);
+    const rawPf = calculateApfRawPf('ALI', complexity);
+    const finalPf = calculateApfFinalPf(rawPf, factor);
+    candidates.push({
+      id: `cand_ali_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: `ALI - Grupo de Dados de ${entityName}`,
+      functionType: 'ALI',
+      category: 'Dados',
+      td: aliTd,
+      arTr: aliTr,
+      complexity,
+      rawPf,
+      countingType,
+      factor,
+      finalPf,
+      notes: `Grupo de dados lógico interno para persistência das entidades de ${entityName}.`,
+      rationale: `Reconhecido como Arquivo Lógico Interno (ALI) mantido pelo sistema. Estimados ${aliTd} TDs e ${aliTr} TR(s).`
+    });
+  }
+
+  // 4. Reconhecimento de Processos Elementares (Transações):
+  // EE: Inclusão / Cadastro / Upload / Registro
+  const hasInclusion = /(incluir|cadastrar|criar|adicionar|registrar|novo|inserir|salvar|upload|importar|autenticar|login|enviar)/i.test(fullText) || !candidates.some(c => c.functionType === 'EE');
+  if (hasInclusion) {
+    const eeAddTd = Math.min(Math.max(baseTd, 6), 18);
+    const eeAddAr = 1;
+    const complexity = calculateApfComplexity('EE', eeAddAr, eeAddTd);
+    const rawPf = calculateApfRawPf('EE', complexity);
+    const finalPf = calculateApfFinalPf(rawPf, factor);
+    candidates.push({
+      id: `cand_ee_add_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: `EE - Incluir/Registrar ${entityName}`,
+      functionType: 'EE',
+      category: 'Transação',
+      td: eeAddTd,
+      arTr: eeAddAr,
+      complexity,
+      rawPf,
+      countingType,
+      factor,
+      finalPf,
+      notes: `Processo de entrada e gravação de novos dados de ${entityName}.`,
+      rationale: `Entrada Externa (EE): Processa dados de formulário e atualiza o ALI. ${eeAddTd} TDs, ${eeAddAr} AR.`
+    });
+  }
+
+  // EE: Alteração / Atualização / Progresso / Edição
+  const hasUpdate = /(alterar|atualizar|editar|modificar|ajustar|progresso|feedback|avaliação|revisão|mudar|status)/i.test(fullText);
+  if (hasUpdate) {
+    const eeUpdTd = Math.min(Math.max(baseTd - 1, 6), 16);
+    const eeUpdAr = 1;
+    const complexity = calculateApfComplexity('EE', eeUpdAr, eeUpdTd);
+    const rawPf = calculateApfRawPf('EE', complexity);
+    const finalPf = calculateApfFinalPf(rawPf, factor);
+    candidates.push({
+      id: `cand_ee_upd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: `EE - Atualizar/Editar ${entityName}`,
+      functionType: 'EE',
+      category: 'Transação',
+      td: eeUpdTd,
+      arTr: eeUpdAr,
+      complexity,
+      rawPf,
+      countingType,
+      factor,
+      finalPf,
+      notes: `Manutenção e atualização dos dados de ${entityName}.`,
+      rationale: `Entrada Externa (EE): Altera o comportamento e os registros existentes. ${eeUpdTd} TDs, ${eeUpdAr} AR.`
+    });
+  }
+
+  // EE: Exclusão / Cancelamento / Inativação
+  const hasDelete = /(excluir|remover|deletar|inativar|desativar|cancelar|apagar)/i.test(fullText);
+  if (hasDelete) {
+    const eeDelTd = 4;
+    const eeDelAr = 1;
+    const complexity = calculateApfComplexity('EE', eeDelAr, eeDelTd);
+    const rawPf = calculateApfRawPf('EE', complexity);
+    const finalPf = calculateApfFinalPf(rawPf, factor);
+    candidates.push({
+      id: `cand_ee_del_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: `EE - Excluir/Inativar ${entityName}`,
+      functionType: 'EE',
+      category: 'Transação',
+      td: eeDelTd,
+      arTr: eeDelAr,
+      complexity,
+      rawPf,
+      countingType,
+      factor,
+      finalPf,
+      notes: `Exclusão lógica ou física de ${entityName}.`,
+      rationale: `Entrada Externa (EE): Remove ou inativa registro alterando o estado do ALI. ${eeDelTd} TDs, ${eeDelAr} AR.`
+    });
+  }
+
+  // CE: Consulta / Pesquisa / Visualização / Listagem
+  const hasQuery = /(consultar|buscar|pesquisar|filtrar|listar|visualizar|exibir|ver|acompanhar|detalhar|grid|tabela|acessar)/i.test(fullText) || !candidates.some(c => c.functionType === 'CE');
+  if (hasQuery) {
+    const ceTd = Math.min(Math.max(baseTd + 2, 7), 20);
+    const ceAr = 1;
+    const complexity = calculateApfComplexity('CE', ceAr, ceTd);
+    const rawPf = calculateApfRawPf('CE', complexity);
+    const finalPf = calculateApfFinalPf(rawPf, factor);
+    candidates.push({
+      id: `cand_ce_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: `CE - Consultar/Listar ${entityName}`,
+      functionType: 'CE',
+      category: 'Transação',
+      td: ceTd,
+      arTr: ceAr,
+      complexity,
+      rawPf,
+      countingType,
+      factor,
+      finalPf,
+      notes: `Recuperação direta de dados e filtros de pesquisa de ${entityName}.`,
+      rationale: `Consulta Externa (CE): Recupera dados sem processamento matemático derivado. ${ceTd} TDs, ${ceAr} AR.`
+    });
+  }
+
+  // SE: Saída Externa / Relatório / Demonstrativo / Cálculos
+  const hasOutput = /(relatório|extrato|exportar|pdf|calcular|cálculo|demonstrativo|consolidado|gráfico|evolução|efetivação|faturamento|fechamento|totalizar|notificação|resumo|painel)/i.test(fullText);
+  if (hasOutput) {
+    const seTd = Math.min(Math.max(baseTd + 4, 10), 22);
+    const seAr = 2;
+    const complexity = calculateApfComplexity('SE', seAr, seTd);
+    const rawPf = calculateApfRawPf('SE', complexity);
+    const finalPf = calculateApfFinalPf(rawPf, factor);
+    candidates.push({
+      id: `cand_se_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: `SE - Demonstrativo/Relatório de ${entityName}`,
+      functionType: 'SE',
+      category: 'Transação',
+      td: seTd,
+      arTr: seAr,
+      complexity,
+      rawPf,
+      countingType,
+      factor,
+      finalPf,
+      notes: `Saída calculada ou consolidação formatada de ${entityName}.`,
+      rationale: `Saída Externa (SE): Envia dados com lógica de derivação matemática, totais ou documento consolidado. ${seTd} TDs, ${seAr} ARs.`
+    });
+  }
+
+  return {
+    sourceType: 'requirement',
+    sourceId: req.id,
+    sourceCode: req.code,
+    sourceTitle: req.title,
+    feature: req.feature,
+    projectId: req.project_id || req.projectId,
+    detectedFields,
+    candidates
+  };
+}
+
+/**
+ * Analisa semanticamente uma Feature e extrai funções de APF de todos os seus requisitos
+ */
+function inferApfFromFeature(projectId, featureName, options = {}) {
+  let query = 'SELECT * FROM requirements WHERE feature = ?';
+  const params = [featureName];
+  if (projectId && projectId !== 'all') {
+    query += ' AND project_id = ?';
+    params.push(projectId);
+  }
+  const requirements = db.prepare(query).all(...params);
+
+  let allCandidates = [];
+  const seenAliNames = new Set();
+
+  if (requirements.length > 0) {
+    requirements.forEach(req => {
+      const res = inferApfFromRequirement(req, options);
+      res.candidates.forEach(cand => {
+        // Desduplica ALIs se forem essencialmente o mesmo grupo de dados da feature
+        if (cand.functionType === 'ALI' || cand.functionType === 'AIE') {
+          if (seenAliNames.has(cand.name)) return;
+          seenAliNames.add(cand.name);
+        }
+        cand.reqId = req.id;
+        cand.reqCode = req.code;
+        cand.reqTitle = req.title;
+        cand.feature = featureName;
+        cand.projectId = req.project_id;
+        allCandidates.push(cand);
+      });
+    });
+  } else {
+    // Feature sem requisitos cadastrados: decompõe a própria feature arquiteturalmente
+    const fakeReq = {
+      id: '',
+      code: '',
+      title: featureName,
+      feature: featureName,
+      project_id: projectId,
+      userStory: `Feature ${featureName}`,
+      bdd: ''
+    };
+    const res = inferApfFromRequirement(fakeReq, options);
+    allCandidates = res.candidates.map(c => ({
+      ...c,
+      feature: featureName,
+      projectId: projectId || ''
+    }));
+  }
+
+  return {
+    sourceType: 'feature',
+    feature: featureName,
+    projectId: projectId || '',
+    requirementsCount: requirements.length,
+    candidates: allCandidates
+  };
+}
+
 
 // ==============================================================================
 // 5. Servidor HTTP Principal & Roteamento da REST API
@@ -1115,7 +1630,7 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && pathname === '/api/health') {
       return sendJson(res, 200, {
         status: 'online',
-        database: 'SQLite (devsquad.db)',
+        database: `SQLite (${path.basename(DB_PATH)})`,
         engine: 'node:sqlite (ACID)',
         timestamp: new Date().toISOString()
       });
@@ -1136,6 +1651,7 @@ const server = http.createServer(async (req, res) => {
         careers: getFullCareerTracks(),
         documentTemplates: getFullDocumentTemplates(),
         templates: getFullDocumentTemplates(),
+        apfItems: getFullApfItems(),
         auditLogs: isAdmin ? getFullAuditLogs(150) : []
       });
     }
@@ -2532,7 +3048,7 @@ const server = http.createServer(async (req, res) => {
           (data.primaryColor || data.primary_color || '#0284c7').trim(),
           (data.footerText || data.footer_text || '').trim(),
           (data.approvalTerms || data.approval_terms || '').trim(),
-          (data.signeeContratadaTitle || data.signee_contratada_title || 'PELA CONTRATADA (DEVSQUAD)').trim(),
+          (data.signeeContratadaTitle || data.signee_contratada_title || 'PELA CONTRATADA (SYNCHRO)').trim(),
           (data.signeeContratanteTitle || data.signee_contratante_title || 'PELA CONTRATANTE (CLIENTE)').trim(),
           data.includeUserStory !== false ? 1 : 0,
           data.includeAcceptanceCriteria !== false ? 1 : 0,
@@ -2777,8 +3293,381 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // 12.0. API de Geração Automática de APF (Preview e Batch)
+    if (pathname === '/api/apf/auto-generate/preview' && method === 'POST') {
+      const body = await parseJsonBody(req);
+      const { reqId, feature, projectId, countingType, factor } = body;
+
+      let result;
+      if (reqId) {
+        const reqRow = db.prepare('SELECT * FROM requirements WHERE id = ?').get(reqId);
+        if (!reqRow) {
+          return sendJson(res, 404, { success: false, message: 'Requisito não encontrado.' });
+        }
+        result = inferApfFromRequirement(reqRow, { countingType, factor });
+      } else if (feature) {
+        result = inferApfFromFeature(projectId, feature, { countingType, factor });
+      } else {
+        return sendJson(res, 400, { success: false, message: 'Informe reqId ou feature para análise automática de APF.' });
+      }
+
+      const totalRawPf = result.candidates.reduce((sum, c) => sum + (c.rawPf || 0), 0);
+      const totalFinalPf = Math.round(result.candidates.reduce((sum, c) => sum + (c.finalPf || 0), 0) * 100) / 100;
+
+      return sendJson(res, 200, {
+        success: true,
+        sourceType: result.sourceType,
+        sourceId: result.sourceId || '',
+        sourceCode: result.sourceCode || '',
+        sourceTitle: result.sourceTitle || '',
+        feature: result.feature || '',
+        projectId: result.projectId || '',
+        detectedFields: result.detectedFields || [],
+        candidates: result.candidates,
+        summary: {
+          totalFunctions: result.candidates.length,
+          totalRawPf,
+          totalFinalPf,
+          countAli: result.candidates.filter(c => c.functionType === 'ALI').length,
+          countAie: result.candidates.filter(c => c.functionType === 'AIE').length,
+          countEe: result.candidates.filter(c => c.functionType === 'EE').length,
+          countSe: result.candidates.filter(c => c.functionType === 'SE').length,
+          countCe: result.candidates.filter(c => c.functionType === 'CE').length
+        }
+      });
+    }
+
+    if (pathname === '/api/apf/auto-generate/batch' && method === 'POST') {
+      const callerRole = req.headers['x-user-role'] || req.headers['x-role'];
+      if (callerRole === 'dev' || callerRole === 'qa') {
+        return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para cadastrar itens de APF.' });
+      }
+
+      const body = await parseJsonBody(req);
+      const itemsToCreate = Array.isArray(body.items) ? body.items : [];
+      if (itemsToCreate.length === 0) {
+        return sendJson(res, 400, { success: false, message: 'Nenhuma função de APF informada para cadastro.' });
+      }
+
+      const defaultProjectId = body.projectId || null;
+      const defaultFeature = body.feature || '';
+      const defaultReqId = body.reqId || null;
+      const createdItems = [];
+      const now = new Date().toISOString();
+
+      const insertStmt = db.prepare(`
+        INSERT INTO apf_items (id, code, name, project_id, feature, req_id, function_type, category, td, ar_tr, complexity, raw_pf, counting_type, factor, final_pf, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const item of itemsToCreate) {
+        const functionType = (item.functionType || 'EE').toUpperCase().trim();
+        const category = getApfCategory(functionType);
+        const td = Math.max(1, parseInt(item.td, 10) || 1);
+        const arTr = Math.max(0, parseInt(item.arTr !== undefined ? item.arTr : item.trAr, 10) || 0);
+        const complexity = calculateApfComplexity(functionType, arTr, td);
+        const rawPf = calculateApfRawPf(functionType, complexity);
+        const countingType = item.countingType || body.countingType || 'Desenvolvimento';
+        const factor = getCountingTypeFactor(countingType, item.factor !== undefined ? item.factor : body.factor);
+        const finalPf = calculateApfFinalPf(rawPf, factor);
+
+        const count = db.prepare('SELECT count(*) as count FROM apf_items WHERE function_type = ?').get(functionType).count + 1;
+        const code = item.code || `${functionType}-${String(count).padStart(2, '0')}`;
+        const id = 'apf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+
+        let resolvedProjectId = (item.projectId || defaultProjectId || '').trim() || null;
+        if (resolvedProjectId) {
+          const pExists = db.prepare('SELECT id FROM projects WHERE id = ?').get(resolvedProjectId);
+          if (!pExists) resolvedProjectId = null;
+        }
+
+        let resolvedReqId = (item.reqId || defaultReqId || '').trim() || null;
+        if (resolvedReqId) {
+          const rExists = db.prepare('SELECT id FROM requirements WHERE id = ?').get(resolvedReqId);
+          if (!rExists) resolvedReqId = null;
+        }
+
+        const featureVal = (item.feature || defaultFeature || '').trim();
+        const notes = (item.notes || item.rationale || '').trim();
+
+        insertStmt.run(
+          id, code, item.name.trim(), resolvedProjectId, featureVal, resolvedReqId,
+          functionType, category, td, arTr, complexity, rawPf, countingType, factor, finalPf,
+          notes, now, now
+        );
+
+        createdItems.push({
+          id, code, name: item.name.trim(), projectId: resolvedProjectId, feature: featureVal, reqId: resolvedReqId,
+          functionType, category, td, arTr, complexity, rawPf, countingType, factor, finalPf
+        });
+      }
+
+      const actor = getActorFromReq(req);
+      logAudit({
+        entityType: 'apf',
+        entityId: 'batch_' + Date.now(),
+        entityTitle: `Geração Automática de ${createdItems.length} Funções APF`,
+        action: 'CREATE',
+        ...actor,
+        details: `Gerou automaticamente ${createdItems.length} funções de APF para ${defaultReqId ? 'Requisito ' + defaultReqId : 'Feature ' + defaultFeature} totalizando ${createdItems.reduce((acc, c) => acc + c.finalPf, 0).toFixed(1)} PF.`
+      });
+
+      return sendJson(res, 201, {
+        success: true,
+        count: createdItems.length,
+        items: createdItems
+      });
+    }
+
+    // 12. API de Análise de Pontos de Função (APF • IFPUG CPM 4.3.1)
+    if (pathname === '/api/apf') {
+      if (method === 'GET') {
+        const projectId = url.searchParams.get('projectId');
+        const feature = url.searchParams.get('feature');
+        let items = getFullApfItems();
+        if (projectId && projectId !== 'all') {
+          items = items.filter(it => it.projectId === projectId);
+        }
+        if (feature && feature !== 'all') {
+          items = items.filter(it => it.feature === feature);
+        }
+        return sendJson(res, 200, items);
+      }
+
+      if (method === 'POST') {
+        const callerRole = req.headers['x-user-role'] || req.headers['x-role'];
+        if (callerRole === 'dev' || callerRole === 'qa') {
+          return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para cadastrar itens de APF.' });
+        }
+
+        const body = await parseJsonBody(req);
+        if (!body.name || !body.functionType) {
+          return sendJson(res, 400, { success: false, message: 'Nome da função e Tipo de Função (EE, SE, CE, ALI, AIE) são obrigatórios.' });
+        }
+
+        const id = body.id || 'apf_' + Date.now();
+        const functionType = (body.functionType || 'EE').toUpperCase().trim();
+        const category = getApfCategory(functionType);
+        const td = Math.max(1, parseInt(body.td, 10) || 1);
+        const arTrRaw = body.arTr !== undefined ? body.arTr : (body.trAr !== undefined ? body.trAr : (body.ar_tr !== undefined ? body.ar_tr : (body.tr_ar !== undefined ? body.tr_ar : 0)));
+        const arTr = Math.max(0, parseInt(arTrRaw, 10) || 0);
+        const complexity = calculateApfComplexity(functionType, arTr, td);
+        const rawPf = calculateApfRawPf(functionType, complexity);
+        const countingType = body.countingType || 'Desenvolvimento';
+        const factor = getCountingTypeFactor(countingType, body.factor);
+        const finalPf = calculateApfFinalPf(rawPf, factor);
+        const now = new Date().toISOString();
+
+        let code = (body.code || '').trim();
+        if (!code) {
+          const count = db.prepare('SELECT count(*) as count FROM apf_items WHERE function_type = ?').get(functionType).count + 1;
+          code = `${functionType}-${String(count).padStart(2, '0')}`;
+        }
+
+        let resolvedProjectId = (body.projectId || '').trim() || null;
+        if (resolvedProjectId) {
+          const pExists = db.prepare('SELECT id FROM projects WHERE id = ?').get(resolvedProjectId);
+          if (!pExists) resolvedProjectId = null;
+        }
+
+        let resolvedReqId = (body.reqId || '').trim() || null;
+        if (resolvedReqId) {
+          const rExists = db.prepare('SELECT id FROM requirements WHERE id = ?').get(resolvedReqId);
+          if (!rExists) resolvedReqId = null;
+        }
+
+        db.prepare(`
+          INSERT INTO apf_items (id, code, name, project_id, feature, req_id, function_type, category, td, ar_tr, complexity, raw_pf, counting_type, factor, final_pf, notes, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          id, code, body.name.trim(), resolvedProjectId, (body.feature || '').trim(), resolvedReqId,
+          functionType, category, td, arTr, complexity, rawPf, countingType, factor, finalPf,
+          body.notes || '', now, now
+        );
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'apf',
+          entityId: id,
+          entityTitle: `${code} - ${body.name.trim()} (${functionType})`,
+          action: 'CREATE',
+          ...actor,
+          details: `Cadastrou função ${functionType} [${code}]: TD=${td}, AR/TR=${arTr} ➔ Complexidade ${complexity}, ${rawPf} PF Bruto, Tipo: ${countingType} (${Math.round(factor * 100)}%), ${finalPf} PF Final.`
+        });
+
+        const created = db.prepare(`
+          SELECT a.*, p.name as project_name, p.code as project_code, r.code as req_code, r.title as req_title
+          FROM apf_items a
+          LEFT JOIN projects p ON a.project_id = p.id
+          LEFT JOIN requirements r ON a.req_id = r.id
+          WHERE a.id = ?
+        `).get(id);
+
+        return sendJson(res, 201, {
+          success: true,
+          item: {
+            id: created.id,
+            code: created.code,
+            name: created.name,
+            projectId: created.project_id || '',
+            projectName: created.project_name || '',
+            projectCode: created.project_code || '',
+            feature: created.feature || '',
+            reqId: created.req_id || '',
+            reqCode: created.req_code || '',
+            reqTitle: created.req_title || '',
+            functionType: created.function_type,
+            category: created.category,
+            td: created.td,
+            arTr: created.ar_tr,
+            complexity: created.complexity,
+            rawPf: created.raw_pf,
+            countingType: created.counting_type,
+            factor: created.factor,
+            finalPf: created.final_pf,
+            notes: created.notes || '',
+            createdAt: created.created_at,
+            updatedAt: created.updated_at
+          }
+        });
+      }
+    }
+
+    if (pathname.startsWith('/api/apf/')) {
+      const apfId = pathname.split('/')[3];
+
+      if (method === 'PUT') {
+        const callerRole = req.headers['x-user-role'] || req.headers['x-role'];
+        if (callerRole === 'dev' || callerRole === 'qa') {
+          return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para editar itens de APF.' });
+        }
+
+        const existing = db.prepare('SELECT * FROM apf_items WHERE id = ?').get(apfId);
+        if (!existing) {
+          return sendJson(res, 404, { success: false, message: 'Item de APF não encontrado.' });
+        }
+
+        const body = await parseJsonBody(req);
+        const functionType = ((body.functionType !== undefined ? body.functionType : existing.function_type) || 'EE').toUpperCase().trim();
+        const category = getApfCategory(functionType);
+        const td = Math.max(1, parseInt(body.td !== undefined ? body.td : existing.td, 10) || 1);
+        const arTrRaw = body.arTr !== undefined ? body.arTr : (body.trAr !== undefined ? body.trAr : (body.ar_tr !== undefined ? body.ar_tr : (body.tr_ar !== undefined ? body.tr_ar : existing.ar_tr)));
+        const arTr = Math.max(0, parseInt(arTrRaw, 10) || 0);
+        const complexity = calculateApfComplexity(functionType, arTr, td);
+        const rawPf = calculateApfRawPf(functionType, complexity);
+        const countingType = body.countingType !== undefined ? body.countingType : existing.counting_type;
+        const factor = body.factor !== undefined
+          ? getCountingTypeFactor(countingType, body.factor)
+          : (body.countingType !== undefined ? getCountingTypeFactor(countingType) : existing.factor);
+        const finalPf = calculateApfFinalPf(rawPf, factor);
+        const now = new Date().toISOString();
+
+        const code = body.code !== undefined ? (body.code || '').trim() : existing.code;
+        const name = body.name !== undefined ? (body.name || '').trim() : existing.name;
+        let resolvedProjectId = body.projectId !== undefined ? ((body.projectId || '').trim() || null) : existing.project_id;
+        if (resolvedProjectId) {
+          const pExists = db.prepare('SELECT id FROM projects WHERE id = ?').get(resolvedProjectId);
+          if (!pExists) resolvedProjectId = null;
+        }
+
+        const feature = body.feature !== undefined ? (body.feature || '').trim() : existing.feature;
+        let resolvedReqId = body.reqId !== undefined ? ((body.reqId || '').trim() || null) : existing.req_id;
+        if (resolvedReqId) {
+          const rExists = db.prepare('SELECT id FROM requirements WHERE id = ?').get(resolvedReqId);
+          if (!rExists) resolvedReqId = null;
+        }
+
+        const notes = body.notes !== undefined ? body.notes : existing.notes;
+
+        db.prepare(`
+          UPDATE apf_items
+          SET code = ?, name = ?, project_id = ?, feature = ?, req_id = ?,
+              function_type = ?, category = ?, td = ?, ar_tr = ?, complexity = ?,
+              raw_pf = ?, counting_type = ?, factor = ?, final_pf = ?, notes = ?, updated_at = ?
+          WHERE id = ?
+        `).run(
+          code, name, resolvedProjectId, feature, resolvedReqId,
+          functionType, category, td, arTr, complexity,
+          rawPf, countingType, factor, finalPf, notes, now,
+          apfId
+        );
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'apf',
+          entityId: apfId,
+          entityTitle: `${code} - ${name} (${functionType})`,
+          action: 'UPDATE',
+          ...actor,
+          details: `Atualizou função ${functionType} [${code}]: TD=${td}, AR/TR=${arTr} ➔ Complexidade ${complexity}, ${rawPf} PF Bruto, Tipo: ${countingType} (${Math.round(factor * 100)}%), ${finalPf} PF Final.`
+        });
+
+        const updated = db.prepare(`
+          SELECT a.*, p.name as project_name, p.code as project_code, r.code as req_code, r.title as req_title
+          FROM apf_items a
+          LEFT JOIN projects p ON a.project_id = p.id
+          LEFT JOIN requirements r ON a.req_id = r.id
+          WHERE a.id = ?
+        `).get(apfId);
+
+        return sendJson(res, 200, {
+          success: true,
+          item: {
+            id: updated.id,
+            code: updated.code,
+            name: updated.name,
+            projectId: updated.project_id || '',
+            projectName: updated.project_name || '',
+            projectCode: updated.project_code || '',
+            feature: updated.feature || '',
+            reqId: updated.req_id || '',
+            reqCode: updated.req_code || '',
+            reqTitle: updated.req_title || '',
+            functionType: updated.function_type,
+            category: updated.category,
+            td: updated.td,
+            arTr: updated.ar_tr,
+            complexity: updated.complexity,
+            rawPf: updated.raw_pf,
+            countingType: updated.counting_type,
+            factor: updated.factor,
+            finalPf: updated.final_pf,
+            notes: updated.notes || '',
+            createdAt: updated.created_at,
+            updatedAt: updated.updated_at
+          }
+        });
+      }
+
+      if (method === 'DELETE') {
+        const callerRole = req.headers['x-user-role'];
+        if (callerRole === 'dev' || callerRole === 'qa') {
+          return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para excluir itens de APF.' });
+        }
+
+        const existing = db.prepare('SELECT * FROM apf_items WHERE id = ?').get(apfId);
+        if (!existing) {
+          return sendJson(res, 404, { success: false, message: 'Item de APF não encontrado.' });
+        }
+
+        db.prepare('DELETE FROM apf_items WHERE id = ?').run(apfId);
+
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'apf',
+          entityId: apfId,
+          entityTitle: `${existing.code} - ${existing.name}`,
+          action: 'DELETE',
+          ...actor,
+          details: `Excluiu função APF ${existing.function_type} [${existing.code}] com ${existing.final_pf} PF.`
+        });
+
+        return sendJson(res, 200, { success: true, id: apfId });
+      }
+    }
+
     // --------------------------------------------------------------------------
-    // SERVIDOR DE ARQUIVOS ESTÁTICOS (Frontend DevSquad PRO)
+    // SERVIDOR DE ARQUIVOS ESTÁTICOS (Frontend Synchro PRO)
     // --------------------------------------------------------------------------
     let filePath = path.join(__dirname, pathname === '/' ? 'index.html' : pathname);
     if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
@@ -2822,7 +3711,7 @@ server.listen(PORT, HOST, () => {
   }
 
   console.log(`==================================================`);
-  console.log(`🌐 Servidor DevSquad PRO rodando com sucesso!`);
+  console.log(`🌐 Servidor Synchro PRO rodando com sucesso!`);
   console.log(`🔗 Acesso Local:        http://localhost:${PORT}`);
   console.log(`🔗 Acesso Loopback:     http://127.0.0.1:${PORT}`);
   if (lanIps.length > 0) {

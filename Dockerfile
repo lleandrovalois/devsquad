@@ -14,7 +14,7 @@ COPY vendor ./vendor
 ENV NODE_ENV=production
 ENV PORT=3001
 ENV HOST=0.0.0.0
-ENV DB_PATH=/app/data/devsquad.db
+ENV DB_PATH=/app/data/synchro.db
 
 RUN mkdir -p /app/data
 
