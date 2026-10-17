@@ -5691,6 +5691,65 @@ tr.highlight-pulse {
   font-weight: 600;
 }
 
+/* Abas de Navegação no Assistente CFPS */
+.apf-result-tab {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.apf-result-tab:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+}
+
+.apf-result-tab.active {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25));
+  border-color: rgba(168, 85, 247, 0.5);
+  color: #c084fc;
+}
+
+/* Linhas da Tabela de Itens Não-Mensuráveis no Modal CFPS */
+.apf-inm-card-row {
+  display: grid;
+  grid-template-columns: 36px 130px 1fr 90px 80px 80px;
+  gap: 8px;
+  align-items: center;
+  padding: 0.75rem 0.85rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.apf-inm-card-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+.apf-inm-card-row.is-unselected {
+  opacity: 0.45;
+  background: transparent;
+}
+
+.apf-inm-card-header {
+  display: grid;
+  grid-template-columns: 36px 130px 1fr 90px 80px 80px;
+  gap: 8px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 0.4rem;
+}
+
 /* ==============================================================================
    ESTILOS: ITENS NÃO-MENSURÁVEIS (FPN • MÉTRICAS CONTRATUAIS / SISP)
    ============================================================================== */

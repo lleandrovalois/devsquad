@@ -1920,8 +1920,8 @@
               <button class="btn btn-secondary" id="btn-open-apf-inm-modal" style="background: linear-gradient(135deg, rgba(16,185,129,0.18), rgba(6,182,212,0.22)); border: 1px solid rgba(16,185,129,0.4); color: #34d399; font-weight: 700;" title="Registrar intervenção técnica não mensurável pelo IFPUG tradicional (Code Tables, Menus, Layouts, Parâmetros, etc.)">
                 <span>⚙️ + Item Não-Mensurável (FPN)</span>
               </button>
-              <button class="btn btn-secondary" id="btn-open-apf-auto-modal" style="background: linear-gradient(135deg, rgba(99,102,241,0.22), rgba(168,85,247,0.28)); border: 1px solid rgba(168,85,247,0.45); color: #c084fc; font-weight: 700;" title="Gerar Pontos de Função automaticamente a partir de um Requisito ou Feature selecionada">
-                <span>⚡ Gerar APF Automaticamente</span>
+              <button class="btn btn-secondary" id="btn-open-apf-auto-modal" style="background: linear-gradient(135deg, rgba(99,102,241,0.22), rgba(168,85,247,0.28)); border: 1px solid rgba(168,85,247,0.45); color: #c084fc; font-weight: 700;" title="Auditar e mensurar Pontos de Função (IFPUG CPM 4.3.1 + Padrão SISP) para Requisitos, Features ou Histórias BDD livres">
+                <span>⚡ Auditor CFPS & Medição Inteligente</span>
               </button>
               <button class="btn btn-primary btn-glow" id="btn-open-apf-modal" title="Cadastrar nova função de dados ou processo elementar com cálculo automático de PF">
                 <span>+ Nova Função Manual</span>
@@ -4277,13 +4277,16 @@
 
   <!-- Modal: Geração Automática de Pontos de Função (APF) a partir de Requisito ou Feature -->
   <div class="modal-backdrop" id="modal-apf-auto-generate">
-    <div class="modal-dialog glass-panel" style="max-width: 960px; width: 95%; max-height: 90vh; overflow-y: auto;">
+    <div class="modal-dialog glass-panel" style="max-width: 1040px; width: 96%; max-height: 92vh; overflow-y: auto;">
       <div class="modal-header">
         <div style="display: flex; align-items: center; gap: 10px;">
-          <div style="width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(168,85,247,0.3)); display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">⚡</div>
+          <div style="width: 38px; height: 38px; border-radius: 8px; background: linear-gradient(135deg, rgba(99,102,241,0.35), rgba(168,85,247,0.35)); display: flex; align-items: center; justify-content: center; font-size: 1.35rem;">⚡</div>
           <div>
-            <h2 class="modal-title">Geração Automática de APF (IFPUG CPM 4.3.1)</h2>
-            <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Decomposição heurística de Requisitos e Features em funções de dados (ALI/AIE) e transacionais (EE/SE/CE) com cálculo exato de PF.</p>
+            <h2 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+              <span>Auditor Especialista CFPS & Medição de APF</span>
+              <span class="badge-subtle" style="font-size: 0.7rem; background: rgba(168,85,247,0.18); color: #c084fc; border: 1px solid rgba(168,85,247,0.4);">IFPUG CPM 4.3.1 + SISP</span>
+            </h2>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Decomposição rigorosa de Histórias de Usuário e BDD em Funções de Dados (ALI/AIE), Funções Transacionais (EE/SE/CE) e Itens Não-Mensuráveis (FPN).</p>
           </div>
         </div>
         <button class="modal-close" data-close="modal-apf-auto-generate">&times;</button>
@@ -4294,18 +4297,19 @@
         <div class="glass-subpanel" style="padding: 1.15rem; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 8px;">
             <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">
-              1. Seleção do Escopo de Análise
+              1. Seleção do Escopo ou Entrada da Especificação
             </div>
-            <!-- Segmented control Modo: Por Requisito vs Por Feature -->
+            <!-- Segmented control Modo: Por Requisito vs Por Feature vs BDD Livre -->
             <div class="segmented-control" id="apf-auto-mode-toggle" style="background: rgba(15,23,42,0.6);">
-              <button type="button" class="segment-btn active" data-mode="req">📄 Por Requisito Específico</button>
-              <button type="button" class="segment-btn" data-mode="feature">🧩 Por Feature Completa</button>
+              <button type="button" class="segment-btn active" data-mode="req">📄 Por Requisito</button>
+              <button type="button" class="segment-btn" data-mode="feature">🧩 Por Feature</button>
+              <button type="button" class="segment-btn" data-mode="spec">✍️ História / BDD Livre</button>
             </div>
           </div>
 
-          <div class="form-row">
+          <div class="form-row" id="apf-auto-standard-inputs">
             <div class="form-group flex-1">
-              <label for="apf-auto-project-select">Projeto *</label>
+              <label for="apf-auto-project-select">Projeto de Destino *</label>
               <select id="apf-auto-project-select" class="custom-select"></select>
             </div>
             <div class="form-group flex-1" id="apf-auto-feature-group">
@@ -4318,9 +4322,18 @@
             </div>
           </div>
 
-          <div class="form-row" style="margin-top: 0.75rem; align-items: flex-end;">
+          <!-- Campo de Especificação / História / BDD Livre -->
+          <div id="apf-auto-spec-group" style="display: none; margin-top: 0.75rem;">
+            <label for="apf-auto-spec-text" style="font-size: 0.8rem; font-weight: 700; color: var(--text-main); display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span>História de Usuário (User Story) & Critérios de Aceitação BDD (Gherkin) / Especificação Funcional:</span>
+              <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 400;">Cole User Story, BDD ou itens contratuais</span>
+            </label>
+            <textarea id="apf-auto-spec-text" class="custom-textarea" rows="4" style="font-family: inherit; font-size: 0.85rem; width: 100%;" placeholder="Como gestor de RH, quero incluir trilhas de desenvolvimento...&#10;Dado que um colaborador possui o perfil 'Estagiário'&#10;Quando acessar o módulo de desenvolvimento&#10;Então o sistema deve exibir metas e competências, permitindo o registro de progresso e feedbacks...&#10;(Ou itens técnicos: Inclusão de Code Table de status, ajuste de layout CSS, novos itens de menu)"></textarea>
+          </div>
+
+          <div class="form-row" style="margin-top: 0.85rem; align-items: flex-end;">
             <div class="form-group flex-1">
-              <label for="apf-auto-counting-type">Tipo de Contagem (Redutor) *</label>
+              <label for="apf-auto-counting-type">Tipo de Contagem (Redutor Contratual) *</label>
               <select id="apf-auto-counting-type" class="custom-select">
                 <option value="Desenvolvimento">Desenvolvimento Novo (100%)</option>
                 <option value="Melhoria">Melhoria / Manutenção Evolutiva (100%)</option>
@@ -4328,90 +4341,118 @@
                 <option value="Transferência Tecnológica">Transferência Tecnológica / Sustentação (20%)</option>
               </select>
             </div>
-            <div class="form-group" style="width: 140px;">
+            <div class="form-group" style="width: 130px;">
               <label for="apf-auto-factor-percent">Fator (%)</label>
               <input type="number" id="apf-auto-factor-percent" class="custom-input" value="100" min="1" max="200" step="1">
             </div>
             <div class="form-group" style="flex: 0 0 auto;">
-              <button type="button" class="btn btn-primary btn-glow" id="btn-run-apf-auto-analysis" style="background: linear-gradient(135deg, #6366f1, #a855f7); border: none; height: 38px;">
-                <span>🔍 Analisar e Identificar Funções</span>
+              <button type="button" class="btn btn-primary btn-glow" id="btn-run-apf-auto-analysis" style="background: linear-gradient(135deg, #6366f1, #a855f7); border: none; height: 38px; font-weight: 700;">
+                <span>🔍 Auditar e Mensurar (CFPS)</span>
               </button>
             </div>
           </div>
         </div>
 
-        <!-- Painel de Contexto Identificado (resumo do requisito e tags de campos) -->
-        <div id="apf-auto-context-card" class="glass-subpanel" style="display: none; padding: 1rem; border-radius: var(--radius-md); border-left: 4px solid #818cf8; background: rgba(99,102,241,0.06);">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+        <!-- Painel de Contexto Identificado (resumo, fronteira e natureza da demanda) -->
+        <div id="apf-auto-context-card" class="glass-subpanel" style="display: none; padding: 1.15rem; border-radius: var(--radius-md); border-left: 4px solid #818cf8; background: rgba(99,102,241,0.06);">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
             <div>
-              <strong id="apf-auto-context-title" style="font-size: 0.95rem; color: var(--text-main);"></strong>
+              <strong id="apf-auto-context-title" style="font-size: 1rem; color: var(--text-main);"></strong>
               <div id="apf-auto-context-meta" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;"></div>
             </div>
-            <span id="apf-auto-context-badge" class="badge-subtle" style="font-size: 0.72rem; padding: 3px 8px;"></span>
+            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+              <span id="apf-auto-nature-badge" class="badge-subtle" style="font-size: 0.74rem; font-weight: 700; padding: 4px 10px;"></span>
+              <span id="apf-auto-context-badge" class="badge-subtle" style="font-size: 0.72rem; padding: 4px 8px;"></span>
+            </div>
           </div>
-          <div id="apf-auto-context-desc" style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4; margin-bottom: 8px;"></div>
+          <div id="apf-auto-context-desc" style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.45; margin-bottom: 8px;"></div>
           <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-            <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">Atributos & Dados Detectados:</span>
+            <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">Atributos & Dados Identificados (TDs):</span>
             <div id="apf-auto-context-tags" style="display: flex; gap: 4px; flex-wrap: wrap;"></div>
           </div>
         </div>
 
-        <!-- Tabela / Lista de Funções Identificadas -->
+        <!-- Abas de Resultados: Funções IFPUG, Itens Não-Mensuráveis e Laudo CFPS -->
         <div class="glass-subpanel" style="padding: 1.15rem; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 8px;">
-            <div>
-              <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">
-                2. Funções Identificadas e Matrizes IFPUG
-              </div>
-              <small style="color: var(--text-muted); font-size: 0.75rem;">Você pode marcar/desmarcar itens ou ajustar TD e AR/TR antes de gravar.</small>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
+            <!-- Abas do Modal -->
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-xs apf-result-tab active" data-tab="ifpug" id="tab-btn-apf-ifpug" style="font-weight: 700;">
+                📊 Funções Tradicionais IFPUG (<span id="apf-tab-ifpug-count">0</span>)
+              </button>
+              <button type="button" class="btn btn-xs apf-result-tab" data-tab="inm" id="tab-btn-apf-inm" style="font-weight: 700;">
+                ⚙️ Itens Não-Mensuráveis / FPN (<span id="apf-tab-inm-count">0</span>)
+              </button>
+              <button type="button" class="btn btn-xs apf-result-tab" data-tab="report" id="tab-btn-apf-report" style="font-weight: 700;">
+                📋 Laudo Oficial do Auditor (Markdown)
+              </button>
             </div>
-            <div style="display: flex; gap: 6px;">
+            <div style="display: flex; gap: 6px;" id="apf-auto-selection-actions">
               <button type="button" class="btn btn-ghost btn-xs" id="btn-apf-auto-select-all" style="font-size: 0.72rem;">Marcar Todos</button>
               <button type="button" class="btn btn-ghost btn-xs" id="btn-apf-auto-deselect-all" style="font-size: 0.72rem;">Desmarcar Todos</button>
             </div>
           </div>
 
-          <div id="apf-auto-results-container">
-            <div style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
-              <div style="font-size: 2rem; margin-bottom: 0.5rem;">⚡</div>
-              <p style="font-size: 0.95rem;">Selecione o Requisito ou Feature acima e clique em <strong>"Analisar e Identificar Funções"</strong>.</p>
-              <small>O algoritmo examinará o vocabulário funcional, história de usuário e BDD para deduzir as funções de dados e transacionais.</small>
+          <!-- Aba 1: Funções Tradicionais IFPUG -->
+          <div id="apf-auto-tab-content-ifpug">
+            <div id="apf-auto-results-container">
+              <div style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">⚡</div>
+                <p style="font-size: 0.95rem;">Selecione o Requisito, Feature ou cole uma História BDD acima e clique em <strong>"Auditar e Mensurar (CFPS)"</strong>.</p>
+                <small>O algoritmo aplicará as matrizes IFPUG CPM 4.3.1 e as tabelas contratuais SISP de itens não-mensuráveis.</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- Aba 2: Itens Não-Mensuráveis (FPN • Padrão SISP) -->
+          <div id="apf-auto-tab-content-inm" style="display: none;">
+            <div id="apf-auto-inm-container">
+              <div style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
+                <p style="font-size: 0.92rem;">Nenhum item não-mensurável analisado no momento.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Aba 3: Laudo Pericial CFPS em Markdown Formatado -->
+          <div id="apf-auto-tab-content-report" style="display: none;">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 0.75rem;">
+              <button type="button" class="btn btn-secondary btn-xs" id="btn-copy-cfps-markdown" style="font-weight: 600;">
+                <span>📋 Copiar Laudo Markdown</span>
+              </button>
+            </div>
+            <div id="apf-auto-report-preview" class="glass-subpanel" style="padding: 1.25rem; border-radius: var(--radius-sm); font-family: monospace; font-size: 0.84rem; white-space: pre-wrap; line-height: 1.5; color: var(--text-main); background: rgba(0,0,0,0.35); max-height: 380px; overflow-y: auto;">
+              Nenhum laudo gerado ainda.
             </div>
           </div>
         </div>
 
         <!-- HUD de Totais e Ações -->
-        <div id="apf-auto-summary-hud" class="apf-live-calc-box" style="display: none; padding: 1rem 1.25rem;">
+        <div id="apf-auto-summary-hud" class="apf-live-calc-box" style="display: none; padding: 1.15rem 1.35rem;">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
             <div style="display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap;">
               <div>
-                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; font-weight: 700;">Funções Selecionadas</span>
+                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; font-weight: 700;">Itens Selecionados</span>
                 <strong id="apf-auto-hud-count" style="font-size: 1.25rem; color: var(--text-main);">0</strong>
               </div>
               <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.1);"></div>
               <div>
-                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; font-weight: 700;">Dados (ALI/AIE)</span>
-                <strong id="apf-auto-hud-data" style="font-size: 1.1rem; color: #60a5fa;">0</strong>
+                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; font-weight: 700;">IFPUG (Dados/Tx)</span>
+                <strong id="apf-auto-hud-final" style="font-size: 1.2rem; color: #60a5fa;">0.0 PF</strong>
               </div>
               <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.1);"></div>
               <div>
-                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; font-weight: 700;">Transações (EE/SE/CE)</span>
-                <strong id="apf-auto-hud-tx" style="font-size: 1.1rem; color: #a78bfa;">0</strong>
+                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; font-weight: 700;">Não-Mensuráveis (FPN)</span>
+                <strong id="apf-auto-hud-inm" style="font-size: 1.2rem; color: #34d399;">0.0 PF</strong>
               </div>
               <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.1);"></div>
               <div>
-                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; font-weight: 700;">Total PF Bruto</span>
-                <strong id="apf-auto-hud-raw" style="font-size: 1.25rem; color: #f59e0b;">0 PF</strong>
-              </div>
-              <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.1);"></div>
-              <div>
-                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; font-weight: 700;">Total PF Final Líquido</span>
-                <strong id="apf-auto-hud-final" style="font-size: 1.35rem; color: #10b981;">0.0 PF</strong>
+                <span style="font-size: 0.72rem; color: #fbbf24; display: block; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">Total Global Faturável</span>
+                <strong id="apf-auto-hud-global" style="font-size: 1.45rem; color: #10b981;">0.0 PF</strong>
               </div>
             </div>
             <div>
-              <button type="button" class="btn btn-primary btn-glow" id="btn-confirm-save-apf-auto" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: 700; padding: 0.65rem 1.4rem;">
-                <span>🚀 Gravar Funções de APF</span>
+              <button type="button" class="btn btn-primary btn-glow" id="btn-confirm-save-apf-auto" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: 700; padding: 0.7rem 1.5rem;">
+                <span>🚀 Gravar Funções & FPN no Projeto</span>
               </button>
             </div>
           </div>

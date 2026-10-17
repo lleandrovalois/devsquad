@@ -13334,8 +13334,11 @@ function initApfEventListeners() {
     btnSelectAll.dataset.init = 'true';
     btnSelectAll.addEventListener('click', () => {
       currentApfAutoCandidates.forEach(c => c.selected = true);
+      currentApfAutoInmCandidates.forEach(inm => inm.selected = true);
       document.querySelectorAll('.apf-auto-chk').forEach(chk => chk.checked = true);
+      document.querySelectorAll('.apf-auto-inm-chk').forEach(chk => chk.checked = true);
       document.querySelectorAll('.apf-auto-card-row').forEach(row => row.classList.remove('is-unselected'));
+      document.querySelectorAll('.apf-inm-card-row').forEach(row => row.classList.remove('is-unselected'));
       updateApfAutoSummaryHud();
     });
   }
@@ -13345,9 +13348,37 @@ function initApfEventListeners() {
     btnDeselectAll.dataset.init = 'true';
     btnDeselectAll.addEventListener('click', () => {
       currentApfAutoCandidates.forEach(c => c.selected = false);
+      currentApfAutoInmCandidates.forEach(inm => inm.selected = false);
       document.querySelectorAll('.apf-auto-chk').forEach(chk => chk.checked = false);
+      document.querySelectorAll('.apf-auto-inm-chk').forEach(chk => chk.checked = false);
       document.querySelectorAll('.apf-auto-card-row').forEach(row => row.classList.add('is-unselected'));
+      document.querySelectorAll('.apf-inm-card-row').forEach(row => row.classList.add('is-unselected'));
       updateApfAutoSummaryHud();
+    });
+  }
+
+  // Abas do resultado da auditoria CFPS
+  document.querySelectorAll('.apf-result-tab').forEach(btn => {
+    if (!btn.dataset.init) {
+      btn.dataset.init = 'true';
+      btn.addEventListener('click', () => setApfAutoTab(btn.dataset.tab));
+    }
+  });
+
+  // Botão copiar laudo Markdown
+  const btnCopyReport = document.getElementById('btn-copy-cfps-markdown');
+  if (btnCopyReport && !btnCopyReport.dataset.init) {
+    btnCopyReport.dataset.init = 'true';
+    btnCopyReport.addEventListener('click', () => {
+      if (!currentApfReportMarkdown) {
+        showToast('Nenhum laudo disponível para copiar.', 'warn');
+        return;
+      }
+      navigator.clipboard.writeText(currentApfReportMarkdown).then(() => {
+        showToast('Laudo Pericial CFPS copiado para a área de transferência!', 'success');
+      }).catch(() => {
+        showToast('Erro ao copiar laudo para o clipboard.', 'error');
+      });
     });
   }
 
@@ -13361,18 +13392,43 @@ function initApfEventListeners() {
 window.initApfEventListeners = initApfEventListeners;
 
 // ==============================================================================
-// 13. Módulo de Geração Automática de APF (Heurística e Decomposição IFPUG)
+// 13. Módulo de Geração Automática de APF & Auditoria CFPS
 // ==============================================================================
 let currentApfAutoCandidates = [];
+let currentApfAutoInmCandidates = [];
+let currentApfReportMarkdown = '';
+let currentApfActiveTab = 'ifpug';
 
 /**
- * Abre o Modal de Geração Automática de APF
+ * Alterna as abas de resultados do Modal de Auditoria CFPS
+ */
+function setApfAutoTab(tab) {
+  currentApfActiveTab = tab;
+  document.querySelectorAll('.apf-result-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  const tabIfpug = document.getElementById('apf-auto-tab-content-ifpug');
+  const tabInm = document.getElementById('apf-auto-tab-content-inm');
+  const tabReport = document.getElementById('apf-auto-tab-content-report');
+  const selActions = document.getElementById('apf-auto-selection-actions');
+
+  if (tabIfpug) tabIfpug.style.display = tab === 'ifpug' ? '' : 'none';
+  if (tabInm) tabInm.style.display = tab === 'inm' ? '' : 'none';
+  if (tabReport) tabReport.style.display = tab === 'report' ? '' : 'none';
+  if (selActions) selActions.style.display = tab === 'report' ? 'none' : 'flex';
+}
+window.setApfAutoTab = setApfAutoTab;
+
+/**
+ * Abre o Modal de Geração Automática de APF & Auditoria CFPS
  */
 function openApfAutoModal(initialReqId = null, initialFeature = null) {
   const modal = document.getElementById('modal-apf-auto-generate');
   if (!modal) return;
 
   currentApfAutoCandidates = [];
+  currentApfAutoInmCandidates = [];
+  currentApfReportMarkdown = '';
   populateApfAutoSelects();
 
   const contextCard = document.getElementById('apf-auto-context-card');
@@ -13386,11 +13442,23 @@ function openApfAutoModal(initialReqId = null, initialFeature = null) {
     resultsContainer.innerHTML = `
       <div style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
         <div style="font-size: 2rem; margin-bottom: 0.5rem;">⚡</div>
-        <p style="font-size: 0.95rem;">Selecione o Requisito ou Feature acima e clique em <strong>"Analisar e Identificar Funções"</strong>.</p>
-        <small>O algoritmo examinará o vocabulário funcional, história de usuário e BDD para deduzir as funções de dados e transacionais.</small>
+        <p style="font-size: 0.95rem;">Selecione o Requisito, Feature ou cole uma História BDD acima e clique em <strong>"Auditar e Mensurar (CFPS)"</strong>.</p>
+        <small>O algoritmo aplicará as matrizes IFPUG CPM 4.3.1 e as tabelas contratuais SISP de itens não-mensuráveis.</small>
       </div>
     `;
   }
+
+  const inmContainer = document.getElementById('apf-auto-inm-container');
+  if (inmContainer) {
+    inmContainer.innerHTML = `<div style="padding: 2.5rem; text-align: center; color: var(--text-muted);"><p style="font-size: 0.92rem;">Nenhum item não-mensurável analisado no momento.</p></div>`;
+  }
+
+  const reportPreview = document.getElementById('apf-auto-report-preview');
+  if (reportPreview) {
+    reportPreview.textContent = 'Nenhum laudo gerado ainda.';
+  }
+
+  setApfAutoTab('ifpug');
 
   // Se veio pré-selecionado por Requisito
   if (initialReqId) {
@@ -13425,7 +13493,7 @@ function openApfAutoModal(initialReqId = null, initialFeature = null) {
 window.openApfAutoModal = openApfAutoModal;
 
 /**
- * Alterna entre Modo Requisito e Modo Feature
+ * Alterna entre Modo Requisito, Modo Feature e Modo BDD Livre
  */
 function setApfAutoMode(mode) {
   const toggle = document.getElementById('apf-auto-mode-toggle');
@@ -13435,15 +13503,27 @@ function setApfAutoMode(mode) {
     });
   }
 
+  const standardInputs = document.getElementById('apf-auto-standard-inputs');
   const reqGroup = document.getElementById('apf-auto-req-group');
   const featGroup = document.getElementById('apf-auto-feature-group');
+  const specGroup = document.getElementById('apf-auto-spec-group');
 
   if (mode === 'req') {
+    if (standardInputs) standardInputs.style.display = '';
     if (reqGroup) reqGroup.style.display = '';
     if (featGroup) featGroup.style.display = '';
-  } else {
+    if (specGroup) specGroup.style.display = 'none';
+  } else if (mode === 'feature') {
+    if (standardInputs) standardInputs.style.display = '';
     if (reqGroup) reqGroup.style.display = 'none';
     if (featGroup) featGroup.style.display = '';
+    if (specGroup) specGroup.style.display = 'none';
+  } else {
+    // Mode 'spec' (História de Usuário / BDD Livre)
+    if (standardInputs) standardInputs.style.display = '';
+    if (reqGroup) reqGroup.style.display = 'none';
+    if (featGroup) featGroup.style.display = 'none';
+    if (specGroup) specGroup.style.display = 'block';
   }
 }
 window.setApfAutoMode = setApfAutoMode;
@@ -13488,7 +13568,7 @@ function updateApfAutoFeatureAndReqSelects(projectId) {
 window.updateApfAutoFeatureAndReqSelects = updateApfAutoFeatureAndReqSelects;
 
 /**
- * Executa a análise heurística automática
+ * Executa a análise pericial e mensuração CFPS automática
  */
 async function runApfAutoAnalysis() {
   const toggle = document.getElementById('apf-auto-mode-toggle');
@@ -13498,16 +13578,21 @@ async function runApfAutoAnalysis() {
   const projectId = document.getElementById('apf-auto-project-select')?.value || '';
   const feature = document.getElementById('apf-auto-feature-select')?.value || '';
   const reqId = document.getElementById('apf-auto-req-select')?.value || '';
+  const specText = document.getElementById('apf-auto-spec-text')?.value?.trim() || '';
   const countingType = document.getElementById('apf-auto-counting-type')?.value || 'Desenvolvimento';
   const factorPct = parseFloat(document.getElementById('apf-auto-factor-percent')?.value) || 100;
   const factor = factorPct / 100;
 
   if (mode === 'req' && !reqId) {
-    showToast('Selecione um requisito para executar a análise automática.', 'warn');
+    showToast('Selecione um requisito para executar a auditoria CFPS.', 'warn');
     return;
   }
   if (mode === 'feature' && !feature) {
-    showToast('Selecione uma feature para executar a análise automática.', 'warn');
+    showToast('Selecione uma feature para executar a auditoria CFPS.', 'warn');
+    return;
+  }
+  if (mode === 'spec' && !specText) {
+    showToast('Insira uma história de usuário ou especificação BDD no campo de texto.', 'warn');
     return;
   }
 
@@ -13516,8 +13601,8 @@ async function runApfAutoAnalysis() {
     resultsContainer.innerHTML = `
       <div style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
         <div class="spinner" style="margin: 0 auto 1rem; width: 36px; height: 36px; border: 3px solid rgba(168,85,247,0.2); border-top-color: #c084fc; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
-        <p style="font-size: 0.95rem; color: var(--text-main); font-weight: 600;">Analisando semântica do requisito e regras IFPUG CPM 4.3.1...</p>
-        <small style="color: var(--text-muted);">Identificando grupos de dados lógicos (ALI/AIE) e processos elementares (EE/SE/CE)...</small>
+        <p style="font-size: 0.95rem; color: var(--text-main); font-weight: 600;">Executando Auditoria Especialista CFPS...</p>
+        <small style="color: var(--text-muted);">Analisando Fronteira, Funções de Negócio IFPUG (CPM 4.3.1) e Itens Não-Mensuráveis (FPN / SISP)...</small>
       </div>
     `;
   }
@@ -13527,69 +13612,124 @@ async function runApfAutoAnalysis() {
       projectId,
       feature: mode === 'feature' ? feature : '',
       reqId: mode === 'req' ? reqId : '',
+      text: mode === 'spec' ? specText : '',
       countingType,
       factor
     };
 
     const res = await store.previewAutoApf(payload);
-    if (!res || !res.success || !Array.isArray(res.candidates)) {
-      showToast(res?.message || 'Não foi possível identificar funções para o escopo selecionado.', 'error');
+    if (!res || !res.success) {
+      showToast(res?.message || 'Não foi possível analisar o escopo selecionado.', 'error');
       if (resultsContainer) {
-        resultsContainer.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--text-muted);">Nenhuma função identificada.</div>`;
+        resultsContainer.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--text-muted);">Nenhuma função ou item identificado.</div>`;
       }
       return;
     }
 
-    currentApfAutoCandidates = res.candidates.map((c, i) => ({
+    currentApfAutoCandidates = (res.candidates || []).map((c, i) => ({
       ...c,
       selected: true,
       index: i
     }));
 
-    // Exibir Card de Contexto
+    currentApfAutoInmCandidates = (res.inmCandidates || []).map((inm, i) => ({
+      ...inm,
+      selected: true,
+      index: i
+    }));
+
+    currentApfReportMarkdown = res.reportMarkdown || '';
+
+    // Atualizar Contadores das Abas
+    const tabIfpugCount = document.getElementById('apf-tab-ifpug-count');
+    if (tabIfpugCount) tabIfpugCount.textContent = currentApfAutoCandidates.length;
+
+    const tabInmCount = document.getElementById('apf-tab-inm-count');
+    if (tabInmCount) tabInmCount.textContent = currentApfAutoInmCandidates.length;
+
+    // Exibir Card de Contexto & Fronteira
     const contextCard = document.getElementById('apf-auto-context-card');
     if (contextCard) {
       contextCard.style.display = 'block';
+
       const titleEl = document.getElementById('apf-auto-context-title');
       if (titleEl) {
-        titleEl.textContent = res.sourceCode ? `[${res.sourceCode}] ${res.sourceTitle}` : (res.feature ? `Feature: ${res.feature}` : 'Escopo Geral');
+        titleEl.textContent = res.sourceCode ? `[${res.sourceCode}] ${res.sourceTitle}` : (res.feature ? `Feature: ${res.feature}` : (mode === 'spec' ? 'Especificação / História BDD' : 'Escopo Geral'));
       }
+
       const metaEl = document.getElementById('apf-auto-context-meta');
       if (metaEl) {
-        const pObj = store.getProjectById(res.projectId);
-        metaEl.textContent = `Projeto: ${pObj ? pObj.name : 'Geral'} | Feature: ${res.feature || 'Geral'} | Tipo: ${countingType} (${Math.round(factor * 100)}%)`;
+        const pObj = store.getProjectById(res.projectId || projectId);
+        metaEl.textContent = `Projeto: ${pObj ? pObj.name : 'Geral'} | Tipo: ${countingType} (${Math.round(factor * 100)}%)`;
       }
+
+      // Badge de Natureza da Demanda
+      const natureBadge = document.getElementById('apf-auto-nature-badge');
+      if (natureBadge) {
+        natureBadge.textContent = res.nature || 'Pura IFPUG';
+        if (res.nature === 'Híbrido') {
+          natureBadge.style.background = 'rgba(234, 179, 8, 0.15)';
+          natureBadge.style.color = '#facc15';
+          natureBadge.style.border = '1px solid rgba(234, 179, 8, 0.4)';
+        } else if (res.nature === 'Item Não-Mensurável') {
+          natureBadge.style.background = 'rgba(52, 211, 153, 0.15)';
+          natureBadge.style.color = '#34d399';
+          natureBadge.style.border = '1px solid rgba(52, 211, 153, 0.4)';
+        } else {
+          natureBadge.style.background = 'rgba(99, 102, 241, 0.15)';
+          natureBadge.style.color = '#818cf8';
+          natureBadge.style.border = '1px solid rgba(99, 102, 241, 0.4)';
+        }
+      }
+
       const badgeEl = document.getElementById('apf-auto-context-badge');
       if (badgeEl) {
-        badgeEl.textContent = `${res.candidates.length} Funções Detectadas`;
-        badgeEl.style.color = '#38bdf8';
-        badgeEl.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+        badgeEl.textContent = `${currentApfAutoCandidates.length} IFPUG + ${currentApfAutoInmCandidates.length} FPN`;
       }
+
       const descEl = document.getElementById('apf-auto-context-desc');
       if (descEl) {
         if (mode === 'req') {
           const reqObj = (store.state.requirements || []).find(r => r.id === reqId);
           descEl.textContent = reqObj ? (reqObj.userStory || reqObj.bdd || reqObj.title) : '';
+        } else if (mode === 'spec') {
+          descEl.textContent = specText.slice(0, 220) + (specText.length > 220 ? '...' : '');
         } else {
-          descEl.textContent = `Análise consolidada para todos os fluxos e entidades sob a feature "${feature}".`;
+          descEl.textContent = `Análise consolidada para todos os fluxos sob a feature "${feature}".`;
         }
       }
+
       const tagsEl = document.getElementById('apf-auto-context-tags');
       if (tagsEl) {
         const fields = res.detectedFields || [];
         if (fields.length > 0) {
-          tagsEl.innerHTML = fields.map(f => `<span class="apf-detected-pill">${f}</span>`).join('');
+          tagsEl.innerHTML = fields.map(f => `<span class="apf-detected-pill">${escapeHtml(f)}</span>`).join('');
         } else {
-          tagsEl.innerHTML = `<span style="font-size: 0.72rem; color: var(--text-muted);">Campos padrão inferidos por complexidade</span>`;
+          tagsEl.innerHTML = `<span style="font-size: 0.72rem; color: var(--text-muted);">Campos operacionais inferidos por complexidade</span>`;
         }
       }
     }
 
     renderApfAutoCandidates(currentApfAutoCandidates);
+    renderApfAutoInmCandidates(currentApfAutoInmCandidates);
+
+    // Preenche Laudo Markdown
+    const reportPreview = document.getElementById('apf-auto-report-preview');
+    if (reportPreview) {
+      reportPreview.textContent = currentApfReportMarkdown;
+    }
+
+    // Se só houver itens não-mensuráveis, ativa a aba INM automaticamente
+    if (currentApfAutoCandidates.length === 0 && currentApfAutoInmCandidates.length > 0) {
+      setApfAutoTab('inm');
+    } else {
+      setApfAutoTab('ifpug');
+    }
+
     updateApfAutoSummaryHud();
 
   } catch (err) {
-    console.error('Erro na análise automática de APF:', err);
+    console.error('Erro na auditoria CFPS:', err);
     showToast(`Erro ao analisar APF: ${err.message}`, 'error');
     if (resultsContainer) {
       resultsContainer.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--text-danger);">Erro: ${err.message}</div>`;
@@ -13599,14 +13739,14 @@ async function runApfAutoAnalysis() {
 window.runApfAutoAnalysis = runApfAutoAnalysis;
 
 /**
- * Renderiza a lista de funções candidatas no modal de geração automática
+ * Renderiza a lista de funções candidatas IFPUG
  */
 function renderApfAutoCandidates(candidates) {
   const container = document.getElementById('apf-auto-results-container');
   if (!container) return;
 
   if (candidates.length === 0) {
-    container.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--text-muted);">Nenhuma função identificada.</div>`;
+    container.innerHTML = `<div style="padding: 2.5rem; text-align: center; color: var(--text-muted);">Nenhuma função tradicional IFPUG identificada.</div>`;
     return;
   }
 
@@ -13700,6 +13840,75 @@ function renderApfAutoCandidates(candidates) {
 window.renderApfAutoCandidates = renderApfAutoCandidates;
 
 /**
+ * Renderiza a lista de Itens Não-Mensuráveis (FPN • Padrão SISP)
+ */
+function renderApfAutoInmCandidates(inmCandidates) {
+  const container = document.getElementById('apf-auto-inm-container');
+  if (!container) return;
+
+  if (inmCandidates.length === 0) {
+    container.innerHTML = `<div style="padding: 2.5rem; text-align: center; color: var(--text-muted);">Nenhum item complementar ou não-mensurável identificado nesta especificação.</div>`;
+    return;
+  }
+
+  let html = `
+    <div class="apf-inm-card-header">
+      <span>Sel.</span>
+      <span>Categoria</span>
+      <span>Item Técnico & Justificativa (SISP)</span>
+      <span>Qtd ($Q$)</span>
+      <span>Peso ($P$)</span>
+      <span>Subtotal</span>
+    </div>
+  `;
+
+  inmCandidates.forEach((cand, idx) => {
+    html += `
+      <div class="apf-inm-card-row ${cand.selected ? '' : 'is-unselected'}" id="apf-auto-inm-row-${idx}">
+        <div style="text-align: center;">
+          <input type="checkbox" class="custom-checkbox apf-auto-inm-chk" data-idx="${idx}" ${cand.selected ? 'checked' : ''}>
+        </div>
+        <div>
+          <span class="tag-inm-badge tag-inm-tabelas" style="font-size: 0.7rem; padding: 2px 6px;">${escapeHtml(cand.category || 'Técnico')}</span>
+        </div>
+        <div>
+          <strong style="font-size: 0.85rem; color: var(--text-main);">${escapeHtml(cand.itemName)}</strong>
+          <div class="apf-auto-rationale" title="${escapeHtml(cand.justification)}">💡 ${escapeHtml(cand.justification)}</div>
+        </div>
+        <div>
+          <div class="mini-stepper">
+            <button type="button" onclick="adjustApfAutoInmVal(${idx}, 'quantity', -1)">-</button>
+            <input type="text" readonly id="apf-auto-inm-qty-${idx}" value="${cand.quantity}">
+            <button type="button" onclick="adjustApfAutoInmVal(${idx}, 'quantity', 1)">+</button>
+          </div>
+        </div>
+        <div>
+          <span style="font-size: 0.82rem; color: #a78bfa; font-weight: 600;">${cand.unitWeight.toFixed(2)} PF</span>
+        </div>
+        <div>
+          <strong id="apf-auto-inm-subtotal-${idx}" style="font-size: 0.88rem; color: #34d399;">${cand.subtotalPf.toFixed(2)} PF</strong>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+
+  container.querySelectorAll('.apf-auto-inm-chk').forEach(chk => {
+    chk.addEventListener('change', (e) => {
+      const idx = parseInt(e.target.dataset.idx, 10);
+      if (currentApfAutoInmCandidates[idx]) {
+        currentApfAutoInmCandidates[idx].selected = e.target.checked;
+        const row = document.getElementById(`apf-auto-inm-row-${idx}`);
+        if (row) row.classList.toggle('is-unselected', !e.target.checked);
+        updateApfAutoSummaryHud();
+      }
+    });
+  });
+}
+window.renderApfAutoInmCandidates = renderApfAutoInmCandidates;
+
+/**
  * Ajusta TD ou AR/TR de um candidato com recálculo dinâmico
  */
 function adjustApfAutoVal(idx, prop, delta) {
@@ -13714,7 +13923,6 @@ function adjustApfAutoVal(idx, prop, delta) {
   cand.rawPf = calculateApfRawPf(cand.functionType, cand.complexity);
   cand.finalPf = calculateApfFinalPf(cand.rawPf, cand.factor || 1.0);
 
-  // Atualizar visualização da linha
   const inputEl = document.getElementById(`apf-auto-${prop.toLowerCase()}-${idx}`);
   if (inputEl) inputEl.value = cand[prop];
 
@@ -13735,7 +13943,28 @@ function adjustApfAutoVal(idx, prop, delta) {
 window.adjustApfAutoVal = adjustApfAutoVal;
 
 /**
- * Atualiza o HUD de Totais do Modal de Geração Automática
+ * Ajusta quantidade de um item não-mensurável
+ */
+function adjustApfAutoInmVal(idx, prop, delta) {
+  const cand = currentApfAutoInmCandidates[idx];
+  if (!cand) return;
+
+  cand.quantity = Math.max(1, (cand.quantity || 1) + delta);
+  cand.subtotalPf = Math.round((cand.quantity * cand.unitWeight) * 100) / 100;
+  cand.calculatedPf = cand.subtotalPf;
+
+  const inputEl = document.getElementById(`apf-auto-inm-qty-${idx}`);
+  if (inputEl) inputEl.value = cand.quantity;
+
+  const subtotalEl = document.getElementById(`apf-auto-inm-subtotal-${idx}`);
+  if (subtotalEl) subtotalEl.textContent = `${cand.subtotalPf.toFixed(2)} PF`;
+
+  updateApfAutoSummaryHud();
+}
+window.adjustApfAutoInmVal = adjustApfAutoInmVal;
+
+/**
+ * Atualiza o HUD de Totais do Modal de Auditoria CFPS
  */
 function updateApfAutoSummaryHud() {
   const summaryHud = document.getElementById('apf-auto-summary-hud');
@@ -13743,41 +13972,43 @@ function updateApfAutoSummaryHud() {
 
   summaryHud.style.display = 'block';
 
-  const selected = currentApfAutoCandidates.filter(c => c.selected);
-  const dataCount = selected.filter(c => c.functionType === 'ALI' || c.functionType === 'AIE').length;
-  const txCount = selected.filter(c => c.functionType === 'EE' || c.functionType === 'SE' || c.functionType === 'CE').length;
-  const rawSum = selected.reduce((s, c) => s + (c.rawPf || 0), 0);
-  const finalSum = Math.round(selected.reduce((s, c) => s + (c.finalPf || 0), 0) * 100) / 100;
+  const selectedIfpug = currentApfAutoCandidates.filter(c => c.selected);
+  const selectedInm = currentApfAutoInmCandidates.filter(c => c.selected);
+
+  const ifpugFinalSum = Math.round(selectedIfpug.reduce((s, c) => s + (c.finalPf || 0), 0) * 100) / 100;
+  const inmSum = Math.round(selectedInm.reduce((s, c) => s + (c.subtotalPf || 0), 0) * 100) / 100;
+  const globalSum = Math.round((ifpugFinalSum + inmSum) * 100) / 100;
+  const totalSelectedCount = selectedIfpug.length + selectedInm.length;
 
   const countEl = document.getElementById('apf-auto-hud-count');
-  if (countEl) countEl.textContent = `${selected.length} de ${currentApfAutoCandidates.length}`;
-
-  const dataEl = document.getElementById('apf-auto-hud-data');
-  if (dataEl) dataEl.textContent = `${dataCount}`;
-
-  const txEl = document.getElementById('apf-auto-hud-tx');
-  if (txEl) txEl.textContent = `${txCount}`;
-
-  const rawEl = document.getElementById('apf-auto-hud-raw');
-  if (rawEl) rawEl.textContent = `${rawSum} PF`;
+  if (countEl) countEl.textContent = `${totalSelectedCount}`;
 
   const finalEl = document.getElementById('apf-auto-hud-final');
-  if (finalEl) finalEl.textContent = `${finalSum.toFixed(1)} PF`;
+  if (finalEl) finalEl.textContent = `${ifpugFinalSum.toFixed(2)} PF`;
+
+  const inmEl = document.getElementById('apf-auto-hud-inm');
+  if (inmEl) inmEl.textContent = `${inmSum.toFixed(2)} PF`;
+
+  const globalEl = document.getElementById('apf-auto-hud-global');
+  if (globalEl) globalEl.textContent = `${globalSum.toFixed(2)} PF`;
 
   const btnSave = document.getElementById('btn-confirm-save-apf-auto');
   if (btnSave) {
-    btnSave.disabled = selected.length === 0;
-    btnSave.innerHTML = `<span>🚀 Gravar ${selected.length} Funções (${finalSum.toFixed(1)} PF)</span>`;
+    btnSave.disabled = totalSelectedCount === 0;
+    btnSave.innerHTML = `<span>🚀 Gravar ${totalSelectedCount} Itens (${globalSum.toFixed(2)} PF Global)</span>`;
   }
 }
+window.updateApfAutoSummaryHud = updateApfAutoSummaryHud;
 
 /**
- * Salva em lote as funções de APF selecionadas
+ * Salva em lote as funções IFPUG e Itens Não-Mensuráveis selecionados
  */
 async function handleSaveApfAutoBatch() {
-  const selected = currentApfAutoCandidates.filter(c => c.selected);
-  if (selected.length === 0) {
-    showToast('Selecione ao menos uma função para cadastrar.', 'warn');
+  const selectedIfpug = currentApfAutoCandidates.filter(c => c.selected);
+  const selectedInm = currentApfAutoInmCandidates.filter(c => c.selected);
+
+  if (selectedIfpug.length === 0 && selectedInm.length === 0) {
+    showToast('Selecione ao menos uma função IFPUG ou item não-mensurável para cadastrar.', 'warn');
     return;
   }
 
@@ -13791,7 +14022,7 @@ async function handleSaveApfAutoBatch() {
   const btnSave = document.getElementById('btn-confirm-save-apf-auto');
   if (btnSave) {
     btnSave.disabled = true;
-    btnSave.innerHTML = `<span>⏳ Gravando Funções...</span>`;
+    btnSave.innerHTML = `<span>⏳ Gravando Itens...</span>`;
   }
 
   try {
@@ -13801,7 +14032,7 @@ async function handleSaveApfAutoBatch() {
       reqId,
       countingType,
       factor,
-      items: selected.map(c => ({
+      items: selectedIfpug.map(c => ({
         name: c.name,
         functionType: c.functionType,
         td: c.td,
@@ -13812,17 +14043,29 @@ async function handleSaveApfAutoBatch() {
         projectId: c.projectId || projectId,
         feature: c.feature || feature,
         reqId: c.reqId || reqId
+      })),
+      inmItems: selectedInm.map(inm => ({
+        itemName: inm.itemName,
+        category: inm.category,
+        catalogKey: inm.catalogKey,
+        quantity: inm.quantity,
+        unitWeight: inm.unitWeight,
+        justification: inm.justification,
+        evidence: inm.evidence,
+        projectId: inm.projectId || projectId,
+        feature: inm.feature || feature,
+        reqId: inm.reqId || reqId
       }))
     };
 
     const res = await store.batchCreateApf(payload);
     if (!res || !res.success) {
-      showToast(res?.message || 'Erro ao gravar lote de funções APF.', 'error');
+      showToast(res?.message || 'Erro ao gravar itens de APF.', 'error');
       if (btnSave) btnSave.disabled = false;
       return;
     }
 
-    showToast(`Sucesso! ${res.count || selected.length} funções de APF geradas e cadastradas!`);
+    showToast(`Sucesso! Gravadas ${res.itemsCount || selectedIfpug.length} funções IFPUG e ${res.inmCount || selectedInm.length} itens FPN!`);
     closeModal('modal-apf-auto-generate');
     renderApf();
     updateSidebarCounters();
@@ -13835,6 +14078,7 @@ async function handleSaveApfAutoBatch() {
     if (btnSave) btnSave.disabled = false;
   }
 }
+window.handleSaveApfAutoBatch = handleSaveApfAutoBatch;
 window.handleSaveApfAutoBatch = handleSaveApfAutoBatch;
 
 /**

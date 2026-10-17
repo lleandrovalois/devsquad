@@ -1518,32 +1518,61 @@ function getFullApfInmItems() {
 
 
 /**
- * Analisa semanticamente um Requisito e extrai funções candidatas de APF (ALI, AIE, EE, SE, CE)
+ * ==============================================================================
+ * MOTOR ESPECIALISTA CFPS (Certified Function Point Specialist)
+ * Decomposição baseada em IFPUG CPM 4.3.1 e Itens Não-Mensuráveis (Padrão SISP)
+ * ==============================================================================
  */
-function inferApfFromRequirement(req, options = {}) {
-  const countingType = options.countingType || 'Desenvolvimento';
-  const factor = getCountingTypeFactor(countingType, options.factor);
-  const title = (req.title || '').trim();
-  const userStory = (req.userStory || '').trim();
-  const bdd = (req.bdd || '').trim();
-  const feature = (req.feature || '').trim();
-  const fullText = `${title} ${feature} ${userStory} ${bdd}`.toLowerCase();
 
-  // 1. Identificar Entidade Principal do Requisito
+/**
+ * Realiza a análise semântica e mensuração precisa de Pontos de Função (PF)
+ * conforme IFPUG CPM 4.3.1 e Padrão SISP / Roteiro de Métricas.
+ */
+function analyzeCfpsSpecification(spec, options = {}) {
+  const countingType = options.countingType || spec.countingType || 'Desenvolvimento';
+  const factor = getCountingTypeFactor(countingType, options.factor !== undefined ? options.factor : spec.factor);
+
+  const title = (spec.title || '').trim();
+  const userStory = (spec.userStory || spec.user_story || '').trim();
+  const bdd = (spec.bdd || '').trim();
+  const feature = (spec.feature || '').trim();
+  const customText = (spec.text || spec.specification || '').trim();
+  const reqId = spec.reqId || spec.id || '';
+  const reqCode = spec.code || spec.reqCode || '';
+  const projectId = spec.projectId || spec.project_id || '';
+
+  const fullText = [title, feature, userStory, bdd, customText].filter(Boolean).join('\n');
+  const lowerText = fullText.toLowerCase();
+
+  // 1. Análise de Fronteira e Intenção Primária
+  let userRole = 'Usuário do Sistema';
+  let userWant = title || 'operar processo de negócio';
+  let userBenefit = 'atender aos objetivos operacionais e contratuais do negócio';
+
+  const storyMatch = fullText.match(/como\s+([^,]+),\s*(?:eu\s+)?quero\s+([^,]+)(?:,\s*para\s+que\s+([^.]+))?/i);
+  if (storyMatch) {
+    userRole = storyMatch[1].trim();
+    userWant = storyMatch[2].trim();
+    if (storyMatch[3]) userBenefit = storyMatch[3].trim();
+  }
+
+  // 2. Extração de Entidade Principal
   let entityName = feature || title || 'Entidade de Negócio';
   const entityMatch = title.match(/(?:gestão|cadastro|módulo|controle|extensão|consulta|registro|administração|relatório|fluxo|trilha)\s+de\s+([^,\.\n-]+)/i)
     || title.match(/para\s+([^,\.\n-]+)/i);
   if (entityMatch && entityMatch[1] && entityMatch[1].trim().length > 2) {
     entityName = entityMatch[1].trim();
+  } else if (feature && feature.length > 2) {
+    entityName = feature;
   }
   entityName = entityName.split(/\s+/).map(w => {
-    if (['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'para', 'com'].includes(w.toLowerCase())) {
+    if (['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'para', 'com', 'ao', 'aos'].includes(w.toLowerCase())) {
       return w.toLowerCase();
     }
     return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
   }).join(' ');
 
-  // 2. Extração de atributos e contagem de Tipos de Dados (TD)
+  // 3. Extração Semântica de Atributos e Tipos de Dados (TDs / DETs)
   const commonFieldKeywords = [
     'nome', 'título', 'descrição', 'email', 'e-mail', 'cpf', 'cnpj', 'telefone', 'celular',
     'endereço', 'rua', 'número', 'bairro', 'cidade', 'estado', 'cep', 'país', 'login', 'senha',
@@ -1554,25 +1583,138 @@ function inferApfFromRequirement(req, options = {}) {
     'resultado', 'nível', 'permissão', 'papel', 'role', 'token', 'chave', 'quantidade', 'origem',
     'destino', 'banco', 'agência', 'conta', 'pix', 'cartão', 'responsável', 'liderança', 'colaborador'
   ];
-  const detectedFields = commonFieldKeywords.filter(k => fullText.includes(k));
+  const detectedFields = commonFieldKeywords.filter(k => lowerText.includes(k));
+  const quotedMatches = fullText.match(/"([^"]{2,30})"/g) || [];
+  quotedMatches.forEach(q => {
+    const clean = q.replace(/"/g, '').trim();
+    if (clean && !detectedFields.includes(clean.toLowerCase()) && clean.length > 2) {
+      detectedFields.push(clean);
+    }
+  });
+
   const baseTd = Math.max(detectedFields.length + 3, 6);
 
-  const candidates = [];
+  // 4. Detecção de Itens Não-Mensuráveis (FPN • Padrão SISP / Roteiro de Métricas)
+  const inmCandidates = [];
+  const inmDefinitions = [
+    {
+      key: 'code_table_inclusao',
+      name: 'Code Table - Inclusão / Nova Tabela de Apoio',
+      category: 'Tabelas de Apoio',
+      unitWeight: 0.80,
+      regex: /(nova\s+tabela\s+de\s+(apoio|código|domínio)|criar\s+tabela\s+de\s+(apoio|código|domínio)|inclusão\s+de\s+tabela\s+de\s+código|code\s*table.*(nova|inclus|cri))/i,
+      justification: 'Inclusão de tabela de domínio/código/apoio sem manutenção direta via interface de negócio (SISP/FPN).'
+    },
+    {
+      key: 'code_table_alteracao',
+      name: 'Code Table - Alteração / Manutenção de Tabela',
+      category: 'Tabelas de Apoio',
+      unitWeight: 0.40,
+      regex: /(alterar\s+tabela\s+de\s+(apoio|código|domínio)|manutenção\s+de\s+tabela\s+de\s+(apoio|código|domínio)|ajuste\s+em\s+tabela\s+de\s+código|novos\s+registros\s+de\s+domínio|code\s*table.*(alter|manut|atualiz))/i,
+      justification: 'Alteração pontual de estrutura ou valores em tabela de código/apoio já existente (SISP/FPN).'
+    },
+    {
+      key: 'menu_item',
+      name: 'Menus / Submenus - Inclusão ou Reestruturação',
+      category: 'Interface & Menus',
+      unitWeight: 0.10,
+      regex: /(menu|submenu|item\s+de\s+menu|barra\s+de\s+navegação|árvore\s+de\s+menus|reestrutur.*menu)/i,
+      justification: 'Ajuste ou inserção de novos nós de navegação e hierarquia de menus no sistema (SISP/FPN).'
+    },
+    {
+      key: 'layout_alteracao',
+      name: 'Layout / Template / Telas - Alteração Estética',
+      category: 'Interface & Menus',
+      unitWeight: 0.50,
+      regex: /(layout|css|estética|identidade\s+visual|template\s+visual|responsiv|ajuste\s+de\s+layout|tema\s+escuro|tema\s+claro|estiliza)/i,
+      justification: 'Intervenção visual e apresentação CSS/estética sem impacto na lógica transacional do sistema (SISP/FPN).'
+    },
+    {
+      key: 'componente_ui',
+      name: 'Componente Visual / Validação / Máscara de Campo',
+      category: 'Interface & Menus',
+      unitWeight: 0.25,
+      regex: /(máscara|mask|validação\s+de\s+campo|autocomplete|formatador|tooltip|datepicker|date-picker|combo\s+dinâmico)/i,
+      justification: 'Inclusão de máscara, formatador, validação de campo cliente ou ajuste simples de widget (SISP/FPN).'
+    },
+    {
+      key: 'parametro_sistema',
+      name: 'Parâmetro de Configuração / Setup de Sistema',
+      category: 'Parâmetros & Configuração',
+      unitWeight: 0.30,
+      regex: /(parâmetro|setup|flag|configuração\s+global|chave\s+de\s+configuração|variável\s+de\s+ambiente|feature\s+toggle)/i,
+      justification: 'Criação ou atualização de parâmetro global de configuração ou setup operacional (SISP/FPN).'
+    },
+    {
+      key: 'perfil_seguranca',
+      name: 'Perfis de Acesso / Permissões / Grupos de Segurança',
+      category: 'Parâmetros & Configuração',
+      unitWeight: 0.40,
+      regex: /(perfil\s+de\s+acesso|matriz\s+de\s+permissão|grupo\s+de\s+segurança|nível\s+de\s+permissão|papel\s+de\s+usuário|role)/i,
+      justification: 'Definição de novo perfil de acesso ou permissão na matriz de segurança (SISP/FPN).'
+    },
+    {
+      key: 'db_view_indice',
+      name: 'Criação / Ajuste de Views ou Índices de Banco',
+      category: 'Banco de Dados',
+      unitWeight: 0.50,
+      regex: /(índice|index|view\s+de\s+banco|materialized\s+view|otimização\s+de\s+query|plano\s+de\s+execução)/i,
+      justification: 'Criação técnica de view ou índice no banco de dados para consulta e desempenho (SISP/FPN).'
+    },
+    {
+      key: 'db_trigger_proc',
+      name: 'Triggers / Procedures / Rotinas de Banco',
+      category: 'Banco de Dados',
+      unitWeight: 1.00,
+      regex: /(trigger|stored\s+procedure|procedure|gatilho|rotina\s+de\s+banco|function\s+de\s+banco)/i,
+      justification: 'Implementação de rotina procedural, Stored Procedure ou Trigger em nível de banco de dados (SISP/FPN).'
+    },
+    {
+      key: 'script_saneamento',
+      name: 'Carga de Dados / Saneamento / Scripts de Migração',
+      category: 'Scripts & Migração',
+      unitWeight: 0.80,
+      regex: /(script\s+de\s+migração|carga\s+de\s+dados|saneamento|script\s+sql|migrar\s+dados|script\s+ddl|script\s+dml)/i,
+      justification: 'Execução de scripts diretos para migração, higienização ou carga inicial de dados (SISP/FPN).'
+    }
+  ];
 
-  // 3. Reconhecimento de Funções de Dados:
-  // AIE: Se houver indícios de APIs ou integrações com terceiros/sistemas externos
-  const isExternal = /(api|integração|externo|externa|terceiros|gateway|correios|receita|serasa|banco central|webhook|legado|webservice|parceiro)/i.test(fullText);
+  inmDefinitions.forEach((pat, i) => {
+    if (pat.regex.test(lowerText)) {
+      const quantity = 1;
+      const subtotalPf = Math.round((quantity * pat.unitWeight) * 100) / 100;
+      inmCandidates.push({
+        id: `cand_inm_${Date.now()}_${i}`,
+        catalogKey: pat.key,
+        itemName: pat.name,
+        category: pat.category,
+        quantity,
+        unitWeight: pat.unitWeight,
+        calculatedPf: subtotalPf,
+        subtotalPf,
+        justification: pat.justification,
+        evidence: `Identificado pelo termo correlato ao padrão contratual SISP.`
+      });
+    }
+  });
+
+  // 5. Contagem Tradicional IFPUG (CPM 4.3.1)
+  const ifpugCandidates = [];
+
+  // AIE: Arquivo de Interface Externa
+  const isExternal = /(api|integração|externo|externa|terceiros|gateway|correios|receita|serasa|banco central|webhook|legado|webservice|parceiro)/i.test(lowerText);
   if (isExternal) {
-    const aieTd = Math.min(Math.max(baseTd, 8), 16);
+    const aieTd = Math.min(Math.max(baseTd, 6), 16);
     const aieTr = 1;
     const complexity = calculateApfComplexity('AIE', aieTr, aieTd);
     const rawPf = calculateApfRawPf('AIE', complexity);
     const finalPf = calculateApfFinalPf(rawPf, factor);
-    candidates.push({
+    ifpugCandidates.push({
       id: `cand_aie_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      name: `AIE - Interface Externa: ${entityName}`,
       functionType: 'AIE',
+      name: `AIE - Interface Externa: ${entityName}`,
       category: 'Dados',
+      primaryIntent: 'Referenciar dados lógicos mantidos e disponibilizados por sistema externo.',
       td: aieTd,
       arTr: aieTr,
       complexity,
@@ -1580,24 +1722,28 @@ function inferApfFromRequirement(req, options = {}) {
       countingType,
       factor,
       finalPf,
-      notes: `Identificada dependência de serviço/API externa (${detectedFields.slice(0, 5).join(', ') || 'atributos externos'}).`,
-      rationale: `Reconhecido como Arquivo de Interface Externa (AIE) devido a menção de barramento/API de terceiros. ${aieTd} TDs e ${aieTr} TR.`
+      notes: `Grupo de dados mantido externamente por API/Webservice referenciado pela aplicação.`,
+      rationale: `Reconhecido como AIE devido à integração com fronteira externa mencionada na especificação.`
     });
   }
 
-  // ALI: Quase todo requisito funcional que mantém dados do sistema possui um ALI interno
-  const isDataStorage = !isExternal || /(banco|armazen|persist|tabela|entidade|cadastro|registro|salvar|histórico|dados|perfil|trilha)/i.test(fullText);
-  if (isDataStorage) {
-    const aliTd = Math.min(Math.max(baseTd + 4, 10), 28);
+  // ALI: Arquivo Lógico Interno
+  const isDataStorage = !isExternal || /(banco|armazen|persist|tabela|entidade|cadastro|registro|salvar|histórico|dados|perfil|trilha|avaliação|metas)/i.test(lowerText);
+  // Se for uma alteração puramente cosmética ou de code table de uma linha, não gera ALI
+  const isPurelyTechnical = inmCandidates.length > 0 && ifpugCandidates.length === 0 && lowerText.length < 90 && !/(cadastr|inclu|manter|crud|fluxo|trilha)/i.test(lowerText);
+
+  if (isDataStorage && !isPurelyTechnical) {
+    const aliTd = Math.min(Math.max(baseTd + 3, 8), 26);
     const aliTr = detectedFields.length > 7 ? 2 : 1;
     const complexity = calculateApfComplexity('ALI', aliTr, aliTd);
     const rawPf = calculateApfRawPf('ALI', complexity);
     const finalPf = calculateApfFinalPf(rawPf, factor);
-    candidates.push({
+    ifpugCandidates.push({
       id: `cand_ali_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      name: `ALI - Grupo de Dados de ${entityName}`,
       functionType: 'ALI',
+      name: `ALI - Estrutura de Dados: ${entityName}`,
       category: 'Dados',
+      primaryIntent: 'Armazenar e manter dados lógicos relacionais de negócio dentro da fronteira da aplicação.',
       td: aliTd,
       arTr: aliTr,
       complexity,
@@ -1605,147 +1751,263 @@ function inferApfFromRequirement(req, options = {}) {
       countingType,
       factor,
       finalPf,
-      notes: `Grupo de dados lógico interno para persistência das entidades de ${entityName}.`,
-      rationale: `Reconhecido como Arquivo Lógico Interno (ALI) mantido pelo sistema. Estimados ${aliTd} TDs e ${aliTr} TR(s).`
+      notes: `Arquivo Lógico Interno mantido dentro da fronteira da aplicação para persistência de ${entityName}.`,
+      rationale: `Reconhecido como ALI: mantém dados do ciclo de vida da entidade com ${aliTd} TDs e ${aliTr} TR(s).`
     });
   }
 
-  // 4. Reconhecimento de Processos Elementares (Transações):
-  // EE: Inclusão / Cadastro / Upload / Registro
-  const hasInclusion = /(incluir|cadastrar|criar|adicionar|registrar|novo|inserir|salvar|upload|importar|autenticar|login|enviar)/i.test(fullText) || !candidates.some(c => c.functionType === 'EE');
-  if (hasInclusion) {
-    const eeAddTd = Math.min(Math.max(baseTd, 6), 18);
-    const eeAddAr = 1;
-    const complexity = calculateApfComplexity('EE', eeAddAr, eeAddTd);
-    const rawPf = calculateApfRawPf('EE', complexity);
-    const finalPf = calculateApfFinalPf(rawPf, factor);
-    candidates.push({
-      id: `cand_ee_add_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      name: `EE - Incluir/Registrar ${entityName}`,
-      functionType: 'EE',
-      category: 'Transação',
-      td: eeAddTd,
-      arTr: eeAddAr,
-      complexity,
-      rawPf,
-      countingType,
-      factor,
-      finalPf,
-      notes: `Processo de entrada e gravação de novos dados de ${entityName}.`,
-      rationale: `Entrada Externa (EE): Processa dados de formulário e atualiza o ALI. ${eeAddTd} TDs, ${eeAddAr} AR.`
-    });
+  if (!isPurelyTechnical) {
+    // EE (Entrada Externa) - Inclusão / Registro
+    const hasInclusion = /(incluir|cadastrar|criar|adicionar|registrar|novo|inserir|salvar|upload|importar|autenticar|login|enviar)/i.test(lowerText) || (ifpugCandidates.some(c => c.functionType === 'ALI') && !inmCandidates.length);
+    if (hasInclusion) {
+      const eeAddTd = Math.min(Math.max(baseTd, 6), 18);
+      const eeAddAr = 1;
+      const complexity = calculateApfComplexity('EE', eeAddAr, eeAddTd);
+      const rawPf = calculateApfRawPf('EE', complexity);
+      const finalPf = calculateApfFinalPf(rawPf, factor);
+      ifpugCandidates.push({
+        id: `cand_ee_add_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        functionType: 'EE',
+        name: `EE - Incluir/Registrar ${entityName}`,
+        category: 'Transação',
+        primaryIntent: 'Processar dados de entrada e manter/gravar novos registros no ALI correspondente.',
+        td: eeAddTd,
+        arTr: eeAddAr,
+        complexity,
+        rawPf,
+        countingType,
+        factor,
+        finalPf,
+        notes: `Processo elementar de inclusão de novos registros de ${entityName}.`,
+        rationale: `Entrada Externa (EE): Altera o estado do ALI adicionando informações de negócio.`
+      });
+    }
+
+    // EE (Entrada Externa) - Alteração / Atualização / Progresso
+    const hasUpdate = /(alterar|atualizar|editar|modificar|ajustar|progresso|feedback|avaliação|revisão|mudar|status|concluir|aprovar)/i.test(lowerText);
+    if (hasUpdate) {
+      const eeUpdTd = Math.min(Math.max(baseTd - 1, 6), 16);
+      const eeUpdAr = 1;
+      const complexity = calculateApfComplexity('EE', eeUpdAr, eeUpdTd);
+      const rawPf = calculateApfRawPf('EE', complexity);
+      const finalPf = calculateApfFinalPf(rawPf, factor);
+      ifpugCandidates.push({
+        id: `cand_ee_upd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        functionType: 'EE',
+        name: `EE - Atualizar/Editar ${entityName}`,
+        category: 'Transação',
+        primaryIntent: 'Processar dados recebidos de fora da fronteira para modificar registros no ALI.',
+        td: eeUpdTd,
+        arTr: eeUpdAr,
+        complexity,
+        rawPf,
+        countingType,
+        factor,
+        finalPf,
+        notes: `Processo de manutenção e atualização dos dados ou estado de ${entityName}.`,
+        rationale: `Entrada Externa (EE): Altera dados previamente registrados no ALI.`
+      });
+    }
+
+    // EE (Entrada Externa) - Exclusão / Cancelamento
+    const hasDelete = /(excluir|remover|deletar|inativar|desativar|cancelar|apagar)/i.test(lowerText);
+    if (hasDelete) {
+      const eeDelTd = 4;
+      const eeDelAr = 1;
+      const complexity = calculateApfComplexity('EE', eeDelAr, eeDelTd);
+      const rawPf = calculateApfRawPf('EE', complexity);
+      const finalPf = calculateApfFinalPf(rawPf, factor);
+      ifpugCandidates.push({
+        id: `cand_ee_del_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        functionType: 'EE',
+        name: `EE - Excluir/Inativar ${entityName}`,
+        category: 'Transação',
+        primaryIntent: 'Processar comando de exclusão ou inativação lógica no ALI.',
+        td: eeDelTd,
+        arTr: eeDelAr,
+        complexity,
+        rawPf,
+        countingType,
+        factor,
+        finalPf,
+        notes: `Processo elementar de exclusão física ou inativação lógica.`,
+        rationale: `Entrada Externa (EE): Remove ou desativa registros mantidos no ALI.`
+      });
+    }
+
+    // CE (Consulta Externa) - Pesquisa / Visualização / Listagem
+    const hasQuery = /(consultar|buscar|pesquisar|filtrar|listar|visualizar|exibir|ver|acompanhar|detalhar|grid|tabela|acessar)/i.test(lowerText) || (ifpugCandidates.some(c => c.functionType === 'ALI') && !inmCandidates.length);
+    if (hasQuery) {
+      const ceTd = Math.min(Math.max(baseTd + 1, 6), 20);
+      const ceAr = 1;
+      const complexity = calculateApfComplexity('CE', ceAr, ceTd);
+      const rawPf = calculateApfRawPf('CE', complexity);
+      const finalPf = calculateApfFinalPf(rawPf, factor);
+      ifpugCandidates.push({
+        id: `cand_ce_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        functionType: 'CE',
+        name: `CE - Consultar/Visualizar ${entityName}`,
+        category: 'Transação',
+        primaryIntent: 'Recuperar e apresentar dados do ALI sem fórmulas matemáticas derivadas.',
+        td: ceTd,
+        arTr: ceAr,
+        complexity,
+        rawPf,
+        countingType,
+        factor,
+        finalPf,
+        notes: `Recuperação direta de informações de ${entityName} para exibição ao usuário.`,
+        rationale: `Consulta Externa (CE): Recuperação simples de dados mantidos no sistema.`
+      });
+    }
+
+    // SE (Saída Externa) - Relatório / Demonstrativo / Cálculos / Totalizações
+    const hasOutput = /(relatório|extrato|exportar|pdf|calcular|cálculo|demonstrativo|consolidado|gráfico|evolução|efetivação|faturamento|fechamento|totalizar|notificação|resumo|painel|dashboard|kpi)/i.test(lowerText);
+    if (hasOutput) {
+      const seTd = Math.min(Math.max(baseTd + 3, 8), 24);
+      const seAr = 2;
+      const complexity = calculateApfComplexity('SE', seAr, seTd);
+      const rawPf = calculateApfRawPf('SE', complexity);
+      const finalPf = calculateApfFinalPf(rawPf, factor);
+      ifpugCandidates.push({
+        id: `cand_se_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        functionType: 'SE',
+        name: `SE - Demonstrativo/Relatório de ${entityName}`,
+        category: 'Transação',
+        primaryIntent: 'Processar e apresentar dados contendo lógica de derivação, totalizadores ou cálculos analíticos.',
+        td: seTd,
+        arTr: seAr,
+        complexity,
+        rawPf,
+        countingType,
+        factor,
+        finalPf,
+        notes: `Saída formatada contendo regras matemáticas, agregações ou geração de documento oficial.`,
+        rationale: `Saída Externa (SE): Envia informações derivadas com cálculos analíticos.`
+      });
+    }
   }
 
-  // EE: Alteração / Atualização / Progresso / Edição
-  const hasUpdate = /(alterar|atualizar|editar|modificar|ajustar|progresso|feedback|avaliação|revisão|mudar|status)/i.test(fullText);
-  if (hasUpdate) {
-    const eeUpdTd = Math.min(Math.max(baseTd - 1, 6), 16);
-    const eeUpdAr = 1;
-    const complexity = calculateApfComplexity('EE', eeUpdAr, eeUpdTd);
-    const rawPf = calculateApfRawPf('EE', complexity);
-    const finalPf = calculateApfFinalPf(rawPf, factor);
-    candidates.push({
-      id: `cand_ee_upd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      name: `EE - Atualizar/Editar ${entityName}`,
-      functionType: 'EE',
-      category: 'Transação',
-      td: eeUpdTd,
-      arTr: eeUpdAr,
-      complexity,
-      rawPf,
-      countingType,
-      factor,
-      finalPf,
-      notes: `Manutenção e atualização dos dados de ${entityName}.`,
-      rationale: `Entrada Externa (EE): Altera o comportamento e os registros existentes. ${eeUpdTd} TDs, ${eeUpdAr} AR.`
-    });
+  // 6. Análise de Fronteira e Natureza da Demanda
+  let nature = 'Pura IFPUG';
+  let natureExplanation = '';
+  if (ifpugCandidates.length > 0 && inmCandidates.length > 0) {
+    nature = 'Híbrido';
+    natureExplanation = 'A entrega contém tanto processos transacionais padrão de negócio (IFPUG) quanto intervenções técnicas pontuais tabeladas (FPN / Padrão SISP).';
+  } else if (ifpugCandidates.length === 0 && inmCandidates.length > 0) {
+    nature = 'Item Não-Mensurável';
+    natureExplanation = 'A demanda trata exclusivamente de escopo complementar e intervenção técnica tabelada (menus, code tables, CSS/layouts, triggers ou parâmetros).';
+  } else {
+    nature = 'Pura IFPUG';
+    natureExplanation = 'A demanda é composta estritamente por processos elementares que movem ou mantêm dados de negócio na aplicação.';
   }
 
-  // EE: Exclusão / Cancelamento / Inativação
-  const hasDelete = /(excluir|remover|deletar|inativar|desativar|cancelar|apagar)/i.test(fullText);
-  if (hasDelete) {
-    const eeDelTd = 4;
-    const eeDelAr = 1;
-    const complexity = calculateApfComplexity('EE', eeDelAr, eeDelTd);
-    const rawPf = calculateApfRawPf('EE', complexity);
-    const finalPf = calculateApfFinalPf(rawPf, factor);
-    candidates.push({
-      id: `cand_ee_del_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      name: `EE - Excluir/Inativar ${entityName}`,
-      functionType: 'EE',
-      category: 'Transação',
-      td: eeDelTd,
-      arTr: eeDelAr,
-      complexity,
-      rawPf,
-      countingType,
-      factor,
-      finalPf,
-      notes: `Exclusão lógica ou física de ${entityName}.`,
-      rationale: `Entrada Externa (EE): Remove ou inativa registro alterando o estado do ALI. ${eeDelTd} TDs, ${eeDelAr} AR.`
-    });
+  // 7. Totalizações Consolidada
+  const totalRawIfpugPf = ifpugCandidates.reduce((s, c) => s + (c.rawPf || 0), 0);
+  const totalFinalIfpugPf = Math.round(ifpugCandidates.reduce((s, c) => s + (c.finalPf || 0), 0) * 100) / 100;
+  const totalInmPf = Math.round(inmCandidates.reduce((s, c) => s + (c.subtotalPf || 0), 0) * 100) / 100;
+  const totalGlobalPf = Math.round((totalFinalIfpugPf + totalInmPf) * 100) / 100;
+
+  // 8. Notas Técnicas e Observações do Auditor CFPS
+  const auditorNotes = [];
+  if (detectedFields.length < 5) {
+    auditorNotes.push('Como a história/especificação não especifica detalhadamente a lista de campos (TDs), adotou-se a convenção de atributos mínimos necessários para a complexidade estimada.');
+  }
+  if (inmCandidates.length > 0 && ifpugCandidates.length > 0) {
+    auditorNotes.push('Demanda Híbrida: as intervenções técnicas foram estritamente segregadas na tabela de FPN (Padrão SISP) para evitar dupla contagem ou sobreposição com os processos elementares IFPUG.');
+  }
+  if (factor < 1.0) {
+    auditorNotes.push(`Foi aplicado o redutor contratual de ${(factor * 100).toFixed(0)}% referente ao Tipo de Contagem "${countingType}".`);
+  }
+  if (ifpugCandidates.some(c => c.functionType === 'SE')) {
+    auditorNotes.push('A Saída Externa (SE) foi mensurada considerando a presença explícita de cálculo matemático derivado, agregação analítica ou geração de demonstrativo/relatório oficial.');
+  }
+  if (auditorNotes.length === 0) {
+    auditorNotes.push('Contagem estritamente aderente ao manual de práticas de medição IFPUG CPM 4.3.1.');
   }
 
-  // CE: Consulta / Pesquisa / Visualização / Listagem
-  const hasQuery = /(consultar|buscar|pesquisar|filtrar|listar|visualizar|exibir|ver|acompanhar|detalhar|grid|tabela|acessar)/i.test(fullText) || !candidates.some(c => c.functionType === 'CE');
-  if (hasQuery) {
-    const ceTd = Math.min(Math.max(baseTd + 2, 7), 20);
-    const ceAr = 1;
-    const complexity = calculateApfComplexity('CE', ceAr, ceTd);
-    const rawPf = calculateApfRawPf('CE', complexity);
-    const finalPf = calculateApfFinalPf(rawPf, factor);
-    candidates.push({
-      id: `cand_ce_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      name: `CE - Consultar/Listar ${entityName}`,
-      functionType: 'CE',
-      category: 'Transação',
-      td: ceTd,
-      arTr: ceAr,
-      complexity,
-      rawPf,
-      countingType,
-      factor,
-      finalPf,
-      notes: `Recuperação direta de dados e filtros de pesquisa de ${entityName}.`,
-      rationale: `Consulta Externa (CE): Recupera dados sem processamento matemático derivado. ${ceTd} TDs, ${ceAr} AR.`
+  // 9. Construção do Laudo Oficial CFPS em Markdown
+  let reportMarkdown = `## 1. Decomposição do Requisito\n`;
+  reportMarkdown += `- **Resumo da Intenção do Usuário:** ${userRole ? `Como ${userRole}, necessita ${userWant} a fim de ${userBenefit}.` : title}\n`;
+  reportMarkdown += `- **Fronteira da Aplicação:** Fronteira delimitada no sistema local, interagindo com bases relacionais e barramentos de serviço.\n`;
+  reportMarkdown += `- **Natureza da Demanda:** **${nature}** — ${natureExplanation}\n\n`;
+
+  reportMarkdown += `## 2. Memória de Cálculo Detalhada\n\n`;
+
+  if (ifpugCandidates.length > 0) {
+    reportMarkdown += `### A. Funções de Negócio Tradicionais (IFPUG)\n`;
+    reportMarkdown += `| Tipo | Nome do Processo / Entidade | Intenção Primária | TDs | TRs/ARs | Complexidade | PF |\n`;
+    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`;
+    ifpugCandidates.forEach(c => {
+      const arTrLabel = (c.functionType === 'ALI' || c.functionType === 'AIE') ? `${c.arTr} TR` : `${c.arTr} AR`;
+      reportMarkdown += `| **${c.functionType}** | ${c.name} | ${c.primaryIntent} | ${c.td} | ${arTrLabel} | ${c.complexity} | ${c.rawPf} PF |\n`;
     });
+    reportMarkdown += `\n`;
   }
 
-  // SE: Saída Externa / Relatório / Demonstrativo / Cálculos
-  const hasOutput = /(relatório|extrato|exportar|pdf|calcular|cálculo|demonstrativo|consolidado|gráfico|evolução|efetivação|faturamento|fechamento|totalizar|notificação|resumo|painel)/i.test(fullText);
-  if (hasOutput) {
-    const seTd = Math.min(Math.max(baseTd + 4, 10), 22);
-    const seAr = 2;
-    const complexity = calculateApfComplexity('SE', seAr, seTd);
-    const rawPf = calculateApfRawPf('SE', complexity);
-    const finalPf = calculateApfFinalPf(rawPf, factor);
-    candidates.push({
-      id: `cand_se_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      name: `SE - Demonstrativo/Relatório de ${entityName}`,
-      functionType: 'SE',
-      category: 'Transação',
-      td: seTd,
-      arTr: seAr,
-      complexity,
-      rawPf,
-      countingType,
-      factor,
-      finalPf,
-      notes: `Saída calculada ou consolidação formatada de ${entityName}.`,
-      rationale: `Saída Externa (SE): Envia dados com lógica de derivação matemática, totais ou documento consolidado. ${seTd} TDs, ${seAr} ARs.`
+  if (inmCandidates.length > 0) {
+    reportMarkdown += `### B. Itens Não-Mensuráveis / Complementares (FPN • Padrão SISP)\n`;
+    reportMarkdown += `| Item Técnico Identificado | Quantidade ($Q$) | Peso Unitário ($P$) | Justificativa / Referência | Subtotal (PF) |\n`;
+    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- |\n`;
+    inmCandidates.forEach(inm => {
+      reportMarkdown += `| ${inm.itemName} | ${inm.quantity} | ${inm.unitWeight.toFixed(2)} PF | ${inm.justification} | ${inm.subtotalPf.toFixed(2)} PF |\n`;
     });
+    reportMarkdown += `\n`;
   }
+
+  reportMarkdown += `## 3. Totalização Consolidada\n`;
+  reportMarkdown += `- **PF de Negócio (IFPUG Tradicional):** ${totalFinalIfpugPf.toFixed(2)} PF ${factor < 1.0 ? `(Bruto: ${totalRawIfpugPf} PF com redutor de ${(factor * 100).toFixed(0)}%)` : ''}\n`;
+  reportMarkdown += `- **PF Não-Mensuráveis (FPN / Itens Técnicos):** ${totalInmPf.toFixed(2)} PF\n`;
+  reportMarkdown += `- **Total Global da Entrega:** **${totalGlobalPf.toFixed(2)} PF**\n\n`;
+
+  reportMarkdown += `## 4. Notas Técnicas e Observações do Auditor\n`;
+  auditorNotes.forEach(note => {
+    reportMarkdown += `- ${note}\n`;
+  });
 
   return {
-    sourceType: 'requirement',
-    sourceId: req.id,
-    sourceCode: req.code,
-    sourceTitle: req.title,
-    feature: req.feature,
-    projectId: req.project_id || req.projectId,
+    sourceType: reqId ? 'requirement' : (feature ? 'feature' : 'specification'),
+    sourceId: reqId,
+    sourceCode: reqCode,
+    sourceTitle: title || feature || 'Especificação Funcional',
+    feature,
+    projectId,
+    nature,
+    natureExplanation,
+    userRole,
+    userWant,
+    userBenefit,
     detectedFields,
-    candidates
+    candidates: ifpugCandidates,
+    inmCandidates,
+    totalRawIfpugPf,
+    totalFinalIfpugPf,
+    totalInmPf,
+    totalGlobalPf,
+    auditorNotes,
+    reportMarkdown,
+    summary: {
+      nature,
+      totalFunctions: ifpugCandidates.length,
+      totalInmCount: inmCandidates.length,
+      totalRawPf: totalRawIfpugPf,
+      totalFinalIfpugPf,
+      totalInmPf,
+      totalGlobalPf,
+      countAli: ifpugCandidates.filter(c => c.functionType === 'ALI').length,
+      countAie: ifpugCandidates.filter(c => c.functionType === 'AIE').length,
+      countEe: ifpugCandidates.filter(c => c.functionType === 'EE').length,
+      countSe: ifpugCandidates.filter(c => c.functionType === 'SE').length,
+      countCe: ifpugCandidates.filter(c => c.functionType === 'CE').length
+    }
   };
+}
+
+/**
+ * Ponto de entrada para análise heurística de Requisitos existentes
+ */
+function inferApfFromRequirement(req, options = {}) {
+  return analyzeCfpsSpecification(req, options);
 }
 
 /**
@@ -1761,13 +2023,14 @@ function inferApfFromFeature(projectId, featureName, options = {}) {
   const requirements = db.prepare(query).all(...params);
 
   let allCandidates = [];
+  let allInmCandidates = [];
   const seenAliNames = new Set();
+  const seenInmKeys = new Set();
 
   if (requirements.length > 0) {
     requirements.forEach(req => {
-      const res = inferApfFromRequirement(req, options);
+      const res = analyzeCfpsSpecification(req, options);
       res.candidates.forEach(cand => {
-        // Desduplica ALIs se forem essencialmente o mesmo grupo de dados da feature
         if (cand.functionType === 'ALI' || cand.functionType === 'AIE') {
           if (seenAliNames.has(cand.name)) return;
           seenAliNames.add(cand.name);
@@ -1779,9 +2042,17 @@ function inferApfFromFeature(projectId, featureName, options = {}) {
         cand.projectId = req.project_id;
         allCandidates.push(cand);
       });
+
+      (res.inmCandidates || []).forEach(inm => {
+        if (seenInmKeys.has(inm.catalogKey)) return;
+        seenInmKeys.add(inm.catalogKey);
+        inm.reqId = req.id;
+        inm.feature = featureName;
+        inm.projectId = req.project_id;
+        allInmCandidates.push(inm);
+      });
     });
   } else {
-    // Feature sem requisitos cadastrados: decompõe a própria feature arquiteturalmente
     const fakeReq = {
       id: '',
       code: '',
@@ -1791,20 +2062,90 @@ function inferApfFromFeature(projectId, featureName, options = {}) {
       userStory: `Feature ${featureName}`,
       bdd: ''
     };
-    const res = inferApfFromRequirement(fakeReq, options);
+    const res = analyzeCfpsSpecification(fakeReq, options);
     allCandidates = res.candidates.map(c => ({
+      ...c,
+      feature: featureName,
+      projectId: projectId || ''
+    }));
+    allInmCandidates = res.inmCandidates.map(c => ({
       ...c,
       feature: featureName,
       projectId: projectId || ''
     }));
   }
 
+  const factor = getCountingTypeFactor(options.countingType || 'Desenvolvimento', options.factor);
+  const totalRawIfpugPf = allCandidates.reduce((s, c) => s + (c.rawPf || 0), 0);
+  const totalFinalIfpugPf = Math.round(allCandidates.reduce((s, c) => s + (c.finalPf || 0), 0) * 100) / 100;
+  const totalInmPf = Math.round(allInmCandidates.reduce((s, c) => s + (c.subtotalPf || 0), 0) * 100) / 100;
+  const totalGlobalPf = Math.round((totalFinalIfpugPf + totalInmPf) * 100) / 100;
+
+  let nature = 'Pura IFPUG';
+  if (allCandidates.length > 0 && allInmCandidates.length > 0) nature = 'Híbrido';
+  else if (allCandidates.length === 0 && allInmCandidates.length > 0) nature = 'Item Não-Mensurável';
+
+  let reportMarkdown = `## 1. Decomposição do Requisito\n`;
+  reportMarkdown += `- **Resumo da Intenção do Usuário:** Consolidação funcional para todos os fluxos e histórias da feature "${featureName}".\n`;
+  reportMarkdown += `- **Fronteira da Aplicação:** Fronteira do módulo "${featureName}".\n`;
+  reportMarkdown += `- **Natureza da Demanda:** **${nature}**\n\n`;
+
+  reportMarkdown += `## 2. Memória de Cálculo Detalhada\n\n`;
+  if (allCandidates.length > 0) {
+    reportMarkdown += `### A. Funções de Negócio Tradicionais (IFPUG)\n`;
+    reportMarkdown += `| Tipo | Nome do Processo / Entidade | Intenção Primária | TDs | TRs/ARs | Complexidade | PF |\n`;
+    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`;
+    allCandidates.forEach(c => {
+      const arTrLabel = (c.functionType === 'ALI' || c.functionType === 'AIE') ? `${c.arTr} TR` : `${c.arTr} AR`;
+      reportMarkdown += `| **${c.functionType}** | ${c.name} | ${c.primaryIntent || '-'} | ${c.td} | ${arTrLabel} | ${c.complexity} | ${c.rawPf} PF |\n`;
+    });
+    reportMarkdown += `\n`;
+  }
+  if (allInmCandidates.length > 0) {
+    reportMarkdown += `### B. Itens Não-Mensuráveis / Complementares (FPN • Padrão SISP)\n`;
+    reportMarkdown += `| Item Técnico Identificado | Quantidade ($Q$) | Peso Unitário ($P$) | Justificativa / Referência | Subtotal (PF) |\n`;
+    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- |\n`;
+    allInmCandidates.forEach(inm => {
+      reportMarkdown += `| ${inm.itemName} | ${inm.quantity} | ${inm.unitWeight.toFixed(2)} PF | ${inm.justification} | ${inm.subtotalPf.toFixed(2)} PF |\n`;
+    });
+    reportMarkdown += `\n`;
+  }
+
+  reportMarkdown += `## 3. Totalização Consolidada\n`;
+  reportMarkdown += `- **PF de Negócio (IFPUG Tradicional):** ${totalFinalIfpugPf.toFixed(2)} PF\n`;
+  reportMarkdown += `- **PF Não-Mensuráveis (FPN / Itens Técnicos):** ${totalInmPf.toFixed(2)} PF\n`;
+  reportMarkdown += `- **Total Global da Entrega:** **${totalGlobalPf.toFixed(2)} PF**\n\n`;
+
+  reportMarkdown += `## 4. Notas Técnicas e Observações do Auditor\n`;
+  reportMarkdown += `- Análise consolidada cobrindo ${requirements.length} requisito(s) associados à feature.\n`;
+
   return {
     sourceType: 'feature',
     feature: featureName,
     projectId: projectId || '',
     requirementsCount: requirements.length,
-    candidates: allCandidates
+    nature,
+    candidates: allCandidates,
+    inmCandidates: allInmCandidates,
+    totalRawIfpugPf,
+    totalFinalIfpugPf,
+    totalInmPf,
+    totalGlobalPf,
+    reportMarkdown,
+    summary: {
+      nature,
+      totalFunctions: allCandidates.length,
+      totalInmCount: allInmCandidates.length,
+      totalRawPf: totalRawIfpugPf,
+      totalFinalIfpugPf,
+      totalInmPf,
+      totalGlobalPf,
+      countAli: allCandidates.filter(c => c.functionType === 'ALI').length,
+      countAie: allCandidates.filter(c => c.functionType === 'AIE').length,
+      countEe: allCandidates.filter(c => c.functionType === 'EE').length,
+      countSe: allCandidates.filter(c => c.functionType === 'SE').length,
+      countCe: allCandidates.filter(c => c.functionType === 'CE').length
+    }
   };
 }
 
@@ -3501,10 +3842,10 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 12.0. API de Geração Automática de APF (Preview e Batch)
+    // 12.0. API de Geração Automática de APF (Preview e Batch com Motor CFPS)
     if (pathname === '/api/apf/auto-generate/preview' && method === 'POST') {
       const body = await parseJsonBody(req);
-      const { reqId, feature, projectId, countingType, factor } = body;
+      const { reqId, feature, projectId, countingType, factor, text, userStory, bdd, specification } = body;
 
       let result;
       if (reqId) {
@@ -3512,15 +3853,22 @@ const server = http.createServer(async (req, res) => {
         if (!reqRow) {
           return sendJson(res, 404, { success: false, message: 'Requisito não encontrado.' });
         }
-        result = inferApfFromRequirement(reqRow, { countingType, factor });
+        result = analyzeCfpsSpecification(reqRow, { countingType, factor });
+      } else if (text || userStory || bdd || specification) {
+        // Modo Auditoria Direta de História de Usuário / BDD Livre
+        result = analyzeCfpsSpecification({
+          title: body.title || 'Especificação Sob Demanda',
+          userStory: userStory || text || specification,
+          bdd: bdd || '',
+          text: text || specification || '',
+          feature: feature || '',
+          projectId: projectId || ''
+        }, { countingType, factor });
       } else if (feature) {
         result = inferApfFromFeature(projectId, feature, { countingType, factor });
       } else {
-        return sendJson(res, 400, { success: false, message: 'Informe reqId ou feature para análise automática de APF.' });
+        return sendJson(res, 400, { success: false, message: 'Informe reqId, feature ou texto com a história/BDD para análise de APF.' });
       }
-
-      const totalRawPf = result.candidates.reduce((sum, c) => sum + (c.rawPf || 0), 0);
-      const totalFinalPf = Math.round(result.candidates.reduce((sum, c) => sum + (c.finalPf || 0), 0) * 100) / 100;
 
       return sendJson(res, 200, {
         success: true,
@@ -3530,18 +3878,17 @@ const server = http.createServer(async (req, res) => {
         sourceTitle: result.sourceTitle || '',
         feature: result.feature || '',
         projectId: result.projectId || '',
+        nature: result.nature,
+        natureExplanation: result.natureExplanation,
+        userRole: result.userRole || '',
+        userWant: result.userWant || '',
+        userBenefit: result.userBenefit || '',
         detectedFields: result.detectedFields || [],
         candidates: result.candidates,
-        summary: {
-          totalFunctions: result.candidates.length,
-          totalRawPf,
-          totalFinalPf,
-          countAli: result.candidates.filter(c => c.functionType === 'ALI').length,
-          countAie: result.candidates.filter(c => c.functionType === 'AIE').length,
-          countEe: result.candidates.filter(c => c.functionType === 'EE').length,
-          countSe: result.candidates.filter(c => c.functionType === 'SE').length,
-          countCe: result.candidates.filter(c => c.functionType === 'CE').length
-        }
+        inmCandidates: result.inmCandidates || [],
+        auditorNotes: result.auditorNotes || [],
+        reportMarkdown: result.reportMarkdown || '',
+        summary: result.summary
       });
     }
 
@@ -3553,77 +3900,127 @@ const server = http.createServer(async (req, res) => {
 
       const body = await parseJsonBody(req);
       const itemsToCreate = Array.isArray(body.items) ? body.items : [];
-      if (itemsToCreate.length === 0) {
-        return sendJson(res, 400, { success: false, message: 'Nenhuma função de APF informada para cadastro.' });
+      const inmItemsToCreate = Array.isArray(body.inmItems) ? body.inmItems : [];
+
+      if (itemsToCreate.length === 0 && inmItemsToCreate.length === 0) {
+        return sendJson(res, 400, { success: false, message: 'Nenhuma função de APF ou item não-mensurável informado para cadastro.' });
       }
 
       const defaultProjectId = body.projectId || null;
       const defaultFeature = body.feature || '';
       const defaultReqId = body.reqId || null;
       const createdItems = [];
+      const createdInmItems = [];
       const now = new Date().toISOString();
+      const actor = getActorFromReq(req);
+      const actorName = (actor && actor.actorName) || 'Sistema';
 
-      const insertStmt = db.prepare(`
-        INSERT INTO apf_items (id, code, name, project_id, feature, req_id, function_type, category, td, ar_tr, complexity, raw_pf, counting_type, factor, final_pf, notes, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      for (const item of itemsToCreate) {
-        const functionType = (item.functionType || 'EE').toUpperCase().trim();
-        const category = getApfCategory(functionType);
-        const td = Math.max(1, parseInt(item.td, 10) || 1);
-        const arTr = Math.max(0, parseInt(item.arTr !== undefined ? item.arTr : item.trAr, 10) || 0);
-        const complexity = calculateApfComplexity(functionType, arTr, td);
-        const rawPf = calculateApfRawPf(functionType, complexity);
-        const countingType = item.countingType || body.countingType || 'Desenvolvimento';
-        const factor = getCountingTypeFactor(countingType, item.factor !== undefined ? item.factor : body.factor);
-        const finalPf = calculateApfFinalPf(rawPf, factor);
-
-        const count = db.prepare('SELECT count(*) as count FROM apf_items WHERE function_type = ?').get(functionType).count + 1;
-        const code = item.code || `${functionType}-${String(count).padStart(2, '0')}`;
-        const id = 'apf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-
-        let resolvedProjectId = (item.projectId || defaultProjectId || '').trim() || null;
-        if (resolvedProjectId) {
-          const pExists = db.prepare('SELECT id FROM projects WHERE id = ?').get(resolvedProjectId);
-          if (!pExists) resolvedProjectId = null;
-        }
-
-        let resolvedReqId = (item.reqId || defaultReqId || '').trim() || null;
-        if (resolvedReqId) {
-          const rExists = db.prepare('SELECT id FROM requirements WHERE id = ?').get(resolvedReqId);
-          if (!rExists) resolvedReqId = null;
-        }
-
-        const featureVal = (item.feature || defaultFeature || '').trim();
-        const notes = (item.notes || item.rationale || '').trim();
-
-        insertStmt.run(
-          id, code, item.name.trim(), resolvedProjectId, featureVal, resolvedReqId,
-          functionType, category, td, arTr, complexity, rawPf, countingType, factor, finalPf,
-          notes, now, now
-        );
-
-        createdItems.push({
-          id, code, name: item.name.trim(), projectId: resolvedProjectId, feature: featureVal, reqId: resolvedReqId,
-          functionType, category, td, arTr, complexity, rawPf, countingType, factor, finalPf
-        });
+      let resolvedProjectId = (defaultProjectId || '').trim() || null;
+      if (resolvedProjectId) {
+        const pExists = db.prepare('SELECT id FROM projects WHERE id = ?').get(resolvedProjectId);
+        if (!pExists) resolvedProjectId = null;
       }
 
-      const actor = getActorFromReq(req);
+      let resolvedReqId = (defaultReqId || '').trim() || null;
+      if (resolvedReqId) {
+        const rExists = db.prepare('SELECT id FROM requirements WHERE id = ?').get(resolvedReqId);
+        if (!rExists) resolvedReqId = null;
+      }
+
+      // 1. Gravação das Funções Tradicionais IFPUG (apf_items)
+      if (itemsToCreate.length > 0) {
+        const insertStmt = db.prepare(`
+          INSERT INTO apf_items (id, code, name, project_id, feature, req_id, function_type, category, td, ar_tr, complexity, raw_pf, counting_type, factor, final_pf, notes, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        for (const item of itemsToCreate) {
+          const functionType = (item.functionType || 'EE').toUpperCase().trim();
+          const category = getApfCategory(functionType);
+          const td = Math.max(1, parseInt(item.td, 10) || 1);
+          const arTr = Math.max(0, parseInt(item.arTr !== undefined ? item.arTr : item.trAr, 10) || 0);
+          const complexity = calculateApfComplexity(functionType, arTr, td);
+          const rawPf = calculateApfRawPf(functionType, complexity);
+          const countingType = item.countingType || body.countingType || 'Desenvolvimento';
+          const factor = getCountingTypeFactor(countingType, item.factor !== undefined ? item.factor : body.factor);
+          const finalPf = calculateApfFinalPf(rawPf, factor);
+
+          const count = db.prepare('SELECT count(*) as count FROM apf_items WHERE function_type = ?').get(functionType).count + 1;
+          const code = item.code || `${functionType}-${String(count).padStart(2, '0')}`;
+          const id = 'apf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+
+          let itemProjId = (item.projectId || resolvedProjectId || '').trim() || null;
+          if (itemProjId && !db.prepare('SELECT id FROM projects WHERE id = ?').get(itemProjId)) itemProjId = null;
+
+          let itemReqId = (item.reqId || resolvedReqId || '').trim() || null;
+          if (itemReqId && !db.prepare('SELECT id FROM requirements WHERE id = ?').get(itemReqId)) itemReqId = null;
+
+          const featureVal = (item.feature || defaultFeature || '').trim();
+          const notes = (item.notes || item.rationale || '').trim();
+
+          insertStmt.run(
+            id, code, item.name.trim(), itemProjId, featureVal, itemReqId,
+            functionType, category, td, arTr, complexity, rawPf, countingType, factor, finalPf,
+            notes, now, now
+          );
+
+          createdItems.push({
+            id, code, name: item.name.trim(), projectId: itemProjId, feature: featureVal, reqId: itemReqId,
+            functionType, category, td, arTr, complexity, rawPf, countingType, factor, finalPf
+          });
+        }
+      }
+
+      // 2. Gravação de Itens Não-Mensuráveis (apf_inm_items)
+      if (inmItemsToCreate.length > 0) {
+        const insertInmStmt = db.prepare(`
+          INSERT INTO apf_inm_items (
+            id, code, project_id, feature, req_id, category, catalog_key,
+            item_name, description, quantity, unit_weight, calculated_pf,
+            evidence, status, created_by, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        for (const inm of inmItemsToCreate) {
+          const count = db.prepare('SELECT count(*) as count FROM apf_inm_items').get().count + 1;
+          const code = inm.code || `INM-${String(count).padStart(2, '0')}`;
+          const id = 'inm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+          const catalogKey = (inm.catalogKey || 'custom').trim();
+          const category = (inm.category || 'Tabelas de Apoio').trim();
+          const quantity = Math.max(0.01, parseFloat(inm.quantity) || 1);
+          const unitWeight = Math.max(0, parseFloat(inm.unitWeight !== undefined ? inm.unitWeight : 0.8));
+          const calculatedPf = Math.round((quantity * unitWeight) * 100) / 100;
+          const evidence = (inm.evidence || inm.justification || '').trim();
+          const description = (inm.description || inm.justification || '').trim();
+
+          insertInmStmt.run(
+            id, code, resolvedProjectId, defaultFeature, resolvedReqId, category, catalogKey,
+            inm.itemName || inm.name, description, quantity, unitWeight, calculatedPf,
+            evidence, 'Aprovado', actorName, now, now
+          );
+
+          createdInmItems.push({
+            id, code, itemName: inm.itemName || inm.name, category, quantity, unitWeight, calculatedPf
+          });
+        }
+      }
+
       logAudit({
         entityType: 'apf',
         entityId: 'batch_' + Date.now(),
-        entityTitle: `Geração Automática de ${createdItems.length} Funções APF`,
+        entityTitle: `Geração CFPS: ${createdItems.length} Funções IFPUG & ${createdInmItems.length} FPN`,
         action: 'CREATE',
         ...actor,
-        details: `Gerou automaticamente ${createdItems.length} funções de APF para ${defaultReqId ? 'Requisito ' + defaultReqId : 'Feature ' + defaultFeature} totalizando ${createdItems.reduce((acc, c) => acc + c.finalPf, 0).toFixed(1)} PF.`
+        details: `Registrou ${createdItems.length} funções IFPUG (${createdItems.reduce((acc, c) => acc + c.finalPf, 0).toFixed(1)} PF) e ${createdInmItems.length} itens não-mensuráveis (${createdInmItems.reduce((acc, c) => acc + c.calculatedPf, 0).toFixed(1)} PF) para ${resolvedReqId ? 'Requisito ' + resolvedReqId : (defaultFeature ? 'Feature ' + defaultFeature : 'Projeto')}.`
       });
 
       return sendJson(res, 201, {
         success: true,
-        count: createdItems.length,
-        items: createdItems
+        count: createdItems.length + createdInmItems.length,
+        itemsCount: createdItems.length,
+        inmCount: createdInmItems.length,
+        items: createdItems,
+        inmItems: createdInmItems
       });
     }
 
