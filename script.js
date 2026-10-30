@@ -1393,7 +1393,10 @@ class ALMStore {
     const complexity = typeof calculateApfComplexity === 'function' ? calculateApfComplexity(functionType, arTr, td) : 'Média';
     const rawPf = typeof calculateApfRawPf === 'function' ? calculateApfRawPf(functionType, complexity) : 4;
     const countingType = itemData.countingType || 'Desenvolvimento';
-    const factor = typeof getCountingTypeDefaultFactor === 'function' ? getCountingTypeDefaultFactor(countingType, itemData.factor) : (parseFloat(itemData.factor) || 1.0);
+    const operationType = (itemData.operationType || (countingType === 'Melhoria' ? 'CHG' : 'ADD')).toUpperCase();
+    const factor = typeof getCountingTypeDefaultFactor === 'function'
+      ? getCountingTypeDefaultFactor(countingType, itemData.factor, operationType, functionType)
+      : (parseFloat(itemData.factor) || 1.0);
     const finalPf = typeof calculateApfFinalPf === 'function' ? calculateApfFinalPf(rawPf, factor) : Math.round(rawPf * factor * 100) / 100;
     const now = new Date().toISOString();
 
@@ -1424,6 +1427,7 @@ class ALMStore {
       complexity,
       rawPf,
       countingType,
+      operationType,
       factor,
       finalPf,
       notes: itemData.notes || '',
@@ -1460,7 +1464,10 @@ class ALMStore {
       const complexity = typeof calculateApfComplexity === 'function' ? calculateApfComplexity(functionType, arTr, td) : existing.complexity;
       const rawPf = typeof calculateApfRawPf === 'function' ? calculateApfRawPf(functionType, complexity) : existing.rawPf;
       const countingType = updates.countingType !== undefined ? updates.countingType : existing.countingType;
-      const factor = typeof getCountingTypeDefaultFactor === 'function' ? getCountingTypeDefaultFactor(countingType, updates.factor !== undefined ? updates.factor : existing.factor) : existing.factor;
+      const operationType = ((updates.operationType !== undefined ? updates.operationType : existing.operationType) || (countingType === 'Melhoria' ? 'CHG' : 'ADD')).toUpperCase();
+      const factor = typeof getCountingTypeDefaultFactor === 'function'
+        ? getCountingTypeDefaultFactor(countingType, updates.factor !== undefined ? updates.factor : existing.factor, operationType, functionType)
+        : existing.factor;
       const finalPf = typeof calculateApfFinalPf === 'function' ? calculateApfFinalPf(rawPf, factor) : Math.round(rawPf * factor * 100) / 100;
 
       const proj = updates.projectId ? this.getProjectById(updates.projectId) : (existing.projectId ? this.getProjectById(existing.projectId) : null);
@@ -1476,6 +1483,7 @@ class ALMStore {
         complexity,
         rawPf,
         countingType,
+        operationType,
         factor,
         finalPf,
         projectName: proj ? proj.name : existing.projectName,
@@ -11528,20 +11536,44 @@ function calculateApfRawPf(type, complexity) {
 }
 window.calculateApfRawPf = calculateApfRawPf;
 
-// Fatores de Redução Padrão por Tipo de Contagem
+// Fatores de Redução Padrão por Tipo de Contagem e Operação de Melhoria (IFPUG CPM 4.3.1 + SISP)
 const COUNTING_TYPE_DEFAULT_FACTORS = {
-  'Desenvolvimento': 1.0,
-  'Melhoria': 1.0,
+  'Desenvolvimento': 1.00,
+  'Melhoria': 0.50,
+  'Melhoria - Inclusão (ADD)': 1.00,
+  'Melhoria - Alteração (CHG)': 0.50,
+  'Melhoria - Exclusão (DEL)': 0.40,
   'Testes': 0.30,
   'Transferência Tecnológica': 0.20
 };
 window.COUNTING_TYPE_DEFAULT_FACTORS = COUNTING_TYPE_DEFAULT_FACTORS;
 
-function getCountingTypeDefaultFactor(countingType, customFactor) {
+function getSispClientEnhancementFactor(operationType = 'CHG', functionType = 'EE') {
+  const op = (operationType || 'CHG').toUpperCase().trim();
+  const fn = (functionType || 'EE').toUpperCase().trim();
+  if (op === 'ADD') return 1.00;
+  if (op === 'DEL') return 0.40;
+  return (fn === 'ALI' || fn === 'AIE') ? 0.35 : 0.50;
+}
+window.getSispClientEnhancementFactor = getSispClientEnhancementFactor;
+
+function getCountingTypeDefaultFactor(countingType, customFactor, operationType = null, functionType = null) {
+  const ct = (countingType || 'Desenvolvimento').trim();
+  const isMelhoria = ct.toLowerCase().startsWith('melhoria');
+  const op = (operationType || (isMelhoria ? 'CHG' : 'ADD')).toUpperCase().trim();
+
   if (customFactor !== undefined && customFactor !== null && !isNaN(parseFloat(customFactor))) {
-    return Math.max(0, parseFloat(customFactor));
+    const parsed = Math.max(0, parseFloat(customFactor));
+    if (isMelhoria && parsed === 1.0 && (op === 'CHG' || op === 'DEL')) {
+      return getSispClientEnhancementFactor(op, functionType);
+    }
+    return parsed;
   }
-  return COUNTING_TYPE_DEFAULT_FACTORS[countingType] !== undefined ? COUNTING_TYPE_DEFAULT_FACTORS[countingType] : 1.0;
+
+  if (isMelhoria || op === 'CHG' || op === 'DEL') {
+    return getSispClientEnhancementFactor(op, functionType);
+  }
+  return COUNTING_TYPE_DEFAULT_FACTORS[ct] !== undefined ? COUNTING_TYPE_DEFAULT_FACTORS[ct] : 1.0;
 }
 window.getCountingTypeDefaultFactor = getCountingTypeDefaultFactor;
 
@@ -11552,12 +11584,13 @@ function calculateApfFinalPf(rawPf, factor) {
 }
 window.calculateApfFinalPf = calculateApfFinalPf;
 
-function getApfCalculationExplanation(type, arTr, td, complexity, rawPf, countingType, factor, finalPf) {
+function getApfCalculationExplanation(type, arTr, td, complexity, rawPf, countingType, factor, finalPf, operationType = 'ADD') {
   const normType = (type || 'EE').toUpperCase().trim();
   const cat = getApfCategory(normType);
   const arTrLabel = (normType === 'ALI' || normType === 'AIE') ? `${arTr} TR(s)` : `${arTr} AR(s)`;
   const factorPct = Math.round((parseFloat(factor) || 1.0) * 100);
-  return `Matriz IFPUG CPM 4.3.1: ${normType} (${cat}) com ${arTrLabel} e ${td} TD(s) ➔ Complexidade ${complexity} (${rawPf} PF Bruto). Redutor do Tipo de Contagem "${countingType}" (${factorPct}%) ➔ ${finalPf.toFixed(2)} PF Final.`;
+  const opLabel = operationType === 'CHG' ? 'Alteração (CHG - Tamanho Final pós-mudança)' : (operationType === 'DEL' ? 'Exclusão (DEL)' : 'Inclusão (ADD)');
+  return `Matriz IFPUG CPM 4.3.1: ${normType} (${cat} • ${opLabel}) com ${arTrLabel} e ${td} TD(s) ➔ Complexidade ${complexity} (${rawPf} PF Bruto). Deflator SISP "${countingType}" (${factorPct}%) ➔ ${finalPf.toFixed(2)} PF Final.`;
 }
 
 /**
@@ -12228,8 +12261,8 @@ function renderApfTableView(items, tbody) {
           ${it.rawPf} PF
         </td>
         <td style="text-align: center;">
-          <span class="badge-subtle ${countingTagClass}" style="font-size: 0.72rem; padding: 2px 8px; font-weight: 600;" title="Fator: ${(parseFloat(it.factor) || 1).toFixed(2)}x">
-            ${it.countingType || 'Desenvolvimento'} (${factorPct}%)
+          <span class="badge-subtle ${countingTagClass}" style="font-size: 0.72rem; padding: 2px 8px; font-weight: 600;" title="Fator: ${(parseFloat(it.factor) || 1).toFixed(2)}x | Operação: ${it.operationType || 'ADD'}">
+            ${it.countingType || 'Desenvolvimento'}${it.countingType === 'Melhoria' ? ` [${it.operationType || 'ADD'}]` : ''} (${factorPct}%)
           </span>
         </td>
         <td style="text-align: right;">
@@ -12302,7 +12335,7 @@ function renderApfCardsView(items, container) {
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem;">
-          <span style="color: var(--text-muted);">${it.countingType || 'Desenvolvimento'}:</span>
+          <span style="color: var(--text-muted);">${it.countingType || 'Desenvolvimento'}${it.countingType === 'Melhoria' ? ` [${it.operationType || 'ADD'}]` : ''}:</span>
           <strong style="color: var(--text-main);">${factorPct}% (${(parseFloat(it.factor) || 1).toFixed(2)}x)</strong>
         </div>
 
@@ -12341,13 +12374,16 @@ function updateApfLiveCalc() {
   const type = typeRadio ? typeRadio.value : 'EE';
 
   const tdInput = document.getElementById('apf-td-input');
-  const td = Math.max(1, parseInt(tdInput ? tdInput.value : 5, 10) || 1);
+  const td = Math.max(1, parseInt(tdInput ? tdInput.value : 3, 10) || 1);
 
   const arTrInput = document.getElementById('apf-artr-input');
   const arTr = Math.max(0, parseInt(arTrInput ? arTrInput.value : 1, 10) || 0);
 
   const countingSelect = document.getElementById('apf-counting-type-select');
   const countingType = countingSelect ? countingSelect.value : 'Desenvolvimento';
+
+  const operationSelect = document.getElementById('apf-operation-type-select');
+  const operationType = operationSelect ? operationSelect.value : 'ADD';
 
   const factorInput = document.getElementById('apf-factor-percent-input');
   let factorPercent = parseFloat(factorInput ? factorInput.value : 100);
@@ -12412,7 +12448,7 @@ function updateApfLiveCalc() {
 
   const explanation = document.getElementById('apf-live-explanation');
   if (explanation) {
-    explanation.textContent = getApfCalculationExplanation(type, arTr, td, complexity, rawPf, countingType, factor, finalPf);
+    explanation.textContent = getApfCalculationExplanation(type, arTr, td, complexity, rawPf, countingType, factor, finalPf, operationType);
   }
 
   const factorHint = document.getElementById('apf-factor-decimal-hint');
@@ -12442,6 +12478,7 @@ function openApfModal(apfIdToEdit = null, defaultProjectId = null, defaultFeatur
   const tdInput = document.getElementById('apf-td-input');
   const arTrInput = document.getElementById('apf-artr-input');
   const countingSelect = document.getElementById('apf-counting-type-select');
+  const operationSelect = document.getElementById('apf-operation-type-select');
   const factorInput = document.getElementById('apf-factor-percent-input');
   const notesInput = document.getElementById('apf-notes-input');
 
@@ -12458,9 +12495,10 @@ function openApfModal(apfIdToEdit = null, defaultProjectId = null, defaultFeatur
     if (projectSelect && item.projectId) projectSelect.value = item.projectId;
     if (featureInput) featureInput.value = item.feature || '';
     if (reqSelect && item.reqId) reqSelect.value = item.reqId;
-    if (tdInput) tdInput.value = item.td || 5;
+    if (tdInput) tdInput.value = item.td || 3;
     if (arTrInput) arTrInput.value = item.arTr || 1;
     if (countingSelect) countingSelect.value = item.countingType || 'Desenvolvimento';
+    if (operationSelect) operationSelect.value = item.operationType || 'ADD';
     if (factorInput) factorInput.value = Math.round((parseFloat(item.factor) || 1.0) * 100);
     if (notesInput) notesInput.value = item.notes || '';
 
@@ -12476,9 +12514,10 @@ function openApfModal(apfIdToEdit = null, defaultProjectId = null, defaultFeatur
     if (featureInput && defaultFeature) featureInput.value = defaultFeature;
     if (reqSelect && defaultReqId) reqSelect.value = defaultReqId;
 
-    if (tdInput) tdInput.value = 5;
+    if (tdInput) tdInput.value = 3;
     if (arTrInput) arTrInput.value = 1;
     if (countingSelect) countingSelect.value = 'Desenvolvimento';
+    if (operationSelect) operationSelect.value = 'ADD';
     if (factorInput) factorInput.value = 100;
     if (notesInput) notesInput.value = '';
 
@@ -12528,6 +12567,7 @@ async function handleSaveApfItem(e) {
   const td = Math.max(1, parseInt(document.getElementById('apf-td-input')?.value, 10) || 1);
   const arTr = Math.max(0, parseInt(document.getElementById('apf-artr-input')?.value, 10) || 0);
   const countingType = document.getElementById('apf-counting-type-select')?.value || 'Desenvolvimento';
+  const operationType = document.getElementById('apf-operation-type-select')?.value || 'ADD';
   const factorPct = parseFloat(document.getElementById('apf-factor-percent-input')?.value) || 100;
   const factor = factorPct / 100;
   const notes = document.getElementById('apf-notes-input')?.value.trim() || '';
@@ -12542,6 +12582,7 @@ async function handleSaveApfItem(e) {
     td,
     arTr,
     countingType,
+    operationType,
     factor,
     notes
   };
@@ -12613,8 +12654,9 @@ Classificação IFPUG:
 • Complexidade Funcional:   ${item.complexity}
 • Pontos de Função Brutos:  ${item.rawPf} PF
 
-Deflator Contratual:
+Deflator Contratual (IFPUG / SISP):
 • Tipo de Contagem:         ${item.countingType || 'Desenvolvimento'}
+• Operação (Passo D):       ${item.operationType || 'ADD'} (${item.operationType === 'CHG' ? 'Alteração - tamanho final pós-mudança' : (item.operationType === 'DEL' ? 'Exclusão de função existente' : 'Inclusão de nova função')})
 • Fator Aplicado:           ${factorPct}% (${(parseFloat(item.factor) || 1).toFixed(2)}x)
 
 Resultado Final:
@@ -12661,14 +12703,15 @@ async function seedSampleApfData() {
     },
     {
       code: 'EE-01',
-      name: 'Cadastro de Novo Cliente ou Fornecedor',
+      name: 'Manutenção de Cadastro de Cliente ou Fornecedor',
       functionType: 'EE',
       feature: 'Cadastros Gerais',
       td: 12,
       arTr: 2, // AR=2 e TD=12 -> Média -> 4 PF
       countingType: 'Melhoria',
-      factor: 1.0,
-      notes: 'Processo elementar de inclusão de entidade com validação cadastral e atualização em dois ALIs.'
+      operationType: 'CHG',
+      factor: 0.50, // Melhoria CHG Transação SISP = 50% (2.00 PF)
+      notes: 'Alteração (CHG) em processo elementar com tamanho final pós-mudança (CPM 4.3.1) e deflator SISP de 50% para transação.'
     },
     {
       code: 'CE-01',
@@ -12824,6 +12867,7 @@ function exportApfToExcel() {
     'Complexidade': it.complexity,
     'PF Bruto': it.rawPf,
     'Tipo de Contagem': it.countingType || 'Desenvolvimento',
+    'Operação (ADD/CHG/DEL)': it.operationType || 'ADD',
     'Redutor (%)': Math.round((parseFloat(it.factor) || 1.0) * 100) + '%',
     'PF Final (Líquido)': parseFloat(it.finalPf) || 0,
     'Notas / Justificativa Técnica': it.notes || ''
@@ -13207,6 +13251,13 @@ function initApfEventListeners() {
         if (!document.getElementById('apf-id-edit')?.value) {
           suggestApfCode(e.target.value);
         }
+        const countingTypeVal = document.getElementById('apf-counting-type-select')?.value || 'Desenvolvimento';
+        const opVal = document.getElementById('apf-operation-type-select')?.value || 'ADD';
+        if (countingTypeVal === 'Melhoria' && opVal === 'CHG') {
+          const defFactor = getCountingTypeDefaultFactor(countingTypeVal, opVal, e.target.value);
+          const factorPercentInput = document.getElementById('apf-factor-percent-input');
+          if (factorPercentInput) factorPercentInput.value = Math.round(defFactor * 100);
+        }
         updateApfLiveCalc();
       });
     }
@@ -13257,17 +13308,79 @@ function initApfEventListeners() {
     }
   });
 
-  // Mudança no Tipo de Contagem atualiza o redutor padrão percentual
+  // Mudança no Tipo de Contagem ou Operação (ADD/CHG/DEL) atualiza o redutor padrão percentual
+  const syncManualCountingFactor = () => {
+    const cType = document.getElementById('apf-counting-type-select')?.value || 'Desenvolvimento';
+    const opType = document.getElementById('apf-operation-type-select')?.value || 'ADD';
+    const fnRadio = document.querySelector('input[name="apf-type"]:checked');
+    const fnType = fnRadio ? fnRadio.value : 'EE';
+    const defFactor = getCountingTypeDefaultFactor(cType, opType, fnType);
+    const factorPercentInput = document.getElementById('apf-factor-percent-input');
+    if (factorPercentInput) {
+      factorPercentInput.value = Math.round(defFactor * 100);
+    }
+    updateApfLiveCalc();
+  };
+
   const countingTypeSelect = document.getElementById('apf-counting-type-select');
   if (countingTypeSelect && !countingTypeSelect.dataset.init) {
     countingTypeSelect.dataset.init = 'true';
     countingTypeSelect.addEventListener('change', (e) => {
-      const defFactor = getCountingTypeDefaultFactor(e.target.value);
-      const factorPercentInput = document.getElementById('apf-factor-percent-input');
-      if (factorPercentInput) {
-        factorPercentInput.value = Math.round(defFactor * 100);
+      const opSelect = document.getElementById('apf-operation-type-select');
+      if (e.target.value === 'Melhoria' && opSelect && opSelect.value === 'ADD') {
+        opSelect.value = 'CHG';
+      } else if (e.target.value === 'Desenvolvimento' && opSelect) {
+        opSelect.value = 'ADD';
       }
-      updateApfLiveCalc();
+      syncManualCountingFactor();
+    });
+  }
+
+  const operationTypeSelect = document.getElementById('apf-operation-type-select');
+  if (operationTypeSelect && !operationTypeSelect.dataset.init) {
+    operationTypeSelect.dataset.init = 'true';
+    operationTypeSelect.addEventListener('change', (e) => {
+      const cSelect = document.getElementById('apf-counting-type-select');
+      if ((e.target.value === 'CHG' || e.target.value === 'DEL') && cSelect && cSelect.value === 'Desenvolvimento') {
+        cSelect.value = 'Melhoria';
+      }
+      syncManualCountingFactor();
+    });
+  }
+
+  // Sincronização do Tipo de Contagem e Operação no modal de Geração Automática
+  const autoCountingSelect = document.getElementById('apf-auto-counting-type');
+  const autoOperationSelect = document.getElementById('apf-auto-operation-type');
+  const syncAutoCountingFactor = () => {
+    const cType = autoCountingSelect?.value || 'Desenvolvimento';
+    const opType = autoOperationSelect?.value || 'AUTO';
+    const factorInput = document.getElementById('apf-auto-factor-percent');
+    if (!factorInput) return;
+    if (cType === 'Melhoria') {
+      if (opType === 'ADD') factorInput.value = 100;
+      else if (opType === 'DEL') factorInput.value = 40;
+      else factorInput.value = 50; // Padrão SISP CHG Transação (35% para dados aplicado por item no motor)
+    } else {
+      const defFactor = getCountingTypeDefaultFactor(cType, 'ADD', 'EE');
+      factorInput.value = Math.round(defFactor * 100);
+    }
+  };
+  if (autoCountingSelect && !autoCountingSelect.dataset.init) {
+    autoCountingSelect.dataset.init = 'true';
+    autoCountingSelect.addEventListener('change', (e) => {
+      if (e.target.value === 'Melhoria' && autoOperationSelect && autoOperationSelect.value === 'ADD') {
+        autoOperationSelect.value = 'AUTO';
+      }
+      syncAutoCountingFactor();
+    });
+  }
+  if (autoOperationSelect && !autoOperationSelect.dataset.init) {
+    autoOperationSelect.dataset.init = 'true';
+    autoOperationSelect.addEventListener('change', (e) => {
+      if ((e.target.value === 'CHG' || e.target.value === 'DEL') && autoCountingSelect && autoCountingSelect.value === 'Desenvolvimento') {
+        autoCountingSelect.value = 'Melhoria';
+      }
+      syncAutoCountingFactor();
     });
   }
 
@@ -13334,11 +13447,15 @@ function initApfEventListeners() {
     btnSelectAll.dataset.init = 'true';
     btnSelectAll.addEventListener('click', () => {
       currentApfAutoCandidates.forEach(c => c.selected = true);
-      currentApfAutoInmCandidates.forEach(inm => inm.selected = true);
+      currentApfAutoInmCandidates.forEach(inm => {
+        if (!inm.absorbed) inm.selected = true;
+      });
       document.querySelectorAll('.apf-auto-chk').forEach(chk => chk.checked = true);
-      document.querySelectorAll('.apf-auto-inm-chk').forEach(chk => chk.checked = true);
+      document.querySelectorAll('.apf-auto-inm-chk:not(:disabled)').forEach(chk => chk.checked = true);
       document.querySelectorAll('.apf-auto-card-row').forEach(row => row.classList.remove('is-unselected'));
-      document.querySelectorAll('.apf-inm-card-row').forEach(row => row.classList.remove('is-unselected'));
+      document.querySelectorAll('.apf-inm-card-row').forEach((row, idx) => {
+        if (!currentApfAutoInmCandidates[idx]?.absorbed) row.classList.remove('is-unselected');
+      });
       updateApfAutoSummaryHud();
     });
   }
@@ -13580,8 +13697,13 @@ async function runApfAutoAnalysis() {
   const reqId = document.getElementById('apf-auto-req-select')?.value || '';
   const specText = document.getElementById('apf-auto-spec-text')?.value?.trim() || '';
   const countingType = document.getElementById('apf-auto-counting-type')?.value || 'Desenvolvimento';
-  const factorPct = parseFloat(document.getElementById('apf-auto-factor-percent')?.value) || 100;
-  const factor = factorPct / 100;
+  const operationTypeSel = document.getElementById('apf-auto-operation-type')?.value || 'AUTO';
+  const operationType = operationTypeSel === 'AUTO' ? '' : operationTypeSel;
+  const factorPct = parseFloat(document.getElementById('apf-auto-factor-percent')?.value);
+  // Se estiver em modo AUTO de Melhoria (50% default no input), deixa o backend aplicar 50% p/ Transações e 35% p/ Dados automaticamente
+  const factor = (countingType === 'Melhoria' && operationTypeSel === 'AUTO' && factorPct === 50)
+    ? undefined
+    : ((isNaN(factorPct) ? 100 : factorPct) / 100);
 
   if (mode === 'req' && !reqId) {
     showToast('Selecione um requisito para executar a auditoria CFPS.', 'warn');
@@ -13614,6 +13736,7 @@ async function runApfAutoAnalysis() {
       reqId: mode === 'req' ? reqId : '',
       text: mode === 'spec' ? specText : '',
       countingType,
+      operationType,
       factor
     };
 
@@ -13632,11 +13755,19 @@ async function runApfAutoAnalysis() {
       index: i
     }));
 
-    currentApfAutoInmCandidates = (res.inmCandidates || []).map((inm, i) => ({
+    const validInmList = (res.inmCandidates || []).map((inm, i) => ({
       ...inm,
+      absorbed: false,
       selected: true,
       index: i
     }));
+    const absorbedInmList = (res.absorbedInmCandidates || []).map((inm, i) => ({
+      ...inm,
+      absorbed: true,
+      selected: false,
+      index: validInmList.length + i
+    }));
+    currentApfAutoInmCandidates = [...validInmList, ...absorbedInmList];
 
     currentApfReportMarkdown = res.reportMarkdown || '';
 
@@ -13660,7 +13791,10 @@ async function runApfAutoAnalysis() {
       const metaEl = document.getElementById('apf-auto-context-meta');
       if (metaEl) {
         const pObj = store.getProjectById(res.projectId || projectId);
-        metaEl.textContent = `Projeto: ${pObj ? pObj.name : 'Geral'} | Tipo: ${countingType} (${Math.round(factor * 100)}%)`;
+        const candFactor = currentApfAutoCandidates[0]?.factor;
+        const effFactorPct = Math.round(((candFactor !== undefined ? candFactor : (res.factor !== undefined ? res.factor : (factor || 1.0)))) * 100);
+        const effCountingType = res.countingType || countingType;
+        metaEl.textContent = `Projeto: ${pObj ? pObj.name : 'Geral'} | Tipo: ${effCountingType} [${res.operationType || operationType || 'ADD'}] (${effFactorPct}%)`;
       }
 
       // Badge de Natureza da Demanda
@@ -13781,6 +13915,7 @@ function renderApfAutoCandidates(candidates) {
         </div>
         <div>
           <span class="apf-type-tag ${typeClass}" style="display: block; text-align: center; font-size: 0.72rem; padding: 3px 0;">${cand.functionType}</span>
+          <span style="display: block; text-align: center; font-size: 0.63rem; color: var(--text-muted); margin-top: 2px; font-weight: 700;">${cand.operationType || 'ADD'} (${Math.round((cand.factor ?? 1.0) * 100)}%)</span>
         </div>
         <div>
           <input type="text" class="custom-input apf-auto-name-input" data-idx="${idx}" value="${escapeHtml(cand.name)}" style="font-size: 0.82rem; padding: 4px 8px; font-weight: 600;">
@@ -13863,30 +13998,32 @@ function renderApfAutoInmCandidates(inmCandidates) {
   `;
 
   inmCandidates.forEach((cand, idx) => {
+    const isAbsorbed = Boolean(cand.absorbed);
     html += `
-      <div class="apf-inm-card-row ${cand.selected ? '' : 'is-unselected'}" id="apf-auto-inm-row-${idx}">
+      <div class="apf-inm-card-row ${cand.selected ? '' : 'is-unselected'}" id="apf-auto-inm-row-${idx}" style="${isAbsorbed ? 'opacity: 0.55; background: rgba(244,63,94,0.04);' : ''}">
         <div style="text-align: center;">
-          <input type="checkbox" class="custom-checkbox apf-auto-inm-chk" data-idx="${idx}" ${cand.selected ? 'checked' : ''}>
+          <input type="checkbox" class="custom-checkbox apf-auto-inm-chk" data-idx="${idx}" ${cand.selected ? 'checked' : ''} ${isAbsorbed ? 'disabled title="Bloqueado pela trava de exclusão mútua SISP (já remunerado pela transação IFPUG)"' : ''}>
         </div>
         <div>
           <span class="tag-inm-badge tag-inm-tabelas" style="font-size: 0.7rem; padding: 2px 6px;">${escapeHtml(cand.category || 'Técnico')}</span>
+          ${isAbsorbed ? `<span style="display: block; font-size: 0.62rem; color: #f43f5e; font-weight: 700; margin-top: 2px;">🚫 ABSORVIDO (SISP)</span>` : ''}
         </div>
         <div>
-          <strong style="font-size: 0.85rem; color: var(--text-main);">${escapeHtml(cand.itemName)}</strong>
+          <strong style="font-size: 0.85rem; color: var(--text-main); ${isAbsorbed ? 'text-decoration: line-through;' : ''}">${escapeHtml(cand.itemName)}</strong>
           <div class="apf-auto-rationale" title="${escapeHtml(cand.justification)}">💡 ${escapeHtml(cand.justification)}</div>
         </div>
         <div>
           <div class="mini-stepper">
-            <button type="button" onclick="adjustApfAutoInmVal(${idx}, 'quantity', -1)">-</button>
+            <button type="button" ${isAbsorbed ? 'disabled' : `onclick="adjustApfAutoInmVal(${idx}, 'quantity', -1)"`}>-</button>
             <input type="text" readonly id="apf-auto-inm-qty-${idx}" value="${cand.quantity}">
-            <button type="button" onclick="adjustApfAutoInmVal(${idx}, 'quantity', 1)">+</button>
+            <button type="button" ${isAbsorbed ? 'disabled' : `onclick="adjustApfAutoInmVal(${idx}, 'quantity', 1)"`}>+</button>
           </div>
         </div>
         <div>
-          <span style="font-size: 0.82rem; color: #a78bfa; font-weight: 600;">${cand.unitWeight.toFixed(2)} PF</span>
+          <span style="font-size: 0.82rem; color: #a78bfa; font-weight: 600;">${(cand.unitWeight || 0).toFixed(2)} PF</span>
         </div>
         <div>
-          <strong id="apf-auto-inm-subtotal-${idx}" style="font-size: 0.88rem; color: #34d399;">${cand.subtotalPf.toFixed(2)} PF</strong>
+          <strong id="apf-auto-inm-subtotal-${idx}" style="font-size: 0.88rem; color: ${isAbsorbed ? '#f43f5e' : '#34d399'};">${isAbsorbed ? '0.00 PF (Absorvido)' : `${(cand.subtotalPf || 0).toFixed(2)} PF`}</strong>
         </div>
       </div>
     `;
@@ -14005,7 +14142,7 @@ window.updateApfAutoSummaryHud = updateApfAutoSummaryHud;
  */
 async function handleSaveApfAutoBatch() {
   const selectedIfpug = currentApfAutoCandidates.filter(c => c.selected);
-  const selectedInm = currentApfAutoInmCandidates.filter(c => c.selected);
+  const selectedInm = currentApfAutoInmCandidates.filter(c => c.selected && !c.absorbed);
 
   if (selectedIfpug.length === 0 && selectedInm.length === 0) {
     showToast('Selecione ao menos uma função IFPUG ou item não-mensurável para cadastrar.', 'warn');
@@ -14016,8 +14153,12 @@ async function handleSaveApfAutoBatch() {
   const feature = document.getElementById('apf-auto-feature-select')?.value || '';
   const reqId = document.getElementById('apf-auto-req-select')?.value || '';
   const countingType = document.getElementById('apf-auto-counting-type')?.value || 'Desenvolvimento';
-  const factorPct = parseFloat(document.getElementById('apf-auto-factor-percent')?.value) || 100;
-  const factor = factorPct / 100;
+  const operationTypeSel = document.getElementById('apf-auto-operation-type')?.value || 'AUTO';
+  const operationType = operationTypeSel === 'AUTO' ? '' : operationTypeSel;
+  const factorPct = parseFloat(document.getElementById('apf-auto-factor-percent')?.value);
+  const factor = (countingType === 'Melhoria' && operationTypeSel === 'AUTO' && factorPct === 50)
+    ? undefined
+    : ((isNaN(factorPct) ? 100 : factorPct) / 100);
 
   const btnSave = document.getElementById('btn-confirm-save-apf-auto');
   if (btnSave) {
@@ -14031,14 +14172,16 @@ async function handleSaveApfAutoBatch() {
       feature,
       reqId,
       countingType,
+      operationType,
       factor,
       items: selectedIfpug.map(c => ({
         name: c.name,
         functionType: c.functionType,
         td: c.td,
         arTr: c.arTr,
-        countingType,
-        factor,
+        countingType: c.countingType || countingType,
+        operationType: c.operationType || operationType || 'ADD',
+        factor: c.factor !== undefined ? c.factor : factor,
         notes: c.rationale || c.notes,
         projectId: c.projectId || projectId,
         feature: c.feature || feature,

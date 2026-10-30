@@ -3837,10 +3837,10 @@
               </label>
               <div class="stepper-input-wrapper">
                 <button type="button" class="btn-stepper" data-step="-1" data-target="apf-td-input">-</button>
-                <input type="number" id="apf-td-input" class="custom-input stepper-input" value="5" min="1" max="999" required>
+                <input type="number" id="apf-td-input" class="custom-input stepper-input" value="3" min="1" max="999" required>
                 <button type="button" class="btn-stepper" data-step="1" data-target="apf-td-input">+</button>
               </div>
-              <small class="form-hint" id="apf-td-hint">Campos / atributos identificados</small>
+              <small class="form-hint" id="apf-td-hint">Atributos + 2 controle (acionamento + msg)</small>
             </div>
 
             <!-- AR / TR (Arquivos Referenciados ou Tipos de Registro) -->
@@ -3862,18 +3862,32 @@
               <label for="apf-counting-type-select">Tipo de Contagem *</label>
               <select id="apf-counting-type-select" class="custom-select" required>
                 <option value="Desenvolvimento" selected>Desenvolvimento (100%)</option>
-                <option value="Melhoria">Melhoria / Manutenção (100%)</option>
+                <option value="Melhoria">Melhoria / Manutenção (SISP)</option>
                 <option value="Testes">Testes de Software (30%)</option>
                 <option value="Transferência Tecnológica">Transferência Tecnológica (20%)</option>
               </select>
-              <small class="form-hint">Deflator contratual aplicado</small>
+              <small class="form-hint">Enquadramento contratual</small>
+            </div>
+
+            <!-- Operação da Função (ADD / CHG / DEL) -->
+            <div class="form-group flex-1">
+              <label for="apf-operation-type-select">
+                <span>Operação (IFPUG / SISP) *</span>
+                <span class="info-tooltip" title="ADD: Inclusão (100%) | CHG: Alteração medida pelo tamanho final após mudança + deflator SISP (50% Tx / 35% Dados) | DEL: Exclusão (40%)">ℹ️</span>
+              </label>
+              <select id="apf-operation-type-select" class="custom-select">
+                <option value="ADD" selected>Inclusão (ADD • 100%)</option>
+                <option value="CHG">Alteração (CHG • 50% Tx / 35% Dados)</option>
+                <option value="DEL">Exclusão (DEL • 40% SISP)</option>
+              </select>
+              <small class="form-hint">Ciclo de vida da função</small>
             </div>
 
             <!-- Redutor % (editável) -->
-            <div class="form-group" style="width: 140px;">
+            <div class="form-group" style="width: 130px;">
               <label for="apf-factor-percent-input">
-                <span>Redutor (%) *</span>
-                <span class="info-tooltip" title="Fator percentual multiplicador aplicado ao PF Bruto">ℹ️</span>
+                <span>Fator (%) *</span>
+                <span class="info-tooltip" title="Fator de impacto percentual multiplicador aplicado ao PF Bruto (Padrão SISP)">ℹ️</span>
               </label>
               <div style="position: relative;">
                 <input type="number" id="apf-factor-percent-input" class="custom-input" value="100" min="0" max="200" step="1" required style="padding-right: 30px; font-weight: 700;">
@@ -4260,8 +4274,9 @@
               </tr>
             </thead>
             <tbody>
-              <tr><td><strong>Desenvolvimento</strong></td><td style="color: #10b981; font-weight: 700;">100% (1.00x)</td><td style="color: var(--text-muted);">Projetos novos e primeira implantação completa.</td></tr>
-              <tr><td><strong>Melhoria</strong></td><td style="color: #38bdf8; font-weight: 700;">100% (1.00x)</td><td style="color: var(--text-muted);">Manutenção evolutiva / inclusão / alteração / exclusão de requisitos.</td></tr>
+              <tr><td><strong>Desenvolvimento (ADD)</strong></td><td style="color: #10b981; font-weight: 700;">100% (1.00x)</td><td style="color: var(--text-muted);">Projetos novos e inclusão de novas funcionalidades (ADD).</td></tr>
+              <tr><td><strong>Melhoria — Alteração (CHG)</strong></td><td style="color: #38bdf8; font-weight: 700;">50% Tx / 35% Dados</td><td style="color: var(--text-muted);">Medida pelo tamanho final após a mudança (CPM 4.3.1) × deflator de impacto SISP (25% a 75%).</td></tr>
+              <tr><td><strong>Melhoria — Exclusão (DEL)</strong></td><td style="color: #f43f5e; font-weight: 700;">40% (0.40x)</td><td style="color: var(--text-muted);">Remoção/descontinuação de função existente da fronteira (Padrão SISP).</td></tr>
               <tr><td><strong>Testes</strong></td><td style="color: #c084fc; font-weight: 700;">30% (0.30x)</td><td style="color: var(--text-muted);">Homologação independente e fábrica de testes de software.</td></tr>
               <tr><td><strong>Transferência Tecnológica</strong></td><td style="color: #f59e0b; font-weight: 700;">20% (0.20x)</td><td style="color: var(--text-muted);">Capacitação técnica, documentação e repasse de conhecimento.</td></tr>
             </tbody>
@@ -4333,15 +4348,24 @@
 
           <div class="form-row" style="margin-top: 0.85rem; align-items: flex-end;">
             <div class="form-group flex-1">
-              <label for="apf-auto-counting-type">Tipo de Contagem (Redutor Contratual) *</label>
+              <label for="apf-auto-counting-type">Tipo de Contagem *</label>
               <select id="apf-auto-counting-type" class="custom-select">
                 <option value="Desenvolvimento">Desenvolvimento Novo (100%)</option>
-                <option value="Melhoria">Melhoria / Manutenção Evolutiva (100%)</option>
+                <option value="Melhoria">Melhoria / Manutenção Evolutiva (SISP)</option>
                 <option value="Testes">Contagem de Testes / Homologação (30%)</option>
                 <option value="Transferência Tecnológica">Transferência Tecnológica / Sustentação (20%)</option>
               </select>
             </div>
-            <div class="form-group" style="width: 130px;">
+            <div class="form-group flex-1">
+              <label for="apf-auto-operation-type">Operação no Projeto (ADD / CHG / DEL)</label>
+              <select id="apf-auto-operation-type" class="custom-select">
+                <option value="">Auto-inferir pelo Requisito</option>
+                <option value="ADD">Inclusão (ADD • 100%)</option>
+                <option value="CHG">Alteração (CHG • 50% Tx / 35% Dados SISP)</option>
+                <option value="DEL">Exclusão (DEL • 40% SISP)</option>
+              </select>
+            </div>
+            <div class="form-group" style="width: 120px;">
               <label for="apf-auto-factor-percent">Fator (%)</label>
               <input type="number" id="apf-auto-factor-percent" class="custom-input" value="100" min="1" max="200" step="1">
             </div>

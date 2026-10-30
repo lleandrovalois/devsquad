@@ -275,6 +275,7 @@ db.exec(`
     complexity TEXT NOT NULL,
     raw_pf REAL NOT NULL DEFAULT 0,
     counting_type TEXT NOT NULL DEFAULT 'Desenvolvimento',
+    operation_type TEXT NOT NULL DEFAULT 'ADD',
     factor REAL NOT NULL DEFAULT 1.0,
     final_pf REAL NOT NULL DEFAULT 0,
     notes TEXT,
@@ -314,12 +315,13 @@ db.exec(`
 `);
 
 // Migrações seguras de colunas em bases já existentes
-try { db.exec("ALTER TABLE tasks ADD COLUMN complexity TEXT DEFAULT 'Média'"); } catch (e) {}
-try { db.exec("ALTER TABLE tasks ADD COLUMN dev_notes TEXT"); } catch (e) {}
-try { db.exec("ALTER TABLE tasks ADD COLUMN created_at TEXT"); } catch (e) {}
-try { db.exec("ALTER TABLE tasks ADD COLUMN updated_at TEXT"); } catch (e) {}
-try { db.exec("ALTER TABLE requirements ADD COLUMN feature TEXT"); } catch (e) {}
-try { db.exec("ALTER TABLE projects ADD COLUMN features TEXT"); } catch (e) {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN complexity TEXT DEFAULT 'Média'"); } catch (e) { }
+try { db.exec("ALTER TABLE tasks ADD COLUMN dev_notes TEXT"); } catch (e) { }
+try { db.exec("ALTER TABLE tasks ADD COLUMN created_at TEXT"); } catch (e) { }
+try { db.exec("ALTER TABLE tasks ADD COLUMN updated_at TEXT"); } catch (e) { }
+try { db.exec("ALTER TABLE requirements ADD COLUMN feature TEXT"); } catch (e) { }
+try { db.exec("ALTER TABLE projects ADD COLUMN features TEXT"); } catch (e) { }
+try { db.exec("ALTER TABLE apf_items ADD COLUMN operation_type TEXT DEFAULT 'ADD'"); } catch (e) { }
 
 // ==============================================================================
 // 2. Inicialização Segura do Banco (Apenas conta de Administrador se vazio)
@@ -698,7 +700,7 @@ function seedDatabaseIfEmpty() {
       SET email = REPLACE(email, '@devsquad.com', '@synchro.com')
       WHERE email LIKE '%@devsquad.com'
     `).run();
-  } catch (e) {}
+  } catch (e) { }
 
   console.log('✅ Banco de dados SQLite verificado e pronto para operações!');
 }
@@ -840,7 +842,7 @@ function deduplicateEntities() {
         if (!primary) {
           primary = group.find(m => {
             let s = [];
-            try { s = JSON.parse(m.skills); } catch(e) {}
+            try { s = JSON.parse(m.skills); } catch (e) { }
             return Array.isArray(s) && s.length > 0;
           }) || group[0];
         }
@@ -855,7 +857,7 @@ function deduplicateEntities() {
           try {
             const s = JSON.parse(m.skills);
             if (Array.isArray(s)) s.forEach(skill => mergedSkillsSet.add(skill));
-          } catch(e) {}
+          } catch (e) { }
           if (m.seniority && m.seniority !== 'Pleno') bestSeniority = m.seniority;
           if (m.role) bestRole = m.role;
           if (m.avatar_bg) bestAvatarBg = m.avatar_bg;
@@ -944,7 +946,7 @@ function getActorFromReq(req) {
   if (req.headers['x-user-name']) {
     try {
       actorName = decodeURIComponent(req.headers['x-user-name']);
-    } catch(e) {
+    } catch (e) {
       actorName = req.headers['x-user-name'];
     }
   }
@@ -1074,7 +1076,7 @@ function getFullTeamMembers() {
     seen.add(key);
 
     let skills = [];
-    try { skills = JSON.parse(m.skills); } catch(e) {}
+    try { skills = JSON.parse(m.skills); } catch (e) { }
     unique.push({
       id: m.id,
       name: m.name.trim(),
@@ -1094,7 +1096,7 @@ function getFullProjects() {
     if (p.features) {
       try {
         features = typeof p.features === 'string' ? JSON.parse(p.features) : p.features;
-      } catch(e) {
+      } catch (e) {
         features = String(p.features).split(',').map(s => s.trim()).filter(Boolean);
       }
     }
@@ -1135,7 +1137,7 @@ function getFullUsers() {
     seen.add(key);
 
     let skills = [];
-    try { skills = JSON.parse(u.skills); } catch(e) {}
+    try { skills = JSON.parse(u.skills); } catch (e) { }
     unique.push({
       id: u.id,
       name: u.name.trim(),
@@ -1229,8 +1231,12 @@ function calculateApfComplexity(type, arTr, td) {
   const arTrVal = Math.max(0, parseInt(arTr, 10) || 0);
   const tdVal = Math.max(1, parseInt(td, 10) || 1);
 
+  // ALI / AIE: Arquivo Lógico Interno e Arquivo de Interface Externa
+  // TRs \ TDs | 1 a 19 TDs | 20 a 50 TDs | 51+ TDs
+  // 1 TR      |   Baixa    |    Baixa    |  Média
+  // 2 a 5 TRs |   Baixa    |    Média    |  Alta
+  // 6+ TRs    |   Média    |    Alta     |  Alta
   if (normType === 'ALI' || normType === 'AIE') {
-    // Para ALI / AIE: arTr é TR (Tipos de Registro)
     const tr = Math.max(1, arTrVal);
     if (tr === 1) {
       if (tdVal <= 19) return 'Baixa';
@@ -1247,8 +1253,12 @@ function calculateApfComplexity(type, arTr, td) {
     }
   }
 
+  // EE: Entrada Externa
+  // ARs \ TDs | 1 a 4 TDs | 5 a 15 TDs | 16+ TDs
+  // 0 ou 1 AR |   Baixa   |   Baixa    |  Média
+  // 2 ARs     |   Baixa   |   Média    |  Alta
+  // 3+ ARs    |   Média   |   Alta     |  Alta
   if (normType === 'EE') {
-    // Para EE: arTr é AR (Arquivos Referenciados)
     const ar = arTrVal;
     if (ar <= 1) {
       if (tdVal <= 4) return 'Baixa';
@@ -1265,8 +1275,12 @@ function calculateApfComplexity(type, arTr, td) {
     }
   }
 
+  // SE: Saída Externa
+  // ARs \ TDs | 1 a 5 TDs | 6 a 19 TDs | 20+ TDs
+  // 0 ou 1 AR |   Baixa   |   Baixa    |  Média
+  // 2 ou 3 ARs|   Baixa   |   Média    |  Alta
+  // 4+ ARs    |   Média   |   Alta     |  Alta
   if (normType === 'SE') {
-    // Para SE: arTr é AR (Arquivos Referenciados)
     const ar = arTrVal;
     if (ar <= 1) {
       if (tdVal <= 5) return 'Baixa';
@@ -1283,8 +1297,12 @@ function calculateApfComplexity(type, arTr, td) {
     }
   }
 
+  // CE: Consulta Externa
+  // ARs \ TDs | 1 a 4 TDs | 5 a 19 TDs | 20+ TDs
+  // 0 ou 1 AR |   Baixa   |   Baixa    |  Média
+  // 2 ou 3 ARs|   Baixa   |   Média    |  Alta
+  // 4+ ARs    |   Média   |   Alta     |  Alta
   if (normType === 'CE') {
-    // Para CE: arTr é AR (Arquivos Referenciados)
     const ar = arTrVal;
     if (ar <= 1) {
       if (tdVal <= 4) return 'Baixa';
@@ -1306,10 +1324,10 @@ function calculateApfComplexity(type, arTr, td) {
 
 const IFPUG_RAW_PF = {
   ALI: { 'Baixa': 7, 'Média': 10, 'Alta': 15 },
-  AIE: { 'Baixa': 5, 'Média': 7,  'Alta': 10 },
-  EE:  { 'Baixa': 3, 'Média': 4,  'Alta': 6  },
-  SE:  { 'Baixa': 4, 'Média': 5,  'Alta': 7  },
-  CE:  { 'Baixa': 3, 'Média': 4,  'Alta': 6  }
+  AIE: { 'Baixa': 5, 'Média': 7, 'Alta': 10 },
+  EE: { 'Baixa': 3, 'Média': 4, 'Alta': 6 },
+  SE: { 'Baixa': 4, 'Média': 5, 'Alta': 7 },
+  CE: { 'Baixa': 3, 'Média': 4, 'Alta': 6 }
 };
 
 function calculateApfRawPf(type, complexity) {
@@ -1321,18 +1339,118 @@ function calculateApfRawPf(type, complexity) {
   return 4;
 }
 
+// Tabela de Deflatores Contratuais por Tipo de Contagem e Operação de Melhoria (IFPUG CPM 4.3.1 + SISP v2.3)
 const COUNTING_TYPE_FACTORS = {
-  'Desenvolvimento': 1.0,
-  'Melhoria': 1.0,
+  'Desenvolvimento': 1.00,
+  'Melhoria': 0.50, // Padrão de Alteração (CHG) em melhoria quando não especificado ADD/DEL
+  'Melhoria - Inclusão (ADD)': 1.00,
+  'Melhoria - Alteração (CHG)': 0.50,
+  'Melhoria - Exclusão (DEL)': 0.40,
   'Testes': 0.30,
   'Transferência Tecnológica': 0.20
 };
 
-function getCountingTypeFactor(countingType, customFactor) {
-  if (customFactor !== undefined && customFactor !== null && !isNaN(parseFloat(customFactor))) {
-    return Math.max(0, parseFloat(customFactor));
+// Deflatores de Impacto de Melhoria/Manutenção previstos nas tabelas contratuais do Padrão SISP
+const SISP_ENHANCEMENT_FACTORS = {
+  ADD: {
+    code: 'ADD',
+    label: 'Inclusão (ADD)',
+    dataFactor: 1.00,
+    transFactor: 1.00,
+    defaultFactor: 1.00
+  },
+  CHG: {
+    code: 'CHG',
+    label: 'Alteração (CHG)',
+    dataFactor: 0.35,   // Alteração padrão de Arquivo Lógico (ALI/AIE) no SISP: 35%
+    transFactor: 0.50,  // Alteração padrão de Processo Elementar (EE/SE/CE) no SISP: 50%
+    lowImpactFactor: 0.25,
+    highImpactFactor: 0.75,
+    defaultFactor: 0.50
+  },
+  DEL: {
+    code: 'DEL',
+    label: 'Exclusão (DEL)',
+    dataFactor: 0.40,   // Exclusão funcional no SISP: 40%
+    transFactor: 0.40,
+    defaultFactor: 0.40
   }
-  return COUNTING_TYPE_FACTORS[countingType] !== undefined ? COUNTING_TYPE_FACTORS[countingType] : 1.0;
+};
+
+function resolveApfOperationType(countingType, explicitOpType, text = '') {
+  const normOp = (explicitOpType || '').toUpperCase().trim();
+  if (normOp === 'ADD' || normOp === 'CHG' || normOp === 'DEL') {
+    return normOp;
+  }
+  const ct = (countingType || '').trim();
+  if (/\bADD\b|inclus[ãa]o/i.test(ct)) return 'ADD';
+  if (/\bDEL\b|exclus[ãa]o/i.test(ct)) return 'DEL';
+  if (/\bCHG\b|altera[çc][ãa]o/i.test(ct)) return 'CHG';
+
+  const lower = (text || '').toLowerCase();
+  // Auto-detecção semântica de Projeto de Melhoria (Operação CHG / DEL) mesmo quando o seletor padrão ainda está em "Desenvolvimento"
+  const hasExplicitEvolutionaryChange = /(?:(?:^|\n)\s*(?:\[[^\]]+\]\s*)?(?:alterar|modificar|atualizar|evoluir|refatorar)\s+(?:o\s+|a\s+)?(?:processo|funcionalidade|fluxo|cadastro|relat[óo]rio|rotina|tela|m[óo]dulo|regra)|altera[çc][ãa]o\s+d[aeo]\s+(?:l[óo]gica|processo|fluxo|regra|funcionalidade)|modificar\s+(?:o\s+|a\s+)?(?:processo|fluxo|funcionalidade|regra)\s+existente|novos\s+atributos|atualizar\s+funcionalidade\s+existente|suportar\s+segundo\s+fator)/i.test(text);
+  const hasExplicitFunctionRemoval = /(?:(?:^|\n)\s*(?:descontinuar|eliminar|depreciar|remover|excluir)\s+(?:a\s+|o\s+)?(?:fun[çc][ãa]o|funcionalidade|processo|tela|relat[óo]rio|m[óo]dulo)|exclus[ãa]o\s+d[ae]\s+fun[çc][ãa]o)/i.test(text);
+
+  if (hasExplicitFunctionRemoval) {
+    return 'DEL';
+  }
+  if (hasExplicitEvolutionaryChange) {
+    return 'CHG';
+  }
+
+  if (ct.toLowerCase().startsWith('melhoria')) {
+    if (/(?:descontinuar|remover\s+(?:a\s+)?(?:fun[çc][ãa]o|funcionalidade|tela|relat[óo]rio|consulta|rotina|m[óo]dulo|entidade|tabela)|excluir\s+(?:a\s+)?(?:fun[çc][ãa]o|funcionalidade|tela|relat[óo]rio|consulta|m[óo]dulo)|eliminar\s+(?:a\s+)?(?:tela|relat[óo]rio|fun[çc][ãa]o)|depreciar|exclus[ãa]o\s+d[ae]\s+fun[çc][ãa]o)/i.test(lower)) {
+      return 'DEL';
+    }
+    if (/(?:nova\s+(?:fun[çc][ãa]o|funcionalidade|tela|consulta|entidade|tabela|integra[çc][ãa]o)|novo\s+(?:relat[óo]rio|m[óo]dulo|cadastro|processo)|criar\s+nova\s+(?:tela|funcionalidade|entidade))/i.test(lower) &&
+      !/(?:alterar|modificar|ajustar|evoluir|manuten[çc][ãa]o|refatorar|existente)/i.test(lower)) {
+      return 'ADD';
+    }
+    return 'CHG';
+  }
+
+  return 'ADD';
+}
+
+function getSispEnhancementFactor(operationType = 'CHG', functionType = 'EE', text = '') {
+  const op = (operationType || 'CHG').toUpperCase().trim();
+  const fnType = (functionType || 'EE').toUpperCase().trim();
+  const isDataFn = fnType === 'ALI' || fnType === 'AIE';
+  const lower = (text || '').toLowerCase();
+
+  if (op === 'ADD') return SISP_ENHANCEMENT_FACTORS.ADD.defaultFactor;
+  if (op === 'DEL') return SISP_ENHANCEMENT_FACTORS.DEL.defaultFactor;
+
+  // Para CHG (Alteração): avalia se há menção explícita de impacto baixo/alto ou aplica tabela SISP por categoria (35% Dados / 50% Transação)
+  if (/(?:baixo\s+impacto|ajuste\s+pontual|pequena\s+altera[çc][ãa]o|25%)/i.test(lower)) {
+    return SISP_ENHANCEMENT_FACTORS.CHG.lowImpactFactor;
+  }
+  if (/(?:alto\s+impacto|reestrutura[çc][ãa]o\s+profunda|75%)/i.test(lower)) {
+    return SISP_ENHANCEMENT_FACTORS.CHG.highImpactFactor;
+  }
+  return isDataFn ? SISP_ENHANCEMENT_FACTORS.CHG.dataFactor : SISP_ENHANCEMENT_FACTORS.CHG.transFactor;
+}
+
+function getCountingTypeFactor(countingType, customFactor, operationType = null, functionType = null, text = '') {
+  const ct = (countingType || 'Desenvolvimento').trim();
+  const isMelhoria = ct.toLowerCase().startsWith('melhoria');
+  const resolvedOp = resolveApfOperationType(ct, operationType, text);
+
+  if (customFactor !== undefined && customFactor !== null && !isNaN(parseFloat(customFactor))) {
+    const parsed = Math.max(0, parseFloat(customFactor));
+    // Se for operação CHG ou DEL (por seleção ou auto-detecção semântica) e o fator enviado for 1.0 por herança de default sem override explícito, aplica o deflator SISP correspondente
+    if (parsed === 1.0 && (resolvedOp === 'CHG' || resolvedOp === 'DEL')) {
+      return getSispEnhancementFactor(resolvedOp, functionType, text);
+    }
+    return parsed;
+  }
+
+  if (isMelhoria || resolvedOp === 'CHG' || resolvedOp === 'DEL') {
+    return getSispEnhancementFactor(resolvedOp, functionType, text);
+  }
+
+  return COUNTING_TYPE_FACTORS[ct] !== undefined ? COUNTING_TYPE_FACTORS[ct] : 1.0;
 }
 
 function calculateApfFinalPf(rawPf, factor) {
@@ -1367,6 +1485,7 @@ function getFullApfItems() {
       complexity: a.complexity,
       rawPf: a.raw_pf,
       countingType: a.counting_type,
+      operationType: a.operation_type || 'ADD',
       factor: a.factor,
       finalPf: a.final_pf,
       notes: a.notes || '',
@@ -1530,7 +1649,8 @@ function getFullApfInmItems() {
  */
 function analyzeCfpsSpecification(spec, options = {}) {
   const countingType = options.countingType || spec.countingType || 'Desenvolvimento';
-  const factor = getCountingTypeFactor(countingType, options.factor !== undefined ? options.factor : spec.factor);
+  const explicitOpType = options.operationType || spec.operationType || null;
+  const customFactor = options.factor !== undefined ? options.factor : spec.factor;
 
   const title = (spec.title || '').trim();
   const userStory = (spec.userStory || spec.user_story || '').trim();
@@ -1543,6 +1663,14 @@ function analyzeCfpsSpecification(spec, options = {}) {
 
   const fullText = [title, feature, userStory, bdd, customText].filter(Boolean).join('\n');
   const lowerText = fullText.toLowerCase();
+
+  const resolvedOpType = resolveApfOperationType(countingType, explicitOpType, fullText);
+  // Se a análise semântica detectou CHG ou DEL e o countingType veio no default 'Desenvolvimento', promove para 'Melhoria'
+  const effectiveCountingType = ((resolvedOpType === 'CHG' || resolvedOpType === 'DEL') && countingType === 'Desenvolvimento')
+    ? 'Melhoria'
+    : countingType;
+  const getCandidateFactor = (fnType, candOpType = resolvedOpType) =>
+    getCountingTypeFactor(effectiveCountingType, customFactor, candOpType, fnType, fullText);
 
   // 1. Análise de Fronteira e Intenção Primária
   let userRole = 'Usuário do Sistema';
@@ -1557,12 +1685,14 @@ function analyzeCfpsSpecification(spec, options = {}) {
   }
 
   // 2. Extração de Entidade Principal
-  let entityName = feature || title || 'Entidade de Negócio';
-  const entityMatch = title.match(/(?:gestão|cadastro|módulo|controle|extensão|consulta|registro|administração|relatório|fluxo|trilha)\s+de\s+([^,\.\n-]+)/i)
-    || title.match(/para\s+([^,\.\n-]+)/i);
+  const isTechFeatureSlug = /^feat[_\-\s]*\d+$/i.test(feature);
+  const cleanTitle = (title || '').replace(/^\s*\[[^\]]+\]\s*/, '').trim();
+  let entityName = (!isTechFeatureSlug && feature) ? feature : (cleanTitle || 'Entidade de Negócio');
+  const entityMatch = cleanTitle.match(/(?:manter|estrutura|gestão|cadastro|cadastrar|módulo|controle|extensão|consulta|consultar|calendário|registro|registo|administração|relatório|demonstrativo|dashboard|painel|extrato|fluxo|trilha|manutenção|listagem|exclusão|excluir|remover|alteração|alterar|integrar)(?:\s+[\p{L}]+){0,2}\s+(?:de|com|novo|nova)\s+([^,\.\n-]+?)(?:\s+para\s+incluir\s+.*)?$/iu)
+    || cleanTitle.match(/para\s+([^,\.\n-]+)/i);
   if (entityMatch && entityMatch[1] && entityMatch[1].trim().length > 2) {
     entityName = entityMatch[1].trim();
-  } else if (feature && feature.length > 2) {
+  } else if (!isTechFeatureSlug && feature && feature.length > 2) {
     entityName = feature;
   }
   entityName = entityName.split(/\s+/).map(w => {
@@ -1572,36 +1702,363 @@ function analyzeCfpsSpecification(spec, options = {}) {
     return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
   }).join(' ');
 
-  // 3. Extração Semântica de Atributos e Tipos de Dados (TDs / DETs)
-  const commonFieldKeywords = [
-    'nome', 'título', 'descrição', 'email', 'e-mail', 'cpf', 'cnpj', 'telefone', 'celular',
-    'endereço', 'rua', 'número', 'bairro', 'cidade', 'estado', 'cep', 'país', 'login', 'senha',
-    'perfil', 'cargo', 'departamento', 'área', 'data', 'data de nascimento', 'data de criação',
-    'horário', 'status', 'situação', 'valor', 'preço', 'saldo', 'total', 'taxa', 'desconto',
-    'código', 'id', 'identificador', 'tipo', 'categoria', 'observação', 'motivo', 'arquivo',
-    'anexo', 'foto', 'avatar', 'competência', 'meta', 'trilha', 'feedback', 'nota', 'pontuação',
-    'resultado', 'nível', 'permissão', 'papel', 'role', 'token', 'chave', 'quantidade', 'origem',
-    'destino', 'banco', 'agência', 'conta', 'pix', 'cartão', 'responsável', 'liderança', 'colaborador'
-  ];
-  const detectedFields = commonFieldKeywords.filter(k => lowerText.includes(k));
-  const quotedMatches = fullText.match(/"([^"]{2,30})"/g) || [];
-  quotedMatches.forEach(q => {
-    const clean = q.replace(/"/g, '').trim();
-    if (clean && !detectedFields.includes(clean.toLowerCase()) && clean.length > 2) {
-      detectedFields.push(clean);
+  // 3. Detecção de Fluxo de Autenticação / Ação Única e Extração Rigorosa de TDs (DETs) de Negócio
+  const isAuthFlow = /(?:^|\b)(?:login|logar|logout|deslogar|encerrar\s+sessão|autentica(?:r|ção)|recupera(?:r|ção)\s+de?\s*senha|esqueci\s+(?:a\s+|minha\s+)?senha|redefinir\s+senha|troca(?:r)?\s+de?\s*senha|alterar\s+senha)(?:\b|$)/i.test(`${title} ${userWant}`);
+
+  const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const detectedFields = [];
+  const externalAieFields = [];
+  const seenNormalizedFields = new Set();
+
+  // Limpa trechos narrativos que não representam entrada/saída de atributos de negócio na fronteira:
+  // - Cabeçalho "Como <ator>," e cláusula de justificativa ", para que <benefício>"
+  // - Rótulos de botões/ações entre aspas (ex.: clica em "Gerar Relatório", "Exportar Demonstrativo") — já contam no +1 TD de acionamento!
+  // - Mensagens literais de erro/sucesso entre aspas (já cobertas pelo +1 TD de mensagem de sistema)
+  // - Efeitos colaterais internos de log/timestamp ("registra a data/hora do último acesso", "atualiza o histórico de auditoria com a data/hora da emissão")
+  // - Redirecionamentos de navegação ("redireciona o usuário para o dashboard")
+  const cleanedFieldText = fullText
+    .replace(/como\s+[^,]+,/gi, ' ')
+    .replace(/,\s*para\s+que\s+[^.\n]+/gi, ' ')
+    .replace(/(?:clica(?:r)?\s+(?:em|no\s+bot[ãa]o)|aciona(?:r)?(?:\s+o\s+bot[ãa]o)?|pressiona(?:r)?(?:\s+o\s+bot[ãa]o)?|bot[ãa]o|comando)\s*[:"]?\s*"[^"]*"/gi, ' ')
+    .replace(/(?:mensagem(?:\s+de\s+(?:erro|sucesso|alerta|validação))?|alerta|erro|exibe\s+(?:a\s+)?mensagem[^"]*)\s*[:"]?\s*"[^"]*"/gi, ' ')
+    .replace(/(?:registra(?:r)?|atualiza(?:r)?|grava(?:r)?)\s+(?:a\s+|o\s+)?(?:hist[óo]rico\s+de\s+auditoria\s+com\s+a\s+)?data(?:\s*\/\s*hora)?\s+d[aeo]\s+(?:[úu]ltimo\s+acesso|emiss[ãa]o|opera[çc][ãa]o|execu[çc][ãa]o)/gi, ' ')
+    .replace(/redireciona(?:r)?\s+(?:o\s+[\p{L}]+\s+)?para\s+[^.,;\n]+/giu, ' ')
+    .replace(/(?:dado\s+que\s+o\s+|quando\s+o\s+|então\s+o\s+|base\s+de\s+|cadastro\s+de\s+|tabela\s+de\s+)usu[áa]rios?\b/gi, ' ');
+
+  if (isAuthFlow) {
+    // Em fluxos de autenticação/login/senha, contabiliza os campos de credenciais, 2FA e atributos de controle de bloqueio/tentativas
+    const hasPalavraPasse = /(?:^|[^\p{L}\p{N}_])palavra-passe(?:$|[^\p{L}\p{N}_])/iu.test(cleanedFieldText);
+    const authCredentialPatterns = [
+      { label: 'e-mail', canonical: 'email', regex: /(?:^|[^\p{L}\p{N}_])(?:e-mail|email)(?:$|[^\p{L}\p{N}_])/iu },
+      { label: 'cpf', canonical: 'cpf', regex: /(?:^|[^\p{L}\p{N}_])cpf(?:$|[^\p{L}\p{N}_])/iu },
+      { label: hasPalavraPasse ? 'palavra-passe' : 'senha', canonical: 'senha', regex: /(?:^|[^\p{L}\p{N}_])(?:senha|palavra-passe|password)(?:$|[^\p{L}\p{N}_])/iu },
+      { label: 'nova senha', canonical: 'nova_senha', regex: /(?:^|[^\p{L}\p{N}_])(?:nova\s+senha|nova\s+palavra-passe)(?:$|[^\p{L}\p{N}_])/iu },
+      { label: 'confirmação de senha', canonical: 'confirmacao_senha', regex: /(?:^|[^\p{L}\p{N}_])confirma(?:r|ção)\s+(?:de\s+|a\s+)?(?:senha|palavra-passe)(?:$|[^\p{L}\p{N}_])/iu },
+      { label: 'código de segurança 2FA', canonical: 'token', regex: /(?:^|[^\p{L}\p{N}_])(?:token|otp|2fa|código\s+de\s+(?:verificação|segurança(?:\s+temporário)?(?:\s+2fa)?))(?:$|[^\p{L}\p{N}_])/iu },
+      { label: 'contador de tentativas falhadas', canonical: 'contador_tentativas', regex: /\bcontador\s+de\s+tentativas(?:\s+falhadas)?\b/iu },
+      { label: 'estado do perfil/bloqueado', canonical: 'estado_bloqueio', regex: /(?:estado\s+do\s+perfil|conta\s+bloqueada|atualizando\s+o\s+estado\s+do\s+perfil\s+para\s+"?bloqueado"?)/iu }
+    ];
+    authCredentialPatterns.forEach(pat => {
+      if (pat.regex.test(cleanedFieldText) && !seenNormalizedFields.has(pat.canonical)) {
+        seenNormalizedFields.add(pat.canonical);
+        detectedFields.push(pat.label);
+      }
+    });
+    // Caso utilize nome de usuário/utilizador no lugar de e-mail/cpf
+    if (!seenNormalizedFields.has('email') && !seenNormalizedFields.has('cpf')) {
+      if (/(?:nome\s+de\s+usu[áa]rio|campo\s+usu[áa]rio|campo\s+utilizador|username|\blogin\s+e\s+(?:senha|palavra-passe)\b)/i.test(cleanedFieldText)) {
+        seenNormalizedFields.add('usuario');
+        detectedFields.unshift('usuário');
+      }
     }
-  });
+    // Se for login padrão e apenas 1 credencial foi citada nominalmente, garante o par padrão (credencial + senha = 2 TDs de negócio)
+    if (/login|autentica/i.test(`${title} ${userWant}`) && detectedFields.length === 0) {
+      detectedFields.push('e-mail', 'senha');
+    }
+  } else {
+    // 3.0. Parser de Listas Literais de Atributos Delimitadas por Parênteses no BDD / User Story
+    // Exemplo: "(código do projeto, nome do projeto, data de início, ... e observações gerais)"
+    // Preserva termos compostos e atributos distintos que compartilham palavras-chave (ex.: 3 datas distintas = 3 TDs).
+    const parenRegex = /\(([^()]{8,500})\)/g;
+    let parenMatch;
+    let extractedFromParenthesesCount = 0;
+    while ((parenMatch = parenRegex.exec(fullText)) !== null) {
+      const inside = parenMatch[1].trim();
+      const precedingContext = fullText.slice(Math.max(0, parenMatch.index - 120), parenMatch.index);
+      // Ignora títulos de cenário ("Cenário 1 (...)") e orações negativas ("(sem alteração de telas, sem regras...)")
+      if (/cen[áa]rio\s*\d*\s*$/i.test(precedingContext.trim())) continue;
+      if (/\bsem\s+/i.test(inside)) continue;
+      const isSingleIdExpr = /^(?:id|identificador|c[óo]digo)\s+d[eo]\s+[\p{L}\s]+$/iu.test(inside);
+      // Aceita listas separadas por vírgula, pares de atributos ligados por " e ", ou identificador explícito entre parênteses
+      if (!inside.includes(',') && !/\s+e\s+/i.test(inside) && !isSingleIdExpr) continue;
+      const rawParts = inside
+        .split(/\s*,\s*|\s+e\s+/i)
+        .map(p => p.replace(/^[\s•\-:]+|[\s.;:]+$/g, '').trim())
+        .filter(Boolean);
 
-  const baseTd = Math.max(detectedFields.length + 3, 6);
+      // Verifica se os itens parecem nomes de atributos (1 a 6 palavras cada)
+      const isSingleIdParen = rawParts.length === 1 && /^(?:id|identificador|c[óo]digo)\s+d[eo]\s+[\p{L}\s]+$/iu.test(rawParts[0]);
+      if ((rawParts.length >= 2 || isSingleIdParen) && rawParts.every(p => p.split(/\s+/).length <= 6)) {
+        const isExternalContext = /(?:servi[çc]o\s+externo|api\s+externa|sistema\s+externo|base\s+externa|interface\s+externa|estrutura\s+externa|feriados\s+referenciados|obtidos\s+via\s+api|subregistros?\s+subordinados?)/i.test(precedingContext);
+        rawParts.forEach(attr => {
+          const normAttr = attr.toLowerCase();
+          if (isExternalContext && !externalAieFields.some(f => f.toLowerCase() === normAttr)) {
+            externalAieFields.push(attr);
+          }
+          if (!seenNormalizedFields.has(normAttr)) {
+            seenNormalizedFields.add(normAttr);
+            detectedFields.push(attr);
+            extractedFromParenthesesCount++;
+          }
+        });
+      }
+    }
 
-  // 4. Detecção de Itens Não-Mensuráveis (FPN • Padrão SISP / Roteiro de Métricas)
-  const inmCandidates = [];
+    // Quando os atributos de saída/entidade foram listados entre parênteses, verifica também se há filtros de entrada explícitos
+    // ou campos de resumo de processamento em lote citados fora dos parênteses no BDD
+    if (extractedFromParenthesesCount >= 3 && !/(?:persist[êe]ncia\s+mestre[\s-]detalhe|^manter\s+estrutura\s+de\b)/i.test(`${cleanTitle}\n${lowerText}`)) {
+      const textWithoutParenLists = cleanedFieldText.replace(/\([^()]{6,500}\)/g, ' ');
+      const filterClauseRegex = /(?:selecion[ao](?:r)?|inform[ao](?:r)?(?:\s+o\s+filtro)?|filtr[ao](?:r)?\s+por)\s+([^,.;\n"]+)/gi;
+      let filterMatch;
+      const filterItemsToPrepend = [];
+      const hasExplicitDateBounds = Array.from(seenNormalizedFields).some(f => /data\s+(?:inicial|final|de\s+in[íi]cio|de\s+t[ée]rmino)/i.test(f));
+      while ((filterMatch = filterClauseRegex.exec(textWithoutParenLists)) !== null) {
+        const rawFilterClause = filterMatch[1].trim();
+        const parts = rawFilterClause
+          .split(/\s*,\s*|\s+e\s+/i)
+          .map(p => p.replace(/^(?:o|a|os|as|um|uma)\s+/i, '').replace(/[\s.;:]+$/g, '').trim())
+          .filter(p => p && p.length > 2 && p.split(/\s+/).length <= 5);
+        parts.forEach(fAttr => {
+          const normF = fAttr.toLowerCase();
+          // Ignora rótulos genéricos de agrupamento de filtros/campos quando os itens já estão entre parênteses
+          if (/^(?:per[íi]odo|par[âa]metros?\s+de\s+busca|filtros?\s+de\s+busca|crit[ée]rios?\s+de\s+busca|dados?\s+cadastrais|novos?\s+campos?)$/i.test(normF)) {
+            if (!/^per[íi]odo$/i.test(normF) || hasExplicitDateBounds) return;
+          }
+          if (!seenNormalizedFields.has(normF)) {
+            seenNormalizedFields.add(normF);
+            filterItemsToPrepend.push(fAttr);
+          }
+        });
+      }
+      if (filterItemsToPrepend.length > 0) {
+        detectedFields.unshift(...filterItemsToPrepend);
+      }
+
+      // Captura campos de retorno/resumo de processamento em lote (ex.: "emite o resumo com o total de registros processados e total de inconsistências descartadas")
+      const batchSummaryMatch = textWithoutParenLists.match(/(?:emite|exibe|apresenta|gera)\s+o\s+resumo\s+com\s+([^.;\n]+)/i);
+      if (batchSummaryMatch && batchSummaryMatch[1]) {
+        const summaryParts = batchSummaryMatch[1]
+          .split(/\s*,\s*|\s+e\s+/i)
+          .map(p => p.replace(/^(?:o|a|os|as|um|uma)\s+/i, '').replace(/[\s.;:]+$/g, '').trim())
+          .filter(p => p && p.length > 3 && p.split(/\s+/).length <= 6);
+        summaryParts.forEach(sAttr => {
+          const normS = sAttr.toLowerCase();
+          if (!seenNormalizedFields.has(normS)) {
+            seenNormalizedFields.add(normS);
+            detectedFields.push(sAttr);
+          }
+        });
+      }
+    }
+
+    // Se a especificação não enumerou os atributos explicitamente entre parênteses, aplica os extratores semânticos e de palavras-chave
+    if (extractedFromParenthesesCount < 2 && !/(?:100%\s+de\s+infraestrutura|estritamente\s+t[ée]cnica\s+de\s+infraestrutura|sem\s+processos\s+elementares)/i.test(lowerText)) {
+      // 3.1. Padrões Semânticos Compostos (Filtros, Dimensões e Indicadores Calculados/Derivados)
+      const semanticBusinessPatterns = [
+        {
+          label: 'equipa',
+          canonical: 'equipa',
+          excludes: [],
+          regex: /(?:por\s+(?:per[íi]odo\s+e\s+)?equipa|por\s+(?:per[íi]odo\s+e\s+)?equipe|seleciona(?:r)?\s+(?:uma\s+|a\s+)?equipa|seleciona(?:r)?\s+(?:uma\s+|a\s+)?equipe|filtro\s+de\s+equipa|filtro\s+de\s+equipe)/i
+        },
+        {
+          label: 'período/datas',
+          canonical: 'periodo_datas',
+          excludes: ['data'],
+          regex: /(?:per[íi]odo\s+de\s+datas|por\s+per[íi]odo|define\s+um\s+per[íi]odo|intervalo\s+de\s+datas|data\s+inicial\s+e\s+final)/i
+        },
+        {
+          label: 'colaborador/membro',
+          canonical: 'colaborador_membro',
+          excludes: [],
+          regex: /(?:por\s+membro|por\s+colaborador|regist(?:r)?os\s+de\s+membros|dados\s+d[eo]\s+colaborador|produtividade\s+por\s+membro)/i
+        },
+        {
+          label: 'horas apontadas',
+          canonical: 'horas_apontadas',
+          excludes: ['total', 'quantidade'],
+          regex: /(?:total\s+de\s+horas\s+apontadas|horas\s+apontadas|soma\s+das\s+horas\s+trabalhadas|horas\s+trabalhadas|apontamentos\s+de\s+horas)/i
+        },
+        {
+          label: 'média de PF',
+          canonical: 'media_pf',
+          excludes: ['pontuação'],
+          regex: /(?:m[ée]dia(?:\s+aritm[ée]tica)?\s+de\s+pontos\s+de\s+fun[çc][ãa]o|m[ée]dia\s+de\s+pf|pontos\s+de\s+fun[çc][ãa]o\s+entregues)/i
+        },
+        {
+          label: 'índice de eficiência',
+          canonical: 'indice_eficiencia',
+          excludes: ['taxa'],
+          regex: /(?:[íi]ndice(?:\s+percentual)?\s+de\s+efici[êe]ncia|percentual\s+de\s+conformidade|taxa\s+de\s+efici[êe]ncia)/i
+        }
+      ];
+
+      semanticBusinessPatterns.forEach(pat => {
+        if (pat.regex.test(cleanedFieldText) && !seenNormalizedFields.has(pat.canonical)) {
+          seenNormalizedFields.add(pat.canonical);
+          (pat.excludes || []).forEach(ex => seenNormalizedFields.add(ex));
+          detectedFields.push(pat.label);
+        }
+      });
+
+      // 3.2. Extrator de Filtros Explícitos e Métricas Calculadas/Consolidadas em Painéis, Fechamentos e Submissões (ex.: "seleciono o código do projeto e o ano contábil", "calcula o somatório..., a variância... e o valor residual...")
+      if (detectedFields.length < 3) {
+        const textNoParen2 = cleanedFieldText.replace(/\([^()]{6,500}\)/g, ' ');
+        const filterClauseRegex2 = /(?:selecion[ao](?:r)?|inform(?:a|o|ar|ando)(?:\s+o\s+filtro)?|filtr[ao](?:r)?\s+por)\s+([^.;\n"]+?)(?=,\s*quando\b|\bquando\b|\bent[ãa]o\b|,\s*o\s+sistema\b|\s+e\s+submete\b|,\s*para\s+|[.;\n"]|$)/gi;
+        let fMatch2;
+        while ((fMatch2 = filterClauseRegex2.exec(textNoParen2)) !== null) {
+          const parts = fMatch2[1]
+            .split(/\s*,\s*|\s+e\s+/i)
+            .map(p => p.replace(/^(?:o|a|os|as|um|uma|seus|suas)\s+/i, '').replace(/[\s.;:]+$/g, '').trim())
+            .filter(p => p && p.length > 2 && p.split(/\s+/).length <= 5 && !/^(?:usu[áa]rio|dados\s+pessoais|dados\s+contratuais)$/i.test(p));
+          parts.forEach(fAttr => {
+            const normF = fAttr.toLowerCase();
+            if (!seenNormalizedFields.has(normF)) {
+              seenNormalizedFields.add(normF);
+              detectedFields.push(fAttr);
+            }
+          });
+        }
+
+        // Prefere a cláusula explícita do BDD ("calcula o ...") e complementa com métricas derivadas da User Story ("calculando os desvios...")
+        const calcMatches = [...cleanedFieldText.matchAll(/\bcalcula(?:r|ndo)?\s+([^.;\n]+?)(?=,\s*para\s+|,\s*gravando|,\s*atualizando|\s+e\s+apresentando|\s+e\s+exibindo|[.;\n]|$)/gi)];
+        if (calcMatches.length > 0) {
+          // Se houver tanto "calculando..." (User Story) quanto "calcula..." (BDD detalhado), prioriza o BDD detalhado primeiro e adiciona apenas o consolidado principal da User Story se distinto
+          const orderedCalcMatches = calcMatches.length > 1 ? [calcMatches[1], calcMatches[0]] : calcMatches;
+          orderedCalcMatches.forEach((cm, idx) => {
+            const rawCalc = cm[1];
+            const calcParts = rawCalc
+              .split(/\s*,\s*|\s+e\s+/i)
+              .map(p => p.replace(/^(?:o|a|os|as|um|uma)\s+/i, '').replace(/[\s.;:]+$/g, '').trim())
+              .filter(p => p && p.length > 3 && p.split(/\s+/).length <= 7);
+            // Se já extraiu 5+ métricas detalhadas do BDD, do resumo da User Story aproveita apenas o 1º indicador síntese (ex.: "desvios orçamentários")
+            const partsToUse = (idx === 1 && calcMatches.length > 1 && detectedFields.length >= 7) ? calcParts.slice(0, 1) : calcParts;
+            partsToUse.forEach(cAttr => {
+              const normC = cAttr.toLowerCase();
+              if (!seenNormalizedFields.has(normC)) {
+                seenNormalizedFields.add(normC);
+                detectedFields.push(cAttr);
+              }
+            });
+          });
+        }
+
+        const consolidMatch = cleanedFieldText.match(/consolidando\s+(?:o\s+|a\s+|os\s+|as\s+)?([^,.;\n]+?)\s+contra\s+(?:o\s+|a\s+|os\s+|as\s+)?([^,.;\n]+)/i);
+        if (consolidMatch && consolidMatch[1]) {
+          const cLabel = `${consolidMatch[1].trim()} vs ${consolidMatch[2].trim()}`;
+          const normCLabel = cLabel.toLowerCase();
+          if (!seenNormalizedFields.has(normCLabel)) {
+            seenNormalizedFields.add(normCLabel);
+            detectedFields.push(cLabel);
+          }
+        }
+      }
+
+      if (detectedFields.length < 3) {
+        const commonFieldKeywords = [
+          'nome', 'título', 'descrição', 'email', 'e-mail', 'cpf', 'cnpj', 'telefone', 'celular',
+          'endereço', 'rua', 'número', 'bairro', 'cidade', 'estado', 'cep', 'país', 'senha',
+          'cargo', 'departamento', 'data de nascimento', 'data de criação', 'data',
+          'horário', 'status', 'situação', 'valor', 'preço', 'saldo', 'total', 'taxa', 'desconto',
+          'código', 'identificador', 'categoria', 'observação', 'motivo',
+          'anexo', 'foto', 'avatar', 'competência', 'nota', 'pontuação',
+          'token', 'chave', 'quantidade', 'origem',
+          'destino', 'agência', 'pix', 'cartão', 'responsável'
+        ];
+
+        commonFieldKeywords.forEach(k => {
+          const regex = new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escapeRegex(k)}(?:$|[^\\p{L}\\p{N}_])`, 'iu');
+          if (regex.test(cleanedFieldText)) {
+            const canonical = k === 'e-mail' ? 'email' : k.toLowerCase();
+            if (!seenNormalizedFields.has(canonical)) {
+              seenNormalizedFields.add(canonical);
+              detectedFields.push(k);
+            }
+          }
+        });
+
+        const quotedMatches = cleanedFieldText.match(/"([^"]{2,30})"/g) || [];
+        quotedMatches.forEach(q => {
+          const clean = q.replace(/"/g, '').trim();
+          const norm = clean.toLowerCase();
+          // Ignora frases de erro/sucesso/validação e também rótulos de botões/ações entre aspas (ex.: "Gerar Relatório", "Exportar Demonstrativo")
+          const isSystemMessage = /(?:inválid|incorret|obrigatóri|sucesso|erro|falha|não\s+encontrad|acesso\s+negado|bloquead)/i.test(clean);
+          const isActionButtonLabel = /^(?:gerar|exportar|emitir|salvar|gravar|enviar|submeter|confirmar|cancelar|voltar|fechar|filtrar|buscar|pesquisar|limpar|entrar|acessar|sair|excluir|remover|editar|alterar|atualizar|novo|adicionar|incluir|imprimir|baixar|download|upload|visualizar|consultar)\b/i.test(clean);
+          if (clean && !isSystemMessage && !isActionButtonLabel && !seenNormalizedFields.has(norm) && clean.length > 2 && clean.split(/\s+/).length <= 3) {
+            seenNormalizedFields.add(norm);
+            detectedFields.push(clean);
+          }
+        });
+      }
+    }
+  }
+
+  // Regra 1 (IFPUG CPM 4.3.1): Sem piso artificial de 6 TDs.
+  // - Atributos de negócio identificados (mínimo de 1 atributo/dado quando nenhum campo explícito for citado).
+  // - Para Transações (EE, CE, SE): soma estritamente os campos de negócio + 2 TDs de controle padrão
+  //   (+1 TD para mecanismo de acionamento/submissão e +1 TD para mensagem/feedback do sistema).
+  //   Se nenhum campo específico for detectado além da ação, o mínimo natural é de 3 TDs (1 dado + 1 acionamento + 1 mensagem).
+  // - Para Funções de Dados (ALI, AIE): contabiliza estritamente os atributos de negócio persistidos (sem +2 TDs de controle).
+  const businessTdCount = detectedFields.length > 0 ? detectedFields.length : 1;
+  const transactionTd = businessTdCount + 2;
+  const dataTd = businessTdCount;
+
+  // Regra 4 (IFPUG CPM 4.3.1): Padrão inicial de 1 TR (a entidade principal) para ALIs e AIEs.
+  // Só contabiliza 2+ TRs se o requisito descrever explicitamente subtabelas dependentes / subgrupos integrados / subregistros subordinados.
+  const hasExplicitSubgroups = /(?:subtabela|sub-tabela|subgrupo|sub-grupo|subregistros?\s+subordinados?|mestre[\s-]detalhe|itens\s+d[eo]\s+\w+|dependentes\s+d[eo]\s+\w+|tabela\s+filha|entidade\s+filha|subtipo\s+integrado)/i.test(lowerText);
+  const inferredDataTr = hasExplicitSubgroups ? 2 : 1;
+
+  // Detecção Semântica de Múltiplos Arquivos Referenciados (AR / FTR):
+  // Em relatórios consolidados, analíticos (SE), consultas (CE) ou transações que cruzam múltiplos contextos de negócio,
+  // identifica os grupos lógicos (entidades de dados) lidos/mantidos citados no requisito.
+  const detectedArEntities = [];
+  const seenArKeys = new Set();
+
+  if (!isAuthFlow) {
+    // Limpa cabeçalho "Como <ator>,", cláusula de benefício ", para...", listas de colunas entre parênteses e efeitos colaterais técnicos de log na exportação
+    const arScanText = fullText
+      .replace(/como\s+[^,]+,/gi, ' ')
+      .replace(/,\s*para\s+(?:que\s+|permitir\s+|desvincular\s+|verificar\s+|tomada\s+de\s+|obter\s+|melhorar\s+|garantir\s+|preservar\s+|registrar\s+)[^.\n]+/gi, ' ')
+      .replace(/\([^()]{8,500}\)/g, ' ')
+      .replace(/(?:atualiza(?:r)?|gravando)\s+(?:o\s+|a\s+)?(?:data\s+de\s+apura[çc][ãa]o\s+no\s+)?(?:hist[óo]rico|log)\s+de\s+auditoria(?:\s+com\s+a\s+data(?:\s*\/\s*hora)?\s+da\s+emiss[ãa]o)?/gi, ' ');
+
+    const domainEntityGroups = [
+      { key: 'projetos', label: 'Projetos', regex: /\b(?:projeto(?:s)?)\b/i },
+      { key: 'equipa_colaborador', label: 'Equipa / Colaboradores (Membros)', regex: /\b(?:equipa(?:s)?|equipe(?:s)?|membro(?:s)?|colaborador(?:es)?|usu[áa]rio(?:s)?|aloca[çc][ãa]o\s+de\s+equipa)\b/i },
+      { key: 'tarefas_requisitos', label: 'Tarefas / Requisitos / Entregas', regex: /\b(?:tarefa(?:s)?|requisito(?:s)?|demanda(?:s)?|item\s+de\s+backlog|pontos\s+de\s+fun[çc][ãa]o\s+(?:entregues|conclu[íi]dos))\b/i },
+      { key: 'apontamentos_horas', label: 'Apontamentos de Horas / Timesheet', regex: /\b(?:apontamento(?:s)?(?:\s+de\s+horas)?|horas\s+(?:apontadas|trabalhadas|registradas)|timesheet|lan[çc]amento(?:s)?\s+de\s+horas)\b/i },
+      { key: 'despesas_orcamento', label: 'Despesas / Custos / Orçamento', regex: /\b(?:despesa(?:s)?|or[çc]amento|gastos?\s+incorridos?|custos?\s+reais)\b/i },
+      { key: 'aliquotas_tributarias', label: 'Alíquotas Tributárias', regex: /\b(?:al[íi]quotas?\s+tribut[áa]rias?|tabelas?\s+de\s+al[íi]quotas?)\b/i },
+      { key: 'controle_financeiro_contabil', label: 'Controle Financeiro / Histórico Contábil', regex: /\b(?:controle\s+de\s+compet[êe]ncias?|hist[óo]rico\s+cont[áa]bil|per[íi]odo\s+financeiro)\b/i },
+      { key: 'lote_importacao', label: 'Lote / Execuções de Importação', regex: /\b(?:execu[çc][õo]es\s+de\s+importa[çc][ãa]o|registro\s+de\s+lote)\b/i },
+      { key: 'auditoria_log', label: 'Auditoria / Histórico de Logs e Acessos', regex: /\b(?:relat[óo]rio\s+de\s+auditoria|consultar\s+(?:hist[óo]rico|trilha)\s+de\s+auditoria|trilha\s+de\s+auditoria|log\s+de\s+revoga[çc][ãa]o|hist[óo]rico\s+de\s+acessos)\b/i },
+      { key: 'clientes_fornecedores', label: 'Clientes / Fornecedores', regex: /\b(?:cliente(?:s)?|fornecedor(?:es)?)\b/i },
+      { key: 'pedidos_contratos', label: 'Pedidos / Contratos / Faturas', regex: /\b(?:pedido(?:s)?|contrato(?:s)?|ordem\s+de\s+servi[çc]o|fatura(?:s)?|nota(?:s)?\s+fisca(?:l|is))\b/i },
+      { key: 'produtos_catalogo', label: 'Produtos / Catálogo / Estoque', regex: /\b(?:produto(?:s)?|estoque|invent[áa]rio)\b/i }
+    ];
+
+    const isConsolidatedOrMultiContext = /(?:consolidad|agrega|cruza(?:r|ndo)?|m[úu]ltiplas\s+entidades|dois\s+arquivos\s+l[óo]gicos|duas\s+tabelas|l[êe]\s+os\s+registros\s+de|consulta(?:r)?\s+(?:o\s+|a\s+|os\s+|as\s+)?(?:regist(?:r)?os|dados|tabelas|listagem|hist[óo]rico)\s+de\s+[^.,;\n]+|relat[óo]rio\s+anal[íi]tico|demonstrativo\s+anal[íi]tico|balancete\s+anal[íi]tico|painel\s+anal[íi]tico|dashboard|gera\s+o\s+registro\s+de\s+lote|grava\s+o\s+log\s+de\s+revoga[çc][ãa]o)/i.test(lowerText);
+
+    if (isConsolidatedOrMultiContext) {
+      domainEntityGroups.forEach(grp => {
+        if (grp.regex.test(arScanText) && !seenArKeys.has(grp.key)) {
+          seenArKeys.add(grp.key);
+          detectedArEntities.push(grp.label);
+        }
+      });
+      // Quando uma consulta cruza explicitamente a entidade Equipe com a disponibilidade/alocação detalhada de Colaboradores, contabiliza os 2 ARs (Equipe + Colaborador/Alocação)
+      if (detectedArEntities.length === 1 && seenArKeys.has('equipa_colaborador') && /(?:aloca[çc][ãa]o\s+de\s+equipes?.*colaborador(?:es)?|equipes?.*disponibilidade\s+(?:detalhada\s+)?de\s+colaborador(?:es)?)/i.test(arScanText)) {
+        detectedArEntities.push('Colaboradores / Alocação');
+      }
+    }
+  }
+
+  const hasMultipleReferencedFiles = /(?:dois\s+arquivos\s+l[óo]gicos|duas\s+tabelas|m[úu]ltiplas\s+entidades|cruzando\s+dados\s+de|validar\s+no\s+cadastro\s+de\s+\w+\s+e\s+gravar\s+em)/i.test(lowerText);
+  const inferredTransAr = detectedArEntities.length > 1
+    ? detectedArEntities.length
+    : (hasMultipleReferencedFiles ? 2 : 1);
+
+  // 4. Detecção Inicial de Candidatos Não-Mensuráveis (FPN • Padrão SISP / Roteiro de Métricas)
+  // Classificados em absorbableByIfpug (interface, menus, máscaras, CSS, parâmetros/tabelas de código derivados da tela)
+  // vs itens técnicos avulsos de banco/scripts.
+  const rawInmCandidates = [];
   const inmDefinitions = [
     {
       key: 'code_table_inclusao',
       name: 'Code Table - Inclusão / Nova Tabela de Apoio',
       category: 'Tabelas de Apoio',
       unitWeight: 0.80,
+      absorbableByIfpug: true,
       regex: /(nova\s+tabela\s+de\s+(apoio|código|domínio)|criar\s+tabela\s+de\s+(apoio|código|domínio)|inclusão\s+de\s+tabela\s+de\s+código|code\s*table.*(nova|inclus|cri))/i,
       justification: 'Inclusão de tabela de domínio/código/apoio sem manutenção direta via interface de negócio (SISP/FPN).'
     },
@@ -1610,6 +2067,7 @@ function analyzeCfpsSpecification(spec, options = {}) {
       name: 'Code Table - Alteração / Manutenção de Tabela',
       category: 'Tabelas de Apoio',
       unitWeight: 0.40,
+      absorbableByIfpug: true,
       regex: /(alterar\s+tabela\s+de\s+(apoio|código|domínio)|manutenção\s+de\s+tabela\s+de\s+(apoio|código|domínio)|ajuste\s+em\s+tabela\s+de\s+código|novos\s+registros\s+de\s+domínio|code\s*table.*(alter|manut|atualiz))/i,
       justification: 'Alteração pontual de estrutura ou valores em tabela de código/apoio já existente (SISP/FPN).'
     },
@@ -1618,7 +2076,8 @@ function analyzeCfpsSpecification(spec, options = {}) {
       name: 'Menus / Submenus - Inclusão ou Reestruturação',
       category: 'Interface & Menus',
       unitWeight: 0.10,
-      regex: /(menu|submenu|item\s+de\s+menu|barra\s+de\s+navegação|árvore\s+de\s+menus|reestrutur.*menu)/i,
+      absorbableByIfpug: true,
+      regex: /(\bmenu\b|\bsubmenu\b|item\s+de\s+menu|barra\s+de\s+navegação|árvore\s+de\s+menus|reestrutur.*menu)/i,
       justification: 'Ajuste ou inserção de novos nós de navegação e hierarquia de menus no sistema (SISP/FPN).'
     },
     {
@@ -1626,7 +2085,8 @@ function analyzeCfpsSpecification(spec, options = {}) {
       name: 'Layout / Template / Telas - Alteração Estética',
       category: 'Interface & Menus',
       unitWeight: 0.50,
-      regex: /(layout|css|estética|identidade\s+visual|template\s+visual|responsiv|ajuste\s+de\s+layout|tema\s+escuro|tema\s+claro|estiliza)/i,
+      absorbableByIfpug: true,
+      regex: /(\blayout\b|\bcss\b|estética|identidade\s+visual|template\s+visual|responsiv|ajuste\s+de\s+layout|tema\s+escuro|tema\s+claro|estiliza)/i,
       justification: 'Intervenção visual e apresentação CSS/estética sem impacto na lógica transacional do sistema (SISP/FPN).'
     },
     {
@@ -1634,7 +2094,8 @@ function analyzeCfpsSpecification(spec, options = {}) {
       name: 'Componente Visual / Validação / Máscara de Campo',
       category: 'Interface & Menus',
       unitWeight: 0.25,
-      regex: /(máscara|mask|validação\s+de\s+campo|autocomplete|formatador|tooltip|datepicker|date-picker|combo\s+dinâmico)/i,
+      absorbableByIfpug: true,
+      regex: /(máscara|\bmask\b|validação\s+de\s+campo|autocomplete|formatador|tooltip|datepicker|date-picker|combo\s+dinâmico)/i,
       justification: 'Inclusão de máscara, formatador, validação de campo cliente ou ajuste simples de widget (SISP/FPN).'
     },
     {
@@ -1642,7 +2103,8 @@ function analyzeCfpsSpecification(spec, options = {}) {
       name: 'Parâmetro de Configuração / Setup de Sistema',
       category: 'Parâmetros & Configuração',
       unitWeight: 0.30,
-      regex: /(parâmetro|setup|flag|configuração\s+global|chave\s+de\s+configuração|variável\s+de\s+ambiente|feature\s+toggle)/i,
+      absorbableByIfpug: true,
+      regex: /(parâmetro\s+de\s+sistema|configuração\s+global|chave\s+de\s+configuração|variável\s+de\s+ambiente|feature\s+toggle)/i,
       justification: 'Criação ou atualização de parâmetro global de configuração ou setup operacional (SISP/FPN).'
     },
     {
@@ -1650,7 +2112,8 @@ function analyzeCfpsSpecification(spec, options = {}) {
       name: 'Perfis de Acesso / Permissões / Grupos de Segurança',
       category: 'Parâmetros & Configuração',
       unitWeight: 0.40,
-      regex: /(perfil\s+de\s+acesso|matriz\s+de\s+permissão|grupo\s+de\s+segurança|nível\s+de\s+permissão|papel\s+de\s+usuário|role)/i,
+      absorbableByIfpug: true,
+      regex: /(novo\s+perfil\s+de\s+acesso|matriz\s+de\s+permissão|grupo\s+de\s+segurança|nível\s+de\s+permissão|configurar\s+role)/i,
       justification: 'Definição de novo perfil de acesso ou permissão na matriz de segurança (SISP/FPN).'
     },
     {
@@ -1658,42 +2121,65 @@ function analyzeCfpsSpecification(spec, options = {}) {
       name: 'Criação / Ajuste de Views ou Índices de Banco',
       category: 'Banco de Dados',
       unitWeight: 0.50,
-      regex: /(índice|index|view\s+de\s+banco|materialized\s+view|otimização\s+de\s+query|plano\s+de\s+execução)/i,
-      justification: 'Criação técnica de view ou índice no banco de dados para consulta e desempenho (SISP/FPN).'
+      absorbableByIfpug: false,
+      regex: /(criar\s+índice|índice\s+de\s+(?:banco|performance)|view\s+de\s+banco|materialized\s+view|otimização\s+de\s+query|plano\s+de\s+execução)/i,
+      justification: 'Criação técnica avulsa de view ou índice no banco de dados para desempenho (SISP/FPN).'
     },
     {
       key: 'db_trigger_proc',
       name: 'Triggers / Procedures / Rotinas de Banco',
       category: 'Banco de Dados',
       unitWeight: 1.00,
-      regex: /(trigger|stored\s+procedure|procedure|gatilho|rotina\s+de\s+banco|function\s+de\s+banco)/i,
-      justification: 'Implementação de rotina procedural, Stored Procedure ou Trigger em nível de banco de dados (SISP/FPN).'
+      absorbableByIfpug: false,
+      qtyRegex: /\b(\d+)\s+(?:novos?\s+|novas?\s+)?(?:triggers?|procedures?|stored\s+procedures?|gatilhos?)\b/i,
+      regex: /(\btriggers?\b|stored\s+procedures?|\bprocedures?\b|gatilhos?\s+de\s+banco|function\s+de\s+banco)/i,
+      justification: 'Implementação técnica avulsa de Stored Procedure ou Trigger em nível de banco de dados (SISP/FPN).'
+    },
+    {
+      key: 'job_webhook_rotina',
+      name: 'Webhook / Job Agendado / Script de Banco',
+      category: 'Banco de Dados',
+      unitWeight: 0.75,
+      absorbableByIfpug: false,
+      qtyRegex: /\b(\d+)\s+(?:novos?\s+|novas?\s+)?(?:jobs?(?:\s+agendados?)?|webhooks?|rotinas?\s+de\s+expurgo)\b/i,
+      regex: /(\bjobs?\s+agendados?\b|rotinas?\s+de\s+expurgo|\bwebhooks?\b|agendar\s+rotinas?\s+de\s+expurgo)/i,
+      justification: 'Implementação técnica avulsa de Job agendado, Webhook ou rotina automatizada de expurgo/manutenção de banco (SISP/FPN).'
     },
     {
       key: 'script_saneamento',
       name: 'Carga de Dados / Saneamento / Scripts de Migração',
       category: 'Scripts & Migração',
       unitWeight: 0.80,
-      regex: /(script\s+de\s+migração|carga\s+de\s+dados|saneamento|script\s+sql|migrar\s+dados|script\s+ddl|script\s+dml)/i,
-      justification: 'Execução de scripts diretos para migração, higienização ou carga inicial de dados (SISP/FPN).'
+      absorbableByIfpug: false,
+      qtyRegex: /\b(\d+)\s+(?:novos?\s+|novas?\s+)?(?:scripts?)\b/i,
+      regex: /(script\s+de\s+migração|carga\s+de\s+dados|saneamento\s+de\s+dados|script\s+sql\s+avulso|migrar\s+dados|script\s+ddl|script\s+dml)/i,
+      justification: 'Execução de script avulso para migração, higienização ou carga inicial de dados (SISP/FPN).'
     }
   ];
 
   inmDefinitions.forEach((pat, i) => {
     if (pat.regex.test(lowerText)) {
-      const quantity = 1;
+      let quantity = 1;
+      if (!pat.absorbableByIfpug) {
+        const specificQtyRegex = pat.qtyRegex || /\b(\d+)\s+(?:novos?\s+|novas?\s+)?(?:[íi]ndices?|views?)\b/i;
+        const qtyMatch = lowerText.match(specificQtyRegex);
+        if (qtyMatch && parseInt(qtyMatch[1], 10) > 0) {
+          quantity = parseInt(qtyMatch[1], 10);
+        }
+      }
       const subtotalPf = Math.round((quantity * pat.unitWeight) * 100) / 100;
-      inmCandidates.push({
+      rawInmCandidates.push({
         id: `cand_inm_${Date.now()}_${i}`,
         catalogKey: pat.key,
         itemName: pat.name,
         category: pat.category,
+        absorbableByIfpug: pat.absorbableByIfpug,
         quantity,
         unitWeight: pat.unitWeight,
         calculatedPf: subtotalPf,
         subtotalPf,
         justification: pat.justification,
-        evidence: `Identificado pelo termo correlato ao padrão contratual SISP.`
+        evidence: `Identificado pelo termo correlato ao Roteiro de Métricas SISP.`
       });
     }
   });
@@ -1701,208 +2187,349 @@ function analyzeCfpsSpecification(spec, options = {}) {
   // 5. Contagem Tradicional IFPUG (CPM 4.3.1)
   const ifpugCandidates = [];
 
-  // AIE: Arquivo de Interface Externa
-  const isExternal = /(api|integração|externo|externa|terceiros|gateway|correios|receita|serasa|banco central|webhook|legado|webservice|parceiro)/i.test(lowerText);
-  if (isExternal) {
-    const aieTd = Math.min(Math.max(baseTd, 6), 16);
-    const aieTr = 1;
+  // Verifica se a demanda é exclusivamente técnica/cosmética (sem processo elementar ou função de dados de negócio)
+  const isStrictlyDatabaseInfra = /(?:100%\s+de\s+infraestrutura|estritamente\s+t[ée]cnica\s+de\s+infraestrutura|sem\s+processos\s+elementares)/i.test(lowerText);
+  const hasBusinessProcessVerbs = !isStrictlyDatabaseInfra && /(?:incluir|cadastrar|cadastra|criar\s+registro|adicionar|registrar|registra|inserir|salvar|upload|importar|carregar|carregando|carga\s+de\s+convers[ãa]o|migrar\s+os\s+[\p{L}]+|autenticar|login|enviar|submeter|alterar|atualizar|atualiza|editar|modificar|aprovar|rejeitar|concluir|excluir|remover|deletar|inativar|desativar|cancelar|consultar|consultado|buscar|pesquisar|filtrar|listar|visualizar|exibir|exibe|detalhar|emitir|relatório|extrato|demonstrativo|calcular|cálculo|totalizar|manter|mantido|persistir|persiste|persista|\bali\b|\bcrud\b)/iu.test(lowerText);
+  const isPurelyTechnical = isStrictlyDatabaseInfra || (rawInmCandidates.length > 0 && !hasBusinessProcessVerbs);
+
+  // AIE: Arquivo de Interface Externa (somente se referenciar dados mantidos externamente, e não mero upload de arquivo CSV/lote local ou carga de conversão/dump legado)
+  const isBatchOrConversionLoad = /(?:importar\s+(?:lote|um\s+arquivo)|anexa\s+um\s+arquivo\s+de\s+carga|via\s+arquivo\s+csv|carga\s+de\s+convers[ãa]o|carga\s+inicial\s+de\s+legado|dump\s+legado|migra[çc][ãa]o\s+de\s+dados)/i.test(`${cleanTitle}\n${lowerText}`) && !/(?:api|webservice|nuvem|receita\s+federal|governamental)/i.test(lowerText);
+  const isExternal = !isBatchOrConversionLoad && /(?:api\s+externa|api\s+de\s+[\p{L}\s]+hospedada\s+em\s+nuvem|integração\s+externa|sistema\s+externo|serviço\s+externo|estrutura\s+externa|provedor\s+de\s+software\s+externo|base\s+externa|terceiros|gateway|correios|receita\s+federal|serasa|banco\s+central|webservice\s+externo|sistema\s+legado|consulta\s+externa\s+via\s+api)/i.test(lowerText);
+  if (isExternal && !isPurelyTechnical) {
+    const aieFields = externalAieFields.length > 0 ? externalAieFields : detectedFields;
+    const aieTd = aieFields.length > 0 ? aieFields.length : dataTd;
+    const aieTr = inferredDataTr;
     const complexity = calculateApfComplexity('AIE', aieTr, aieTd);
     const rawPf = calculateApfRawPf('AIE', complexity);
-    const finalPf = calculateApfFinalPf(rawPf, factor);
+    const candFactor = getCandidateFactor('AIE', resolvedOpType);
+    const finalPf = calculateApfFinalPf(rawPf, candFactor);
     ifpugCandidates.push({
       id: `cand_aie_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       functionType: 'AIE',
       name: `AIE - Interface Externa: ${entityName}`,
       category: 'Dados',
+      operationType: resolvedOpType,
       primaryIntent: 'Referenciar dados lógicos mantidos e disponibilizados por sistema externo.',
       td: aieTd,
       arTr: aieTr,
       complexity,
       rawPf,
       countingType,
-      factor,
+      factor: candFactor,
       finalPf,
-      notes: `Grupo de dados mantido externamente por API/Webservice referenciado pela aplicação.`,
-      rationale: `Reconhecido como AIE devido à integração com fronteira externa mencionada na especificação.`
+      notes: `Grupo de dados mantido externamente referenciado pela aplicação (${aieTd} TDs [${aieFields.join(', ')}], ${aieTr} TR).`,
+      rationale: `Reconhecido como AIE devido à leitura/referência de dados mantidos fora da fronteira da aplicação (${aieTd} TDs, ${aieTr} TR).`
     });
   }
 
-  // ALI: Arquivo Lógico Interno
-  const isDataStorage = !isExternal || /(banco|armazen|persist|tabela|entidade|cadastro|registro|salvar|histórico|dados|perfil|trilha|avaliação|metas)/i.test(lowerText);
-  // Se for uma alteração puramente cosmética ou de code table de uma linha, não gera ALI
-  const isPurelyTechnical = inmCandidates.length > 0 && ifpugCandidates.length === 0 && lowerText.length < 90 && !/(cadastr|inclu|manter|crud|fluxo|trilha)/i.test(lowerText);
+  // Regra 3 (Ciclo de Vida do ALI):
+  // Só gera um novo ALI se o requisito for explicitamente responsável por criar/manter a entidade no banco pela primeira vez.
+  // Se for apenas formulário de uso (ex.: login), busca, relatório ou transação sobre dados já persistidos, referencia apenas como AR/FTR.
+  const isUsageOrQueryOnly = /(?:^|\s)(?:login|autentica[çc][ãa]o|logar|recuperar\s+senha|esqueci\s+a\s+senha|consulta\s+de|listagem\s+de|busca\s+de|filtro\s+de|relat[óo]rio\s+de|extrato\s+de|dashboard\s+de|painel\s+de)/i.test(title)
+    || (!/(?:criar\s+(?:nova\s+)?(?:tabela|entidade|estrutura)|nova\s+entidade|novo\s+arquivo\s+l[óo]gico)/i.test(lowerText) &&
+      /^(?:como\s+[^,]+,\s*)?(?:eu\s+)?quero\s+(?:autenticar|logar|fazer\s+login|consultar|buscar|pesquisar|filtrar|listar|visualizar|emitir|exportar|calcular|alterar\s+status|aprovar|rejeitar|excluir|cancelar)\b/i.test(userStory || fullText));
 
-  if (isDataStorage && !isPurelyTechnical) {
-    const aliTd = Math.min(Math.max(baseTd + 3, 8), 26);
-    const aliTr = detectedFields.length > 7 ? 2 : 1;
+  // Reconhecimento Estrutural de Funções de Dados (ALI):
+  // Detecta se o requisito especifica a estrutura/persistência de um Arquivo Lógico Interno (ex.: "Manter Estrutura",
+  // "manter o registo/registro", "persistência mestre-detalhe do ALI", "grupo lógico de dados", "entidade lógica interna").
+  const isDataStructureSpecification = /(?:persist[êe]ncia\s+mestre[\s-]detalhe(?:\s+do\s+ali)?|grupo\s+l[óo]gico\s+de\s+dados|entidade\s+l[óo]gica\s+interna|integridade\s+referencial\s+do\s+subgrupo|subgrupos\s+l[óo]gicos\s+integrados|^manter\s+estrutura\s+de\b)/i.test(`${title}\n${lowerText}`);
+
+  const hasExplicitAliCreation = isDataStructureSpecification
+    || /(?:criar\s+(?:nova\s+)?(?:tabela|entidade|estrutura\s+de\s+dados|arquivo\s+l[óo]gico|\bali\b)|nova\s+(?:entidade|tabela\s+de\s+neg[óo]cio)|implantar\s+cadastro\s+de|manter\s+(?:o\s+)?(?:cadastro|estrutura|registo|registro)(?:\s+completo)?\s+de|\bcrud\b|persistir\s+nova\s+entidade|armazenar\s+nova\s+entidade|persista\s+os\s+dados\s+cadastrais|armazena\s+internamente|(?:alterar|atualizar|atualiza|incluir\s+(?:novo\s+)?campo\s+n[ao])\s+(?:tabela|entidade|estrutura\s+de\s+dados|arquivo\s+l[óo]gico|\bali\b))/i.test(lowerText)
+    || (/^(?:cadastro\s+de|manuten[çc][ãa]o\s+cadastral\s+de|gest[ãa]o\s+cadastral\s+de|manter\s+estrutura\s+de)\s+/i.test(title) && !isUsageOrQueryOnly && resolvedOpType === 'ADD');
+
+  let aliAlreadyExistsInProject = false;
+  if (projectId && projectId !== 'all') {
+    try {
+      const existingAlis = db.prepare(`SELECT name FROM apf_items WHERE project_id = ? AND function_type = 'ALI'`).all(projectId);
+      const normEntity = entityName.toLowerCase().trim();
+      aliAlreadyExistsInProject = existingAlis.some(row => (row.name || '').toLowerCase().includes(normEntity));
+    } catch (e) { }
+  }
+
+  if (hasExplicitAliCreation && !isUsageOrQueryOnly && !isPurelyTechnical && (!aliAlreadyExistsInProject || resolvedOpType === 'CHG')) {
+    const aliTd = dataTd;
+    const aliTr = inferredDataTr;
     const complexity = calculateApfComplexity('ALI', aliTr, aliTd);
     const rawPf = calculateApfRawPf('ALI', complexity);
-    const finalPf = calculateApfFinalPf(rawPf, factor);
+    const candFactor = getCandidateFactor('ALI', resolvedOpType);
+    const finalPf = calculateApfFinalPf(rawPf, candFactor);
     ifpugCandidates.push({
       id: `cand_ali_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       functionType: 'ALI',
       name: `ALI - Estrutura de Dados: ${entityName}`,
       category: 'Dados',
+      operationType: resolvedOpType,
       primaryIntent: 'Armazenar e manter dados lógicos relacionais de negócio dentro da fronteira da aplicação.',
       td: aliTd,
       arTr: aliTr,
       complexity,
       rawPf,
       countingType,
-      factor,
+      factor: candFactor,
       finalPf,
-      notes: `Arquivo Lógico Interno mantido dentro da fronteira da aplicação para persistência de ${entityName}.`,
-      rationale: `Reconhecido como ALI: mantém dados do ciclo de vida da entidade com ${aliTd} TDs e ${aliTr} TR(s).`
+      notes: `Arquivo Lógico Interno criado/mantido dentro da fronteira da aplicação (${aliTd} TDs [${detectedFields.join(', ')}], ${aliTr} TR(s) — sem +2 TDs de controle).`,
+      rationale: `Reconhecido como ALI (${resolvedOpType}): requisito responsável pela estrutura/persistência da entidade no banco com ${aliTd} TD(s) de negócio e ${aliTr} TR(s) (${aliTr > 1 ? 'Mestre + Detalhe subordinado' : 'Entidade simples'}).`
     });
   }
 
-  if (!isPurelyTechnical) {
-    // EE (Entrada Externa) - Inclusão / Registro
-    const hasInclusion = /(incluir|cadastrar|criar|adicionar|registrar|novo|inserir|salvar|upload|importar|autenticar|login|enviar)/i.test(lowerText) || (ifpugCandidates.some(c => c.functionType === 'ALI') && !inmCandidates.length);
-    if (hasInclusion) {
-      const eeAddTd = Math.min(Math.max(baseTd, 6), 18);
-      const eeAddAr = 1;
-      const complexity = calculateApfComplexity('EE', eeAddAr, eeAddTd);
+  // Se o requisito for estritamente uma especificação estrutural de Função de Dados (ALI), não gera transações fantasmas (EE/CE/SE)
+  if (!isPurelyTechnical && !isDataStructureSpecification) {
+    const isFullCrud = /\bcrud\b|manter\s+cadastro\s+completo/i.test(lowerText);
+    const txAr = isExternal ? Math.max(inferredTransAr, 2) : inferredTransAr;
+
+    if (isAuthFlow) {
+      // Regra de Supressão de CE Fantasma e Escopo Estrito de EE em Autenticação / Login / 2FA:
+      // Gera estritamente 1 Entrada Externa (EE), sem criar nem pontuar ALI em CHG e sem gerar CE fantasma.
+      const is2faAuth = /\b2fa\b|segundo\s+fator|dois\s+passos/i.test(fullText);
+      const eeAuthTd = transactionTd;
+      // Em fluxos de autenticação com 2FA + bloqueio/auditoria de segurança, referencia 2 ARs (Perfil de Utilizador + Controle 2FA / Auditoria)
+      const eeAuthAr = is2faAuth ? Math.max(txAr, 2) : txAr;
+      const complexity = calculateApfComplexity('EE', eeAuthAr, eeAuthTd);
       const rawPf = calculateApfRawPf('EE', complexity);
-      const finalPf = calculateApfFinalPf(rawPf, factor);
+      const candFactor = getCandidateFactor('EE', resolvedOpType);
+      const finalPf = calculateApfFinalPf(rawPf, candFactor);
+      const authFnName = (resolvedOpType === 'CHG' && is2faAuth)
+        ? 'EE - Alterar/Processar Autenticação (2FA)'
+        : `EE - ${resolvedOpType === 'CHG' ? 'Alterar/Processar' : 'Autenticar/Processar'} ${title || entityName}`;
       ifpugCandidates.push({
-        id: `cand_ee_add_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        id: `cand_ee_auth_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         functionType: 'EE',
-        name: `EE - Incluir/Registrar ${entityName}`,
+        name: authFnName,
         category: 'Transação',
-        primaryIntent: 'Processar dados de entrada e manter/gravar novos registros no ALI correspondente.',
-        td: eeAddTd,
-        arTr: eeAddAr,
+        operationType: resolvedOpType,
+        primaryIntent: 'Processar credenciais ou submissão de autenticação através da fronteira e validar/atualizar sessão.',
+        td: eeAuthTd,
+        arTr: eeAuthAr,
         complexity,
         rawPf,
-        countingType,
-        factor,
+        countingType: effectiveCountingType,
+        factor: candFactor,
         finalPf,
-        notes: `Processo elementar de inclusão de novos registros de ${entityName}.`,
-        rationale: `Entrada Externa (EE): Altera o estado do ALI adicionando informações de negócio.`
+        notes: `Processo elementar de autenticação (${eeAuthTd} TDs = ${businessTdCount} negócio [${detectedFields.join(', ')}] + 1 envio/acionamento + 1 mensagem do sistema; ${eeAuthAr} AR(s) referenciado(s)).`,
+        rationale: `Entrada Externa (EE • ${resolvedOpType}): ${eeAuthTd} TDs (${businessTdCount} negócio + 2 controle) e ${eeAuthAr} AR(s). Escopo estrito de transação de autenticação (${Math.round(candFactor * 100)}%).`
       });
-    }
+    } else {
+      // Detecta se o processo principal é uma Saída Externa analítica/demonstrativo/fechamento (onde gravações de status/log de fechamento fazem parte da própria SE)
+      const isPrimaryAnalyticalOutput = /(?:balancete\s+anal[íi]tico|demonstrativo\s+(?:anal[íi]tico|consolidado)|relat[óo]rio\s+anal[íi]tico|painel\s+anal[íi]tico|dashboard\s+anal[íi]tico|fechamento\s+e\s+concilia[çc][ãa]o\s+financeira)/i.test(lowerText);
+      // Detecta se o processo principal é estritamente uma exclusão ou inativação lógica (evitando duplicar EE de atualização + EE de inativação)
+      const isPrimaryInactivationOrDeletion = /(?:inativa[çc][ãa]o\s+l[óo]gica|submete\s+a\s+inativa[çc][ãa]o|^excluir\s+|^remover\s+|^inativar\s+)/i.test(`${cleanTitle}\n${lowerText}`);
 
-    // EE (Entrada Externa) - Alteração / Atualização / Progresso
-    const hasUpdate = /(alterar|atualizar|editar|modificar|ajustar|progresso|feedback|avaliação|revisão|mudar|status|concluir|aprovar)/i.test(lowerText);
-    if (hasUpdate) {
-      const eeUpdTd = Math.min(Math.max(baseTd - 1, 6), 16);
-      const eeUpdAr = 1;
-      const complexity = calculateApfComplexity('EE', eeUpdAr, eeUpdTd);
-      const rawPf = calculateApfRawPf('EE', complexity);
-      const finalPf = calculateApfFinalPf(rawPf, factor);
-      ifpugCandidates.push({
-        id: `cand_ee_upd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        functionType: 'EE',
-        name: `EE - Atualizar/Editar ${entityName}`,
-        category: 'Transação',
-        primaryIntent: 'Processar dados recebidos de fora da fronteira para modificar registros no ALI.',
-        td: eeUpdTd,
-        arTr: eeUpdAr,
-        complexity,
-        rawPf,
-        countingType,
-        factor,
-        finalPf,
-        notes: `Processo de manutenção e atualização dos dados ou estado de ${entityName}.`,
-        rationale: `Entrada Externa (EE): Altera dados previamente registrados no ALI.`
-      });
-    }
+      // Remove orações negativas ("sem alterar...", "sem excluir...", "sem persistir...") antes de testar verbos de escrita de EE
+      const textWithoutWriteNegations = lowerText.replace(/\b(?:sem|nem)\s+(?:efetuar\s+|realizar\s+)?(?:altera(?:r|ção)|atualiza(?:r|ção)|modifica(?:r|ção)|excluir|remover|inativar|persistir|gravar|incluir|cadastrar)\b[^.,;\n]*/gi, ' ');
 
-    // EE (Entrada Externa) - Exclusão / Cancelamento
-    const hasDelete = /(excluir|remover|deletar|inativar|desativar|cancelar|apagar)/i.test(lowerText);
-    if (hasDelete) {
-      const eeDelTd = 4;
-      const eeDelAr = 1;
-      const complexity = calculateApfComplexity('EE', eeDelAr, eeDelTd);
-      const rawPf = calculateApfRawPf('EE', complexity);
-      const finalPf = calculateApfFinalPf(rawPf, factor);
-      ifpugCandidates.push({
-        id: `cand_ee_del_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        functionType: 'EE',
-        name: `EE - Excluir/Inativar ${entityName}`,
-        category: 'Transação',
-        primaryIntent: 'Processar comando de exclusão ou inativação lógica no ALI.',
-        td: eeDelTd,
-        arTr: eeDelAr,
-        complexity,
-        rawPf,
-        countingType,
-        factor,
-        finalPf,
-        notes: `Processo elementar de exclusão física ou inativação lógica.`,
-        rationale: `Entrada Externa (EE): Remove ou desativa registros mantidos no ALI.`
-      });
-    }
+      // EE (Entrada Externa) - Inclusão / Registro / Submissão / Conversão (CFP)
+      const textWithoutFieldAddition = textWithoutWriteNegations
+        .replace(/(?:incluir|adicionar|inserir)\s+(?:novo\s+|novos\s+)?(?:campo|campos|atributo|atributos|coluna|colunas)/gi, ' ')
+        .replace(/registrar\s+a\s+compet[êe]ncia/gi, ' ');
+      const hasInclusion = !isPrimaryAnalyticalOutput && !isPrimaryInactivationOrDeletion && (isFullCrud || /\b(?:incluir|cadastrar|cadastra|criar\s+novo|adicionar|registrar|registra|inserir|salvar|upload|importar|carregar|carregando|carga\s+de\s+convers[ãa]o|autenticar|login|logar|enviar|submeter)\b/i.test(textWithoutFieldAddition));
+      if (hasInclusion) {
+        const eeAddTd = transactionTd;
+        const eeAddAr = txAr;
+        const complexity = calculateApfComplexity('EE', eeAddAr, eeAddTd);
+        const rawPf = calculateApfRawPf('EE', complexity);
+        const candFactor = getCandidateFactor('EE', resolvedOpType);
+        const finalPf = calculateApfFinalPf(rawPf, candFactor);
+        ifpugCandidates.push({
+          id: `cand_ee_add_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          functionType: 'EE',
+          name: `EE - Incluir/Processar ${entityName}`,
+          category: 'Transação',
+          operationType: resolvedOpType,
+          primaryIntent: 'Processar dados de entrada através da fronteira e manter ALI ou validar comportamento do sistema.',
+          td: eeAddTd,
+          arTr: eeAddAr,
+          complexity,
+          rawPf,
+          countingType,
+          factor: candFactor,
+          finalPf,
+          notes: `Processo elementar de entrada (${eeAddTd} TDs = ${businessTdCount} atributo(s) + 1 acionamento + 1 mensagem; ${eeAddAr} AR referenciado).`,
+          rationale: `Entrada Externa (EE • ${resolvedOpType}): ${eeAddTd} TDs (${businessTdCount} negócio + 2 controle) e ${eeAddAr} AR(s).`
+        });
+      }
 
-    // CE (Consulta Externa) - Pesquisa / Visualização / Listagem
-    const hasQuery = /(consultar|buscar|pesquisar|filtrar|listar|visualizar|exibir|ver|acompanhar|detalhar|grid|tabela|acessar)/i.test(lowerText) || (ifpugCandidates.some(c => c.functionType === 'ALI') && !inmCandidates.length);
-    if (hasQuery) {
-      const ceTd = Math.min(Math.max(baseTd + 1, 6), 20);
-      const ceAr = 1;
-      const complexity = calculateApfComplexity('CE', ceAr, ceTd);
-      const rawPf = calculateApfRawPf('CE', complexity);
-      const finalPf = calculateApfFinalPf(rawPf, factor);
-      ifpugCandidates.push({
-        id: `cand_ce_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        functionType: 'CE',
-        name: `CE - Consultar/Visualizar ${entityName}`,
-        category: 'Transação',
-        primaryIntent: 'Recuperar e apresentar dados do ALI sem fórmulas matemáticas derivadas.',
-        td: ceTd,
-        arTr: ceAr,
-        complexity,
-        rawPf,
-        countingType,
-        factor,
-        finalPf,
-        notes: `Recuperação direta de informações de ${entityName} para exibição ao usuário.`,
-        rationale: `Consulta Externa (CE): Recuperação simples de dados mantidos no sistema.`
-      });
-    }
+      // EE (Entrada Externa) - Alteração / Atualização / Aprovação
+      // Remove efeitos colaterais de log de auditoria e descritores de operação de melhoria (CHG) de processo existente para evitar gerar uma 2ª EE duplicada
+      const textWithoutAuditAndChgMeta = textWithoutWriteNegations
+        .replace(/(?:registra(?:r)?|atualiza(?:r)?|grava(?:r)?)\s+(?:a\s+|o\s+)?(?:hist[óo]rico|log|trilha)\s+de\s+auditoria/gi, ' ')
+        .replace(/(?:alterar|modificar|atualizar|evoluir|refatorar)\s+(?:o\s+|a\s+)?(?:fluxo|processo|funcionalidade|regra|rotina|tela|m[óo]dulo)(?:\s+existente)?|altera[çc][ãa]o\s+d[aeo]\s+(?:processo|fluxo|l[óo]gica|funcionalidade)/gi, ' ');
+      const hasUpdate = !isPrimaryAnalyticalOutput && !isPrimaryInactivationOrDeletion && (isFullCrud || /\b(?:alterar|atualizar|atualiza|editar|modificar|progresso|revisar|mudar\s+status|concluir|aprovar|rejeitar|homologar)\b/i.test(textWithoutAuditAndChgMeta));
+      if (hasUpdate) {
+        const eeUpdTd = transactionTd;
+        const eeUpdAr = txAr;
+        const complexity = calculateApfComplexity('EE', eeUpdAr, eeUpdTd);
+        const rawPf = calculateApfRawPf('EE', complexity);
+        const candFactor = getCandidateFactor('EE', resolvedOpType);
+        const finalPf = calculateApfFinalPf(rawPf, candFactor);
+        ifpugCandidates.push({
+          id: `cand_ee_upd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          functionType: 'EE',
+          name: `EE - Atualizar/Editar ${entityName}`,
+          category: 'Transação',
+          operationType: resolvedOpType,
+          primaryIntent: 'Processar dados recebidos de fora da fronteira para modificar registros em ALI referenciado.',
+          td: eeUpdTd,
+          arTr: eeUpdAr,
+          complexity,
+          rawPf,
+          countingType,
+          factor: candFactor,
+          finalPf,
+          notes: `Processo de manutenção/atualização (${eeUpdTd} TDs = ${businessTdCount} atributo(s) + 1 acionamento + 1 mensagem; ${eeUpdAr} AR).`,
+          rationale: `Entrada Externa (EE • ${resolvedOpType}): Modifica estado no ALI referenciado (${eeUpdTd} TDs, ${eeUpdAr} AR).`
+        });
+      }
 
-    // SE (Saída Externa) - Relatório / Demonstrativo / Cálculos / Totalizações
-    const hasOutput = /(relatório|extrato|exportar|pdf|calcular|cálculo|demonstrativo|consolidado|gráfico|evolução|efetivação|faturamento|fechamento|totalizar|notificação|resumo|painel|dashboard|kpi)/i.test(lowerText);
-    if (hasOutput) {
-      const seTd = Math.min(Math.max(baseTd + 3, 8), 24);
-      const seAr = 2;
-      const complexity = calculateApfComplexity('SE', seAr, seTd);
-      const rawPf = calculateApfRawPf('SE', complexity);
-      const finalPf = calculateApfFinalPf(rawPf, factor);
-      ifpugCandidates.push({
-        id: `cand_se_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        functionType: 'SE',
-        name: `SE - Demonstrativo/Relatório de ${entityName}`,
-        category: 'Transação',
-        primaryIntent: 'Processar e apresentar dados contendo lógica de derivação, totalizadores ou cálculos analíticos.',
-        td: seTd,
-        arTr: seAr,
-        complexity,
-        rawPf,
-        countingType,
-        factor,
-        finalPf,
-        notes: `Saída formatada contendo regras matemáticas, agregações ou geração de documento oficial.`,
-        rationale: `Saída Externa (SE): Envia informações derivadas com cálculos analíticos.`
-      });
+      // EE (Entrada Externa) - Exclusão / Inativação
+      const hasDelete = !isPrimaryAnalyticalOutput && (isFullCrud || isPrimaryInactivationOrDeletion || /\b(?:excluir|remover|deletar|inativar|desativar|cancelar\s+registro|apagar)\b/i.test(lowerText));
+      if (hasDelete) {
+        // Se for CRUD completo junto com Inclusão/Alteração, exclusão simples tem 3 TDs e 1 AR; se for requisito dedicado de exclusão/inativação, usa os TDs e ARs reais do requisito
+        const eeDelTd = (hasInclusion || hasUpdate) ? 3 : transactionTd;
+        const eeDelAr = (hasInclusion || hasUpdate) ? 1 : txAr;
+        const complexity = calculateApfComplexity('EE', eeDelAr, eeDelTd);
+        const rawPf = calculateApfRawPf('EE', complexity);
+        const candFactor = getCandidateFactor('EE', resolvedOpType);
+        const finalPf = calculateApfFinalPf(rawPf, candFactor);
+        ifpugCandidates.push({
+          id: `cand_ee_del_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          functionType: 'EE',
+          name: `EE - Excluir/Inativar ${entityName}`,
+          category: 'Transação',
+          operationType: resolvedOpType,
+          primaryIntent: 'Processar comando de exclusão ou inativação lógica em ALI referenciado.',
+          td: eeDelTd,
+          arTr: eeDelAr,
+          complexity,
+          rawPf,
+          countingType,
+          factor: candFactor,
+          finalPf,
+          notes: `Processo elementar de exclusão/inativação (${eeDelTd} TDs = ${businessTdCount} negócio + 2 controle; ${eeDelAr} AR(s)).`,
+          rationale: `Entrada Externa (EE • ${resolvedOpType}): Exclusão/inativação no ALI referenciado (${eeDelTd} TDs, ${eeDelAr} AR).`
+        });
+      }
+
+      // Regra 3 (Rigor na Inferência Transacional: CE vs. SE e Supressão de CE Fantasma em Fluxos de Ação Única):
+      const hasAnyEe = ifpugCandidates.some(c => c.functionType === 'EE');
+      // Trava de Negação Semântica para SE: se o requisito contiver expressões como "sem cálculo", "sem fórmulas matemáticas",
+      // "sem alteração de estado" ou "apenas listagem/apresentação informativa", desativa qualquer gatilho de SE e classifica como CE.
+      const hasSemanticSeNegation = /(?:sem\s+(?:realizar\s+|efetuar\s+)?(?:altera[çc][ãa]o\s+de\s+estado|c[áa]lculos?(?:\s+matem[áa]ticos?|\s+anal[íi]ticos?)?|f[óo]rmulas?(?:\s+matem[áa]ticas?)?|totais|totaliza(?:r|ção|dores)?|soma\s+agregada|dados?\s+derivados?)|nem\s+(?:aplica[çc][ãa]o\s+de\s+)?f[óo]rmulas?(?:\s+matem[áa]ticas?)?|apenas\s+(?:listagem|apresenta[çc][ãa]o)(?:\s+informativa)?|listagem\s+informativa\s+no\s+(?:ecr[ãa]|tela)\s+sem)/i.test(lowerText);
+      const textWithoutNegativeCalcClauses = lowerText
+        .replace(/\b(?:sem|não\s+h[áa]|não\s+possui|não\s+realiza|isento\s+de)\s+[^.;\n]*?\b(?:fórmula|fórmulas|cálculo|cálculos|calculado|calculados|totais|totaliza(?:r|ção|dores)?|dado\s+derivado|dados\s+derivados|média|somatório|estatístic[ao]s?|indicador(?:es)?)\b[^.;\n]*/gi, ' ')
+        .replace(/\bnem\s+(?:aplicação\s+de\s+|realização\s+de\s+|uso\s+de\s+)?(?:fórmula|fórmulas|cálculo|cálculos|totais|totaliza(?:r|ção|dores)?|dado\s+derivado|dados\s+derivados)\b[^.,;\n]*/gi, ' ');
+      const hasExplicitCalculation = !hasSemanticSeNegation && !hasAnyEe && /(?:cálculo|calcular|calculado|calculando|\bcalcula\b|fórmula|média|somatório|totaliza(?:r|ção|dores)?|dado\s+derivado|consolida(?:r|ção)\s+analític|balancete\s+analític|taxa\s+calculada|percentual\s+calculado|projeção\s+matemática|estatístic|agregação\s+matemática|saldo\s+calculado|indicador\s+calculado|\bkpi\b|atualiza(?:r)?\s+o\s+hist[óo]rico\s+de\s+auditoria\s+com\s+a\s+data(?:\s*\/\s*hora)?\s+da\s+emiss[ãa]o)/i.test(textWithoutNegativeCalcClauses);
+      const textWithoutRedirectsAndFeedback = lowerText
+        .replace(/exib(?:ir|e)\s+(?:a\s+)?(?:mensagem|alerta|notificação|erro|sucesso|toast|feedback)[^.,;\n]*/gi, ' ')
+        .replace(/redireciona(?:r)?\s+(?:o\s+[\p{L}]+\s+)?para\s+[^.,;\n]+/giu, ' ')
+        .replace(/(?:na|da|em\s+uma)\s+tabela\s+de\b/gi, ' ');
+
+      const hasExplicitMultiRecordReadView = isFullCrud || (!hasAnyEe && /\b(?:listar|listagem|visualizar\s+hist[óo]rico|consultar\s+hist[óo]rico|tabela\s+de|em\s+tabela|exibir\s+(?:a\s+)?tabela|grade\s+paginada|grid|grelha|consultar\s+regist(?:r)?os|buscar\s+lista|pesquisar\s+regist(?:r)?os|filtrar\s+(?:lista|regist(?:r)?os|tabela|grid|grelha|pedidos|itens|dados|capacidade)|exibir\s+(?:lista|grid|grelha|regist(?:r)?os))\b/i.test(textWithoutRedirectsAndFeedback));
+      const hasStandaloneQueryIntent = !hasAnyEe && /\b(?:consultar|consulta|buscar|busca|pesquisar|pesquisa|filtrar|filtro|listar|listagem|visualizar|detalhar|grid|grelha|acompanhar|relatório|extrato|exportar|demonstrativo|painel|dashboard|gráfico)\b/i.test(textWithoutRedirectsAndFeedback);
+
+      const arDetailText = detectedArEntities.length > 1
+        ? `${txAr} ARs (${detectedArEntities.join(', ')})`
+        : `${txAr} AR`;
+
+      if (hasExplicitCalculation) {
+        // Gera exclusivamente SE (Saída Externa) para a apresentação analítica/derivada
+        const seTd = transactionTd;
+        const seAr = txAr;
+        const complexity = calculateApfComplexity('SE', seAr, seTd);
+        const rawPf = calculateApfRawPf('SE', complexity);
+        const candFactor = getCandidateFactor('SE', resolvedOpType);
+        const finalPf = calculateApfFinalPf(rawPf, candFactor);
+        ifpugCandidates.push({
+          id: `cand_se_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          functionType: 'SE',
+          name: `SE - Demonstrativo/Relatório Analítico de ${entityName}`,
+          category: 'Transação',
+          operationType: resolvedOpType,
+          primaryIntent: 'Apresentar informações ao usuário com criação de dados derivados, totalizadores ou fórmulas matemáticas.',
+          td: seTd,
+          arTr: seAr,
+          complexity,
+          rawPf,
+          countingType,
+          factor: candFactor,
+          finalPf,
+          notes: `Saída Externa com processamento matemático/derivação explícita (${seTd} TDs = ${businessTdCount} negócio [${detectedFields.join(', ')}] + 2 controle; ${arDetailText}).`,
+          rationale: `Saída Externa (SE • ${resolvedOpType}): ${seTd} TDs (${businessTdCount} negócio + 2 controle) e ${arDetailText}. Evidência explícita de cálculo matemático/dado derivado sem CE duplicada.`
+        });
+      } else if (hasExplicitMultiRecordReadView || hasStandaloneQueryIntent) {
+        // Gera exclusivamente CE (Consulta Externa) para recuperação direta de dados sem cálculo derivado
+        const ceTd = transactionTd;
+        const ceAr = txAr;
+        const complexity = calculateApfComplexity('CE', ceAr, ceTd);
+        const rawPf = calculateApfRawPf('CE', complexity);
+        const candFactor = getCandidateFactor('CE', resolvedOpType);
+        const finalPf = calculateApfFinalPf(rawPf, candFactor);
+        ifpugCandidates.push({
+          id: `cand_ce_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          functionType: 'CE',
+          name: `CE - Consultar/Listar ${entityName}`,
+          category: 'Transação',
+          operationType: resolvedOpType,
+          primaryIntent: 'Recuperar e apresentar dados diretamente de AR(s) sem fórmulas matemáticas ou criação de dados derivados.',
+          td: ceTd,
+          arTr: ceAr,
+          complexity,
+          rawPf,
+          countingType,
+          factor: candFactor,
+          finalPf,
+          notes: `Consulta Externa direta (${ceTd} TDs = ${businessTdCount} atributo(s) [${detectedFields.join(', ')}] + 1 acionamento/filtro + 1 mensagem; ${arDetailText}).`,
+          rationale: `Consulta Externa (CE • ${resolvedOpType}): ${ceTd} TDs (${businessTdCount} negócio + 2 controle) e ${arDetailText}. Recuperação direta de dados sem cálculo derivado.`
+        });
+      }
     }
   }
+
+  // Regra 6 (Eliminação Rigorosa de Dupla Contagem — IFPUG vs. SISP INM/FPN):
+  // Se qualquer função IFPUG (EE, CE, SE, ALI, AIE) for gerada para o requisito/módulo, zera e desativa a pontuação
+  // de INMs, reservando FPN apenas quando o requisito for 100% técnico e isolado (sem nenhuma função IFPUG).
+  const hasAnyIfpugFunction = ifpugCandidates.length > 0;
+  const hasElementaryTransaction = ifpugCandidates.some(c => c.functionType === 'EE' || c.functionType === 'CE' || c.functionType === 'SE');
+  const inmCandidates = [];
+  const absorbedInmCandidates = [];
+
+  rawInmCandidates.forEach(inm => {
+    if (hasAnyIfpugFunction) {
+      absorbedInmCandidates.push({
+        ...inm,
+        absorbed: true,
+        selected: false,
+        status: 'Absorvido pelo IFPUG',
+        originalPf: inm.subtotalPf,
+        calculatedPf: 0,
+        subtotalPf: 0,
+        justification: `[ABSORVIDO PELA FUNÇÃO IFPUG — SISP] ${inm.justification}`
+      });
+    } else {
+      inmCandidates.push({
+        ...inm,
+        absorbed: false,
+        selected: true,
+        status: 'Aprovado'
+      });
+    }
+  });
 
   // 6. Análise de Fronteira e Natureza da Demanda
   let nature = 'Pura IFPUG';
   let natureExplanation = '';
   if (ifpugCandidates.length > 0 && inmCandidates.length > 0) {
     nature = 'Híbrido';
-    natureExplanation = 'A entrega contém tanto processos transacionais padrão de negócio (IFPUG) quanto intervenções técnicas pontuais tabeladas (FPN / Padrão SISP).';
+    natureExplanation = 'A entrega contém processos elementares IFPUG e itens técnicos avulsos de banco/migração não absorvidos (SISP).';
   } else if (ifpugCandidates.length === 0 && inmCandidates.length > 0) {
     nature = 'Item Não-Mensurável';
-    natureExplanation = 'A demanda trata exclusivamente de escopo complementar e intervenção técnica tabelada (menus, code tables, CSS/layouts, triggers ou parâmetros).';
+    natureExplanation = 'A demanda trata exclusivamente de intervenção técnica avulsa tabelada pelo SISP, sem processo elementar IFPUG autônomo.';
   } else {
     nature = 'Pura IFPUG';
-    natureExplanation = 'A demanda é composta estritamente por processos elementares que movem ou mantêm dados de negócio na aplicação.';
+    natureExplanation = 'A demanda é mensurada estritamente por funções de negócio IFPUG CPM 4.3.1 (itens de interface/layout/máscaras são absorvidos pelo processo elementar).';
   }
 
-  // 7. Totalizações Consolidada
+  // 7. Totalizações Consolidadas
   const totalRawIfpugPf = ifpugCandidates.reduce((s, c) => s + (c.rawPf || 0), 0);
   const totalFinalIfpugPf = Math.round(ifpugCandidates.reduce((s, c) => s + (c.finalPf || 0), 0) * 100) / 100;
   const totalInmPf = Math.round(inmCandidates.reduce((s, c) => s + (c.subtotalPf || 0), 0) * 100) / 100;
@@ -1910,54 +2537,61 @@ function analyzeCfpsSpecification(spec, options = {}) {
 
   // 8. Notas Técnicas e Observações do Auditor CFPS
   const auditorNotes = [];
-  if (detectedFields.length < 5) {
-    auditorNotes.push('Como a história/especificação não especifica detalhadamente a lista de campos (TDs), adotou-se a convenção de atributos mínimos necessários para a complexidade estimada.');
+  if (ifpugCandidates.some(c => c.functionType === 'ALI' || c.functionType === 'AIE') && !hasElementaryTransaction) {
+    auditorNotes.push(`Heurística de TDs e TRs para Função de Dados (IFPUG CPM 4.3.1): contabilizados estritamente ${dataTd} atributo(s) de negócio persistidos (sem somar os +2 TDs de controle de interface) e ${inferredDataTr} TR(s) (subgrupos lógicos reconhecidos pelo usuário).`);
+  } else {
+    auditorNotes.push(`Heurística de TDs (IFPUG CPM 4.3.1): contabilizados ${businessTdCount} atributo(s) de negócio identificado(s) + 2 TDs de controle nas transações (+1 acionamento/envio e +1 mensagem do sistema) = ${transactionTd} TDs por transação.`);
   }
-  if (inmCandidates.length > 0 && ifpugCandidates.length > 0) {
-    auditorNotes.push('Demanda Híbrida: as intervenções técnicas foram estritamente segregadas na tabela de FPN (Padrão SISP) para evitar dupla contagem ou sobreposição com os processos elementares IFPUG.');
+
+  if (!ifpugCandidates.some(c => c.functionType === 'ALI') && hasElementaryTransaction) {
+    auditorNotes.push(`Ciclo de Vida do ALI: Como o requisito trata de transação/consulta/uso sobre dados existentes, a entidade "${entityName}" foi contabilizada apenas como Arquivo Referenciado (1 AR/FTR), sem gerar novo ALI duplicado.`);
   }
-  if (factor < 1.0) {
-    auditorNotes.push(`Foi aplicado o redutor contratual de ${(factor * 100).toFixed(0)}% referente ao Tipo de Contagem "${countingType}".`);
+  if (absorbedInmCandidates.length > 0) {
+    auditorNotes.push(`Trava de Exclusão Mútua (SISP): ${absorbedInmCandidates.length} item(ns) de interface/menu/máscara/apoio (${absorbedInmCandidates.map(a => a.itemName).join(', ')}) foram marcados como ABSORVIDOS (0,00 PF) pois já integram o Processo Elementar IFPUG mensurado.`);
+  }
+  if (countingType.toLowerCase().startsWith('melhoria') || resolvedOpType !== 'ADD') {
+    auditorNotes.push(`Projeto de Melhoria (IFPUG CPM 4.3.1 / SISP): Operação classificada como ${resolvedOpType} (${SISP_ENHANCEMENT_FACTORS[resolvedOpType]?.label || resolvedOpType}), medindo o tamanho funcional final após a mudança com deflator contratual SISP.`);
   }
   if (ifpugCandidates.some(c => c.functionType === 'SE')) {
-    auditorNotes.push('A Saída Externa (SE) foi mensurada considerando a presença explícita de cálculo matemático derivado, agregação analítica ou geração de demonstrativo/relatório oficial.');
-  }
-  if (auditorNotes.length === 0) {
-    auditorNotes.push('Contagem estritamente aderente ao manual de práticas de medição IFPUG CPM 4.3.1.');
+    auditorNotes.push('Rigor Transacional (SE vs. CE): Gerada exclusivamente Saída Externa (SE) devido à evidência explícita de cálculo matemático/dado derivado, sem duplicar Consulta Externa (CE).');
   }
 
   // 9. Construção do Laudo Oficial CFPS em Markdown
   let reportMarkdown = `## 1. Decomposição do Requisito\n`;
   reportMarkdown += `- **Resumo da Intenção do Usuário:** ${userRole ? `Como ${userRole}, necessita ${userWant} a fim de ${userBenefit}.` : title}\n`;
-  reportMarkdown += `- **Fronteira da Aplicação:** Fronteira delimitada no sistema local, interagindo com bases relacionais e barramentos de serviço.\n`;
+  reportMarkdown += `- **Fronteira da Aplicação:** Fronteira delimitada no sistema local (${effectiveCountingType} • Operação: ${resolvedOpType}).\n`;
   reportMarkdown += `- **Natureza da Demanda:** **${nature}** — ${natureExplanation}\n\n`;
 
   reportMarkdown += `## 2. Memória de Cálculo Detalhada\n\n`;
 
   if (ifpugCandidates.length > 0) {
-    reportMarkdown += `### A. Funções de Negócio Tradicionais (IFPUG)\n`;
-    reportMarkdown += `| Tipo | Nome do Processo / Entidade | Intenção Primária | TDs | TRs/ARs | Complexidade | PF |\n`;
-    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`;
+    reportMarkdown += `### A. Funções de Negócio Tradicionais (IFPUG CPM 4.3.1)\n`;
+    reportMarkdown += `| Tipo | Operação | Nome do Processo / Entidade | TDs (DET) | TRs/ARs | Complexidade | PF Bruto | Fator SISP | PF Líquido |\n`;
+    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`;
     ifpugCandidates.forEach(c => {
       const arTrLabel = (c.functionType === 'ALI' || c.functionType === 'AIE') ? `${c.arTr} TR` : `${c.arTr} AR`;
-      reportMarkdown += `| **${c.functionType}** | ${c.name} | ${c.primaryIntent} | ${c.td} | ${arTrLabel} | ${c.complexity} | ${c.rawPf} PF |\n`;
+      const factorPct = `${Math.round((c.factor || 1) * 100)}%`;
+      reportMarkdown += `| **${c.functionType}** | \`${c.operationType || 'ADD'}\` | ${c.name} | ${c.td} | ${arTrLabel} | ${c.complexity} | ${c.rawPf} PF | ${factorPct} | **${c.finalPf.toFixed(2)} PF** |\n`;
     });
     reportMarkdown += `\n`;
   }
 
-  if (inmCandidates.length > 0) {
+  if (inmCandidates.length > 0 || absorbedInmCandidates.length > 0) {
     reportMarkdown += `### B. Itens Não-Mensuráveis / Complementares (FPN • Padrão SISP)\n`;
-    reportMarkdown += `| Item Técnico Identificado | Quantidade ($Q$) | Peso Unitário ($P$) | Justificativa / Referência | Subtotal (PF) |\n`;
-    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- |\n`;
+    reportMarkdown += `| Item Técnico Identificado | Status SISP | Qtd ($Q$) | Peso ($P$) | Justificativa / Regra de Exclusão Mútua | Subtotal (PF) |\n`;
+    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- | :--- |\n`;
     inmCandidates.forEach(inm => {
-      reportMarkdown += `| ${inm.itemName} | ${inm.quantity} | ${inm.unitWeight.toFixed(2)} PF | ${inm.justification} | ${inm.subtotalPf.toFixed(2)} PF |\n`;
+      reportMarkdown += `| ${inm.itemName} | **Pontuado** | ${inm.quantity} | ${inm.unitWeight.toFixed(2)} PF | ${inm.justification} | **${inm.subtotalPf.toFixed(2)} PF** |\n`;
+    });
+    absorbedInmCandidates.forEach(abs => {
+      reportMarkdown += `| ~${abs.itemName}~ | **Absorvido** | ${abs.quantity} | ${abs.unitWeight.toFixed(2)} PF | ${abs.justification} | **0.00 PF** |\n`;
     });
     reportMarkdown += `\n`;
   }
 
   reportMarkdown += `## 3. Totalização Consolidada\n`;
-  reportMarkdown += `- **PF de Negócio (IFPUG Tradicional):** ${totalFinalIfpugPf.toFixed(2)} PF ${factor < 1.0 ? `(Bruto: ${totalRawIfpugPf} PF com redutor de ${(factor * 100).toFixed(0)}%)` : ''}\n`;
-  reportMarkdown += `- **PF Não-Mensuráveis (FPN / Itens Técnicos):** ${totalInmPf.toFixed(2)} PF\n`;
+  reportMarkdown += `- **PF de Negócio (IFPUG Líquido):** ${totalFinalIfpugPf.toFixed(2)} PF (PF Bruto: ${totalRawIfpugPf} PF)\n`;
+  reportMarkdown += `- **PF Não-Mensuráveis (FPN Líquido Não Absorvido):** ${totalInmPf.toFixed(2)} PF\n`;
   reportMarkdown += `- **Total Global da Entrega:** **${totalGlobalPf.toFixed(2)} PF**\n\n`;
 
   reportMarkdown += `## 4. Notas Técnicas e Observações do Auditor\n`;
@@ -1972,6 +2606,8 @@ function analyzeCfpsSpecification(spec, options = {}) {
     sourceTitle: title || feature || 'Especificação Funcional',
     feature,
     projectId,
+    countingType: effectiveCountingType,
+    operationType: resolvedOpType,
     nature,
     natureExplanation,
     userRole,
@@ -1980,6 +2616,7 @@ function analyzeCfpsSpecification(spec, options = {}) {
     detectedFields,
     candidates: ifpugCandidates,
     inmCandidates,
+    absorbedInmCandidates,
     totalRawIfpugPf,
     totalFinalIfpugPf,
     totalInmPf,
@@ -1988,8 +2625,10 @@ function analyzeCfpsSpecification(spec, options = {}) {
     reportMarkdown,
     summary: {
       nature,
+      operationType: resolvedOpType,
       totalFunctions: ifpugCandidates.length,
       totalInmCount: inmCandidates.length,
+      totalAbsorbedInmCount: absorbedInmCandidates.length,
       totalRawPf: totalRawIfpugPf,
       totalFinalIfpugPf,
       totalInmPf,
@@ -2023,7 +2662,7 @@ function inferApfFromFeature(projectId, featureName, options = {}) {
   const requirements = db.prepare(query).all(...params);
 
   let allCandidates = [];
-  let allInmCandidates = [];
+  let rawFeatureInmCandidates = [];
   const seenAliNames = new Set();
   const seenInmKeys = new Set();
 
@@ -2043,13 +2682,13 @@ function inferApfFromFeature(projectId, featureName, options = {}) {
         allCandidates.push(cand);
       });
 
-      (res.inmCandidates || []).forEach(inm => {
+      [...(res.inmCandidates || []), ...(res.absorbedInmCandidates || [])].forEach(inm => {
         if (seenInmKeys.has(inm.catalogKey)) return;
         seenInmKeys.add(inm.catalogKey);
         inm.reqId = req.id;
         inm.feature = featureName;
         inm.projectId = req.project_id;
-        allInmCandidates.push(inm);
+        rawFeatureInmCandidates.push(inm);
       });
     });
   } else {
@@ -2068,14 +2707,42 @@ function inferApfFromFeature(projectId, featureName, options = {}) {
       feature: featureName,
       projectId: projectId || ''
     }));
-    allInmCandidates = res.inmCandidates.map(c => ({
+    rawFeatureInmCandidates = [...(res.inmCandidates || []), ...(res.absorbedInmCandidates || [])].map(c => ({
       ...c,
       feature: featureName,
       projectId: projectId || ''
     }));
   }
 
-  const factor = getCountingTypeFactor(options.countingType || 'Desenvolvimento', options.factor);
+  // Aplica a Trava de Exclusão Mútua (SISP) em nível da Feature consolidada:
+  // Se a feature possui qualquer função IFPUG (EE, CE, SE, ALI, AIE), zera e absorve INMs associados.
+  const hasFeatureIfpugFunctions = allCandidates.length > 0;
+  const allInmCandidates = [];
+  const absorbedInmCandidates = [];
+
+  rawFeatureInmCandidates.forEach(inm => {
+    if (hasFeatureIfpugFunctions) {
+      absorbedInmCandidates.push({
+        ...inm,
+        absorbed: true,
+        selected: false,
+        status: 'Absorvido pelo IFPUG',
+        calculatedPf: 0,
+        subtotalPf: 0,
+        justification: inm.justification.startsWith('[ABSORVIDO')
+          ? inm.justification
+          : `[ABSORVIDO PELA FUNÇÃO IFPUG — SISP] ${inm.justification}`
+      });
+    } else {
+      allInmCandidates.push({
+        ...inm,
+        absorbed: false,
+        selected: true,
+        status: 'Aprovado'
+      });
+    }
+  });
+
   const totalRawIfpugPf = allCandidates.reduce((s, c) => s + (c.rawPf || 0), 0);
   const totalFinalIfpugPf = Math.round(allCandidates.reduce((s, c) => s + (c.finalPf || 0), 0) * 100) / 100;
   const totalInmPf = Math.round(allInmCandidates.reduce((s, c) => s + (c.subtotalPf || 0), 0) * 100) / 100;
@@ -2092,21 +2759,25 @@ function inferApfFromFeature(projectId, featureName, options = {}) {
 
   reportMarkdown += `## 2. Memória de Cálculo Detalhada\n\n`;
   if (allCandidates.length > 0) {
-    reportMarkdown += `### A. Funções de Negócio Tradicionais (IFPUG)\n`;
-    reportMarkdown += `| Tipo | Nome do Processo / Entidade | Intenção Primária | TDs | TRs/ARs | Complexidade | PF |\n`;
-    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`;
+    reportMarkdown += `### A. Funções de Negócio Tradicionais (IFPUG CPM 4.3.1)\n`;
+    reportMarkdown += `| Tipo | Operação | Nome do Processo / Entidade | TDs (DET) | TRs/ARs | Complexidade | PF Bruto | Fator SISP | PF Líquido |\n`;
+    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`;
     allCandidates.forEach(c => {
       const arTrLabel = (c.functionType === 'ALI' || c.functionType === 'AIE') ? `${c.arTr} TR` : `${c.arTr} AR`;
-      reportMarkdown += `| **${c.functionType}** | ${c.name} | ${c.primaryIntent || '-'} | ${c.td} | ${arTrLabel} | ${c.complexity} | ${c.rawPf} PF |\n`;
+      const factorPct = `${Math.round((c.factor || 1) * 100)}%`;
+      reportMarkdown += `| **${c.functionType}** | \`${c.operationType || 'ADD'}\` | ${c.name} | ${c.td} | ${arTrLabel} | ${c.complexity} | ${c.rawPf} PF | ${factorPct} | **${c.finalPf.toFixed(2)} PF** |\n`;
     });
     reportMarkdown += `\n`;
   }
-  if (allInmCandidates.length > 0) {
+  if (allInmCandidates.length > 0 || absorbedInmCandidates.length > 0) {
     reportMarkdown += `### B. Itens Não-Mensuráveis / Complementares (FPN • Padrão SISP)\n`;
-    reportMarkdown += `| Item Técnico Identificado | Quantidade ($Q$) | Peso Unitário ($P$) | Justificativa / Referência | Subtotal (PF) |\n`;
-    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- |\n`;
+    reportMarkdown += `| Item Técnico Identificado | Status SISP | Quantidade ($Q$) | Peso Unitário ($P$) | Justificativa / Referência | Subtotal (PF) |\n`;
+    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- | :--- |\n`;
     allInmCandidates.forEach(inm => {
-      reportMarkdown += `| ${inm.itemName} | ${inm.quantity} | ${inm.unitWeight.toFixed(2)} PF | ${inm.justification} | ${inm.subtotalPf.toFixed(2)} PF |\n`;
+      reportMarkdown += `| ${inm.itemName} | **Pontuado** | ${inm.quantity} | ${inm.unitWeight.toFixed(2)} PF | ${inm.justification} | **${inm.subtotalPf.toFixed(2)} PF** |\n`;
+    });
+    absorbedInmCandidates.forEach(abs => {
+      reportMarkdown += `| ~${abs.itemName}~ | **Absorvido** | ${abs.quantity} | ${abs.unitWeight.toFixed(2)} PF | ${abs.justification} | **0.00 PF** |\n`;
     });
     reportMarkdown += `\n`;
   }
@@ -2118,6 +2789,9 @@ function inferApfFromFeature(projectId, featureName, options = {}) {
 
   reportMarkdown += `## 4. Notas Técnicas e Observações do Auditor\n`;
   reportMarkdown += `- Análise consolidada cobrindo ${requirements.length} requisito(s) associados à feature.\n`;
+  if (absorbedInmCandidates.length > 0) {
+    reportMarkdown += `- Trava de Exclusão Mútua (SISP): ${absorbedInmCandidates.length} item(ns) de interface/menu/máscara foram absorvidos pelos Processos Elementares IFPUG.\n`;
+  }
 
   return {
     sourceType: 'feature',
@@ -2127,6 +2801,7 @@ function inferApfFromFeature(projectId, featureName, options = {}) {
     nature,
     candidates: allCandidates,
     inmCandidates: allInmCandidates,
+    absorbedInmCandidates,
     totalRawIfpugPf,
     totalFinalIfpugPf,
     totalInmPf,
@@ -2136,6 +2811,7 @@ function inferApfFromFeature(projectId, featureName, options = {}) {
       nature,
       totalFunctions: allCandidates.length,
       totalInmCount: allInmCandidates.length,
+      totalAbsorbedInmCount: absorbedInmCandidates.length,
       totalRawPf: totalRawIfpugPf,
       totalFinalIfpugPf,
       totalInmPf,
@@ -2218,7 +2894,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       let skills = [];
-      try { skills = JSON.parse(user.skills); } catch(e) {}
+      try { skills = JSON.parse(user.skills); } catch (e) { }
       const safeUser = {
         id: user.id,
         name: user.name,
@@ -2248,9 +2924,9 @@ const server = http.createServer(async (req, res) => {
     if (method === 'POST' && pathname === '/api/auth/register') {
       const callerRole = req.headers['x-user-role'];
       if (callerRole !== 'admin') {
-        return sendJson(res, 403, { 
-          success: false, 
-          message: 'Apenas Administradores do Sistema (Workspace Owner) possuem permissão para cadastrar novos usuários e definir papéis.' 
+        return sendJson(res, 403, {
+          success: false,
+          message: 'Apenas Administradores do Sistema (Workspace Owner) possuem permissão para cadastrar novos usuários e definir papéis.'
         });
       }
 
@@ -2270,7 +2946,7 @@ const server = http.createServer(async (req, res) => {
       let parsedSkills = [];
       if (Array.isArray(data.skills)) parsedSkills = data.skills;
       else if (typeof data.skills === 'string') {
-        try { parsedSkills = JSON.parse(data.skills); } catch(e) { parsedSkills = data.skills.split(',').map(s=>s.trim()).filter(Boolean); }
+        try { parsedSkills = JSON.parse(data.skills); } catch (e) { parsedSkills = data.skills.split(',').map(s => s.trim()).filter(Boolean); }
       }
       const skillsStr = JSON.stringify(parsedSkills);
       const createdAt = new Date().toISOString();
@@ -2287,7 +2963,7 @@ const server = http.createServer(async (req, res) => {
         const resolvedRole = data.devRole || (data.role === 'qa' ? 'qa' : 'backend');
         if (memberExists) {
           let existingSkills = [];
-          try { existingSkills = JSON.parse(memberExists.skills); } catch(e) {}
+          try { existingSkills = JSON.parse(memberExists.skills); } catch (e) { }
           const mergedSkills = parsedSkills.length > 0 ? parsedSkills : existingSkills;
           db.prepare(`
             UPDATE team_members
@@ -2355,7 +3031,7 @@ const server = http.createServer(async (req, res) => {
       const newRole = (callerRole === 'admin' && data.role) ? data.role : user.role;
       const newDevRole = (callerRole === 'admin' && typeof data.devRole !== 'undefined') ? ((newRole === 'dev' || newRole === 'qa') ? data.devRole : null) : user.dev_role;
       const newSeniority = data.seniority || user.seniority;
-      const skillsStr = JSON.stringify(Array.isArray(data.skills) ? data.skills : (typeof data.skills === 'string' ? data.skills.split(',').map(s=>s.trim()).filter(Boolean) : []));
+      const skillsStr = JSON.stringify(Array.isArray(data.skills) ? data.skills : (typeof data.skills === 'string' ? data.skills.split(',').map(s => s.trim()).filter(Boolean) : []));
       const newAvatarBg = data.avatarBg || user.avatar_bg;
       const newPassword = (data.password && data.password.trim()) ? data.password.trim() : user.password;
 
@@ -2384,7 +3060,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       let parsedSkills = [];
-      try { parsedSkills = JSON.parse(skillsStr); } catch(e) {}
+      try { parsedSkills = JSON.parse(skillsStr); } catch (e) { }
 
       const safeUser = {
         id: targetUserId,
@@ -2544,14 +3220,14 @@ const server = http.createServer(async (req, res) => {
             const proj = db.prepare('SELECT features FROM projects WHERE id = ?').get(r.projectId);
             if (proj) {
               let fList = [];
-              try { fList = JSON.parse(proj.features || '[]'); } catch(e) {}
+              try { fList = JSON.parse(proj.features || '[]'); } catch (e) { }
               if (!Array.isArray(fList)) fList = [];
               if (!fList.some(f => f.toLowerCase() === feature.toLowerCase())) {
                 fList.push(feature);
                 db.prepare('UPDATE projects SET features = ? WHERE id = ?').run(JSON.stringify(fList), r.projectId);
               }
             }
-          } catch(e) {}
+          } catch (e) { }
         }
 
         const actor = getActorFromReq(req);
@@ -2590,14 +3266,14 @@ const server = http.createServer(async (req, res) => {
             const proj = db.prepare('SELECT features FROM projects WHERE id = ?').get(r.projectId);
             if (proj) {
               let fList = [];
-              try { fList = JSON.parse(proj.features || '[]'); } catch(e) {}
+              try { fList = JSON.parse(proj.features || '[]'); } catch (e) { }
               if (!Array.isArray(fList)) fList = [];
               if (!fList.some(f => f.toLowerCase() === feature.toLowerCase())) {
                 fList.push(feature);
                 db.prepare('UPDATE projects SET features = ? WHERE id = ?').run(JSON.stringify(fList), r.projectId);
               }
             }
-          } catch(e) {}
+          } catch (e) { }
         }
 
         const actor = getActorFromReq(req);
@@ -2867,7 +3543,7 @@ const server = http.createServer(async (req, res) => {
           const newPriority = t.priority !== undefined ? t.priority : existing.priority;
           const newComplexity = t.complexity !== undefined ? t.complexity : (existing.complexity || 'Média');
           const newHours = t.hours !== undefined ? parseFloat(t.hours) : existing.hours;
-          
+
           let newHoursSpent = existing.hours_spent || 0;
           if (t.hoursSpent !== undefined) {
             if (callerRole === 'admin' || !callerRole) {
@@ -2971,14 +3647,14 @@ const server = http.createServer(async (req, res) => {
         let parsedSkills = [];
         if (Array.isArray(m.skills)) parsedSkills = m.skills;
         else if (typeof m.skills === 'string') {
-          try { parsedSkills = JSON.parse(m.skills); } catch(e) { parsedSkills = m.skills.split(',').map(s=>s.trim()).filter(Boolean); }
+          try { parsedSkills = JSON.parse(m.skills); } catch (e) { parsedSkills = m.skills.split(',').map(s => s.trim()).filter(Boolean); }
         }
 
         const existing = db.prepare('SELECT * FROM team_members WHERE id = ? OR lower(trim(name)) = lower(trim(?))').get(m.id || '', cleanName);
 
         if (existing) {
           let existingSkills = [];
-          try { existingSkills = JSON.parse(existing.skills); } catch(e) {}
+          try { existingSkills = JSON.parse(existing.skills); } catch (e) { }
           const mergedSkills = parsedSkills.length > 0 ? parsedSkills : existingSkills;
           const updatedRole = m.role || existing.role || 'frontend';
           const updatedSeniority = m.seniority || existing.seniority || 'Pleno';
@@ -3420,7 +4096,7 @@ const server = http.createServer(async (req, res) => {
             .replace(/[^a-z0-9]/g, '_')
             .replace(/_+/g, '_')
             .replace(/^_|_$/g, '') || `lvl_${idx + 1}`;
-          
+
           let hardSkills = [];
           if (Array.isArray(lvl.hardSkills)) hardSkills = lvl.hardSkills;
           else if (typeof lvl.hardSkills === 'string') hardSkills = lvl.hardSkills.split(',').map(s => s.trim()).filter(Boolean);
@@ -3845,7 +4521,7 @@ const server = http.createServer(async (req, res) => {
     // 12.0. API de Geração Automática de APF (Preview e Batch com Motor CFPS)
     if (pathname === '/api/apf/auto-generate/preview' && method === 'POST') {
       const body = await parseJsonBody(req);
-      const { reqId, feature, projectId, countingType, factor, text, userStory, bdd, specification } = body;
+      const { reqId, feature, projectId, countingType, operationType, factor, text, userStory, bdd, specification } = body;
 
       let result;
       if (reqId) {
@@ -3853,7 +4529,7 @@ const server = http.createServer(async (req, res) => {
         if (!reqRow) {
           return sendJson(res, 404, { success: false, message: 'Requisito não encontrado.' });
         }
-        result = analyzeCfpsSpecification(reqRow, { countingType, factor });
+        result = analyzeCfpsSpecification(reqRow, { countingType, operationType, factor });
       } else if (text || userStory || bdd || specification) {
         // Modo Auditoria Direta de História de Usuário / BDD Livre
         result = analyzeCfpsSpecification({
@@ -3863,9 +4539,9 @@ const server = http.createServer(async (req, res) => {
           text: text || specification || '',
           feature: feature || '',
           projectId: projectId || ''
-        }, { countingType, factor });
+        }, { countingType, operationType, factor });
       } else if (feature) {
-        result = inferApfFromFeature(projectId, feature, { countingType, factor });
+        result = inferApfFromFeature(projectId, feature, { countingType, operationType, factor });
       } else {
         return sendJson(res, 400, { success: false, message: 'Informe reqId, feature ou texto com a história/BDD para análise de APF.' });
       }
@@ -3878,6 +4554,8 @@ const server = http.createServer(async (req, res) => {
         sourceTitle: result.sourceTitle || '',
         feature: result.feature || '',
         projectId: result.projectId || '',
+        countingType: result.countingType || countingType || 'Desenvolvimento',
+        operationType: result.operationType || 'ADD',
         nature: result.nature,
         natureExplanation: result.natureExplanation,
         userRole: result.userRole || '',
@@ -3886,6 +4564,7 @@ const server = http.createServer(async (req, res) => {
         detectedFields: result.detectedFields || [],
         candidates: result.candidates,
         inmCandidates: result.inmCandidates || [],
+        absorbedInmCandidates: result.absorbedInmCandidates || [],
         auditorNotes: result.auditorNotes || [],
         reportMarkdown: result.reportMarkdown || '',
         summary: result.summary
@@ -3900,7 +4579,8 @@ const server = http.createServer(async (req, res) => {
 
       const body = await parseJsonBody(req);
       const itemsToCreate = Array.isArray(body.items) ? body.items : [];
-      const inmItemsToCreate = Array.isArray(body.inmItems) ? body.inmItems : [];
+      // Trava de Exclusão Mútua (SISP): ignora itens marcados como absorvidos pelo IFPUG
+      const inmItemsToCreate = (Array.isArray(body.inmItems) ? body.inmItems : []).filter(inm => !inm.absorbed);
 
       if (itemsToCreate.length === 0 && inmItemsToCreate.length === 0) {
         return sendJson(res, 400, { success: false, message: 'Nenhuma função de APF ou item não-mensurável informado para cadastro.' });
@@ -3930,8 +4610,8 @@ const server = http.createServer(async (req, res) => {
       // 1. Gravação das Funções Tradicionais IFPUG (apf_items)
       if (itemsToCreate.length > 0) {
         const insertStmt = db.prepare(`
-          INSERT INTO apf_items (id, code, name, project_id, feature, req_id, function_type, category, td, ar_tr, complexity, raw_pf, counting_type, factor, final_pf, notes, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO apf_items (id, code, name, project_id, feature, req_id, function_type, category, td, ar_tr, complexity, raw_pf, counting_type, operation_type, factor, final_pf, notes, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         for (const item of itemsToCreate) {
@@ -3942,7 +4622,8 @@ const server = http.createServer(async (req, res) => {
           const complexity = calculateApfComplexity(functionType, arTr, td);
           const rawPf = calculateApfRawPf(functionType, complexity);
           const countingType = item.countingType || body.countingType || 'Desenvolvimento';
-          const factor = getCountingTypeFactor(countingType, item.factor !== undefined ? item.factor : body.factor);
+          const operationType = resolveApfOperationType(countingType, item.operationType || body.operationType, item.name || '');
+          const factor = getCountingTypeFactor(countingType, item.factor !== undefined ? item.factor : body.factor, operationType, functionType);
           const finalPf = calculateApfFinalPf(rawPf, factor);
 
           const count = db.prepare('SELECT count(*) as count FROM apf_items WHERE function_type = ?').get(functionType).count + 1;
@@ -3960,13 +4641,13 @@ const server = http.createServer(async (req, res) => {
 
           insertStmt.run(
             id, code, item.name.trim(), itemProjId, featureVal, itemReqId,
-            functionType, category, td, arTr, complexity, rawPf, countingType, factor, finalPf,
+            functionType, category, td, arTr, complexity, rawPf, countingType, operationType, factor, finalPf,
             notes, now, now
           );
 
           createdItems.push({
             id, code, name: item.name.trim(), projectId: itemProjId, feature: featureVal, reqId: itemReqId,
-            functionType, category, td, arTr, complexity, rawPf, countingType, factor, finalPf
+            functionType, category, td, arTr, complexity, rawPf, countingType, operationType, factor, finalPf
           });
         }
       }
@@ -4059,7 +4740,8 @@ const server = http.createServer(async (req, res) => {
         const complexity = calculateApfComplexity(functionType, arTr, td);
         const rawPf = calculateApfRawPf(functionType, complexity);
         const countingType = body.countingType || 'Desenvolvimento';
-        const factor = getCountingTypeFactor(countingType, body.factor);
+        const operationType = resolveApfOperationType(countingType, body.operationType, body.name || '');
+        const factor = getCountingTypeFactor(countingType, body.factor, operationType, functionType);
         const finalPf = calculateApfFinalPf(rawPf, factor);
         const now = new Date().toISOString();
 
@@ -4082,11 +4764,11 @@ const server = http.createServer(async (req, res) => {
         }
 
         db.prepare(`
-          INSERT INTO apf_items (id, code, name, project_id, feature, req_id, function_type, category, td, ar_tr, complexity, raw_pf, counting_type, factor, final_pf, notes, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO apf_items (id, code, name, project_id, feature, req_id, function_type, category, td, ar_tr, complexity, raw_pf, counting_type, operation_type, factor, final_pf, notes, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           id, code, body.name.trim(), resolvedProjectId, (body.feature || '').trim(), resolvedReqId,
-          functionType, category, td, arTr, complexity, rawPf, countingType, factor, finalPf,
+          functionType, category, td, arTr, complexity, rawPf, countingType, operationType, factor, finalPf,
           body.notes || '', now, now
         );
 
@@ -4097,7 +4779,7 @@ const server = http.createServer(async (req, res) => {
           entityTitle: `${code} - ${body.name.trim()} (${functionType})`,
           action: 'CREATE',
           ...actor,
-          details: `Cadastrou função ${functionType} [${code}]: TD=${td}, AR/TR=${arTr} ➔ Complexidade ${complexity}, ${rawPf} PF Bruto, Tipo: ${countingType} (${Math.round(factor * 100)}%), ${finalPf} PF Final.`
+          details: `Cadastrou função ${functionType} [${code}] (${operationType}): TD=${td}, AR/TR=${arTr} ➔ Complexidade ${complexity}, ${rawPf} PF Bruto, Tipo: ${countingType} (${Math.round(factor * 100)}%), ${finalPf} PF Final.`
         });
 
         const created = db.prepare(`
@@ -4128,6 +4810,7 @@ const server = http.createServer(async (req, res) => {
             complexity: created.complexity,
             rawPf: created.raw_pf,
             countingType: created.counting_type,
+            operationType: created.operation_type || 'ADD',
             factor: created.factor,
             finalPf: created.final_pf,
             notes: created.notes || '',
@@ -4161,9 +4844,16 @@ const server = http.createServer(async (req, res) => {
         const complexity = calculateApfComplexity(functionType, arTr, td);
         const rawPf = calculateApfRawPf(functionType, complexity);
         const countingType = body.countingType !== undefined ? body.countingType : existing.counting_type;
+        const operationType = resolveApfOperationType(
+          countingType,
+          body.operationType !== undefined ? body.operationType : existing.operation_type,
+          body.name !== undefined ? body.name : existing.name
+        );
         const factor = body.factor !== undefined
-          ? getCountingTypeFactor(countingType, body.factor)
-          : (body.countingType !== undefined ? getCountingTypeFactor(countingType) : existing.factor);
+          ? getCountingTypeFactor(countingType, body.factor, operationType, functionType)
+          : (body.countingType !== undefined || body.operationType !== undefined
+            ? getCountingTypeFactor(countingType, undefined, operationType, functionType)
+            : existing.factor);
         const finalPf = calculateApfFinalPf(rawPf, factor);
         const now = new Date().toISOString();
 
@@ -4188,12 +4878,12 @@ const server = http.createServer(async (req, res) => {
           UPDATE apf_items
           SET code = ?, name = ?, project_id = ?, feature = ?, req_id = ?,
               function_type = ?, category = ?, td = ?, ar_tr = ?, complexity = ?,
-              raw_pf = ?, counting_type = ?, factor = ?, final_pf = ?, notes = ?, updated_at = ?
+              raw_pf = ?, counting_type = ?, operation_type = ?, factor = ?, final_pf = ?, notes = ?, updated_at = ?
           WHERE id = ?
         `).run(
           code, name, resolvedProjectId, feature, resolvedReqId,
           functionType, category, td, arTr, complexity,
-          rawPf, countingType, factor, finalPf, notes, now,
+          rawPf, countingType, operationType, factor, finalPf, notes, now,
           apfId
         );
 
@@ -4204,7 +4894,7 @@ const server = http.createServer(async (req, res) => {
           entityTitle: `${code} - ${name} (${functionType})`,
           action: 'UPDATE',
           ...actor,
-          details: `Atualizou função ${functionType} [${code}]: TD=${td}, AR/TR=${arTr} ➔ Complexidade ${complexity}, ${rawPf} PF Bruto, Tipo: ${countingType} (${Math.round(factor * 100)}%), ${finalPf} PF Final.`
+          details: `Atualizou função ${functionType} [${code}] (${operationType}): TD=${td}, AR/TR=${arTr} ➔ Complexidade ${complexity}, ${rawPf} PF Bruto, Tipo: ${countingType} (${Math.round(factor * 100)}%), ${finalPf} PF Final.`
         });
 
         const updated = db.prepare(`
@@ -4235,6 +4925,7 @@ const server = http.createServer(async (req, res) => {
             complexity: updated.complexity,
             rawPf: updated.raw_pf,
             countingType: updated.counting_type,
+            operationType: updated.operation_type || 'ADD',
             factor: updated.factor,
             finalPf: updated.final_pf,
             notes: updated.notes || '',
