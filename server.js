@@ -14,7 +14,8 @@ const {
   IFPUG_RAW_PF,
   calculateApfComplexity,
   calculateApfRawPf,
-  calculateApfFinalPf
+  calculateApfFinalPf,
+  evaluateApfMetrics
 } = require('./ifpug-rules');
 
 aiAgent.loadDotEnv(path.join(__dirname, '.env'));
@@ -1695,6 +1696,14 @@ function projectHasDataFunction(projectId, functionType, candidateLabels = []) {
 }
 
 /**
+ * Identifica rótulos puramente técnicos/RNF (brokers, filas técnicas, SLA, estilos CSS)
+ * que devem permanecer isolados como Não-Mensuráveis (0 PF) e nunca gerar ALI/AIE/AR.
+ */
+function isNonMeasurableInfraLabel(label = '') {
+  return /(?:rabbitmq|kafka|activemq|amazon\s+sqs|aws\s+sqs|fila\s+(?:sqs|amqp|de\s+mensageria)|broker(?:\s+de\s+mensageria)?|\bredis\b|memcached|\bsla\b\s*(?:de\s+tempo|<|<=|menor)|tempo\s+de\s+resposta|estiliza[çc][ãa]o\s+css|folha\s+de\s+estilo|\bcss\b|tags?\s+visua(?:l|is)|paleta\s+de\s+cores)/i.test((label || '').trim());
+}
+
+/**
  * Detecta disparo formal de e-mail ou notificação externa com dados/layout/corpo próprio
  * para fora da fronteira (SE - Saída Externa), diferenciando de toasts/avisos inline de tela.
  */
@@ -2115,7 +2124,8 @@ function analyzeCfpsSpecification(spec, options = {}) {
     }
   }
 
-  const hasMultipleReferencedFiles = /(?:dois\s+arquivos\s+l[óo]gicos|duas\s+tabelas|m[úu]ltiplas\s+entidades|cruzando\s+dados\s+de|validar\s+no\s+cadastro\s+de\s+\w+\s+e\s+gravar\s+em)/i.test(lowerText);
+  const hasCatalogValidationRef = /(?:valida(?:r|ção)?\s+(?:dados\s+)?(?:contra|em|na|no)\s+(?:tabela|cat[áa]logo)|cat[áa]logo\s+de\s+produtos|tabela\s+de\s+(?:risco|dom[íi]nio|motivos|naturezas|categorias)|padronizad[ao]s?\s+obrigat[óo]ri[ao]s?)/i.test(lowerText);
+  const hasMultipleReferencedFiles = hasCatalogValidationRef || /(?:dois\s+arquivos\s+l[óo]gicos|duas\s+tabelas|m[úu]ltiplas\s+entidades|cruzando\s+dados\s+de|validar\s+no\s+cadastro\s+de\s+\w+\s+e\s+gravar\s+em)/i.test(lowerText);
   const inferredTransAr = detectedArEntities.length > 1
     ? detectedArEntities.length
     : (hasMultipleReferencedFiles ? 2 : 1);
@@ -2158,7 +2168,7 @@ function analyzeCfpsSpecification(spec, options = {}) {
       category: 'Interface & Menus',
       unitWeight: 0.50,
       absorbableByIfpug: true,
-      regex: /(\blayout\b|\bcss\b|estética|identidade\s+visual|template\s+visual|responsiv|ajuste\s+de\s+layout|tema\s+escuro|tema\s+claro|estiliza)/i,
+      regex: /(\blayout\b|\bcss\b|estética|identidade\s+visual|template\s+visual|responsiv|ajuste\s+de\s+layout|tema\s+escuro|tema\s+claro|estiliza|tags?\s+visua(?:l|is)|paleta\s+de\s+cores)/i,
       justification: 'Intervenção visual e apresentação CSS/estética sem impacto na lógica transacional do sistema (SISP/FPN).'
     },
     {
@@ -2209,13 +2219,13 @@ function analyzeCfpsSpecification(spec, options = {}) {
     },
     {
       key: 'job_webhook_rotina',
-      name: 'Webhook / Job Agendado / Script de Banco',
-      category: 'Banco de Dados',
+      name: 'Webhook / Broker Mensageria (RabbitMQ/Kafka/SQS) / Job Técnico',
+      category: 'Infraestrutura & Mensageria',
       unitWeight: 0.75,
       absorbableByIfpug: false,
-      qtyRegex: /\b(\d+)\s+(?:novos?\s+|novas?\s+)?(?:jobs?(?:\s+agendados?)?|webhooks?|rotinas?\s+de\s+expurgo)\b/i,
-      regex: /(\bjobs?\s+agendados?\b|rotinas?\s+de\s+expurgo|\bwebhooks?\b|agendar\s+rotinas?\s+de\s+expurgo)/i,
-      justification: 'Implementação técnica avulsa de Job agendado, Webhook ou rotina automatizada de expurgo/manutenção de banco (SISP/FPN).'
+      qtyRegex: /\b(\d+)\s+(?:novos?\s+|novas?\s+)?(?:jobs?(?:\s+agendados?)?|webhooks?|rotinas?\s+de\s+expurgo|filas?)\b/i,
+      regex: /(\bjobs?\s+agendados?\b|rotinas?\s+de\s+expurgo|\bwebhooks?\b|agendar\s+rotinas?\s+de\s+expurgo|rabbitmq|kafka|activemq|\bsqs\b|broker(?:\s+de\s+mensageria)?|orientad[oa]\s+a\s+filas|mensageria|sla\s*(?:de\s+tempo|<|menor)|tempo\s+de\s+resposta\s*<)/i,
+      justification: 'Componente técnico de infraestrutura/mensageria/broker ou SLA não-funcional isolado como FPN (0 PF quando absorvido por função IFPUG).'
     },
     {
       key: 'script_saneamento',
@@ -3085,9 +3095,19 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
   const seenCandidateKeys = new Set();
   const dedupInventoryNotes = [];
 
+  const quarantinedInfraNotes = [];
   const isDevCountMode = /^desenvolvimento$/i.test((effectiveCountingType || '').trim());
   const ifpugCandidates = (parsed.functions || [])
-    .filter(fn => fn && validFnTypes.has((fn.functionType || '').toUpperCase()))
+    .filter(fn => {
+      if (!fn || !validFnTypes.has((fn.functionType || '').toUpperCase())) return false;
+      const fnType = fn.functionType.toUpperCase();
+      // Bloqueia alucinações onde broker/fila/SLA/CSS são classificados como ALI/AIE/EE
+      if ((fnType === 'ALI' || fnType === 'AIE') && isNonMeasurableInfraLabel(fn.name || '')) {
+        quarantinedInfraNotes.push(`RNF/Infraestrutura isolada como FPN (0 PF): "${fn.name}" não constitui função IFPUG.`);
+        return false;
+      }
+      return true;
+    })
     .map((fn, idx) => {
       const fnType = fn.functionType.toUpperCase();
       let candOp;
@@ -3104,6 +3124,10 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
         ? rawTdList.filter(f => !/^(?:acionamento|gatilho|bot[ãa]o|submit|mensagem(?:\s+de\s+retorno)?|log\s+de\s+retorno|feedback)/i.test(f))
         : rawTdList;
       const rawArList = Array.isArray(fn.arTrList) ? fn.arTrList.map(x => String(x || '').trim()).filter(Boolean) : [];
+      const domainArList = isDataFn
+        ? rawArList
+        : rawArList.filter(a => !isNonMeasurableInfraLabel(a));
+      const droppedInfraArCount = rawArList.length - domainArList.length;
 
       let td = Math.max(1, parseInt(fn.td, 10) || 1);
       if (isDataFn && cleanedTdList.length > 0 && cleanedTdList.length < rawTdList.length) {
@@ -3113,16 +3137,17 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
       }
 
       let arTr = Math.max(1, parseInt(fn.arTr, 10) || 1);
-      if (rawArList.length > 0) {
-        arTr = Math.max(arTr, rawArList.length);
+      if (domainArList.length > 0) {
+        arTr = droppedInfraArCount > 0
+          ? Math.max(domainArList.length, arTr - droppedInfraArCount, 1)
+          : Math.max(arTr, domainArList.length);
       }
 
-      const complexity = calculateApfComplexity(fnType, arTr, td);
-      const rawPf = calculateApfRawPf(fnType, complexity);
+      // Pós-processamento determinístico estrito: sobrepõe quaisquer valores errôneos de complexidade/PF vindos da IA
       const factor = getCountingTypeFactor(effectiveCountingType, customFactor, candOp, fnType, fullText);
-      const finalPf = calculateApfFinalPf(rawPf, factor);
+      const { complexity, rawPf, finalPf } = evaluateApfMetrics(fnType, arTr, td, factor);
       const tdDetail = cleanedTdList.join(', ');
-      const arDetail = rawArList.join(', ');
+      const arDetail = domainArList.join(', ');
 
       return {
         id: `cand_ai_${fnType.toLowerCase()}_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 5)}`,
@@ -3288,6 +3313,9 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
 
   const detectedFields = Array.isArray(parsed.detectedFields) ? parsed.detectedFields : [];
   const auditorNotes = Array.isArray(parsed.auditorNotes) ? [...parsed.auditorNotes] : [];
+  if (quarantinedInfraNotes.length > 0) {
+    auditorNotes.push(...quarantinedInfraNotes);
+  }
   if (dedupInventoryNotes.length > 0) {
     auditorNotes.push(...dedupInventoryNotes);
   }

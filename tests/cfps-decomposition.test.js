@@ -180,3 +180,99 @@ describe('Regra 2: Respeito ao Tipo de Contagem (Desenvolvimento Novo vs Melhori
   });
 });
 
+describe('Regra 3 & 4: Validação Determinística de Pós-Processamento, Catálogos AR e Quarentena RNF/Infra', () => {
+  it('sobrepõe qualquer inferência errônea de complexidade/PF vinda da IA e isola brokers RabbitMQ/Kafka/SQS/CSS em 0 PF', () => {
+    const res = reconcileAiCfpsResult({
+      parsed: {
+        operationType: 'ADD',
+        entityName: 'Demandas',
+        userRole: 'Atendente',
+        userWant: 'registrar demanda validando contra Catálogo de Produtos via RabbitMQ com SLA < 3s e tags visuais CSS',
+        userBenefit: 'padronização',
+        boundarySummary: 'Sistema interno',
+        detectedFields: ['Protocolo', 'Produto', 'Descrição', 'Prioridade', 'Status', 'Solicitante'],
+        functions: [
+          {
+            functionType: 'ALI',
+            name: 'ALI - Broker RabbitMQ / Fila SQS',
+            operationType: 'ADD',
+            primaryIntent: 'Mensageria',
+            td: 3,
+            arTr: 1,
+            tdList: ['fila', 'payload', 'sla'],
+            arTrList: ['RabbitMQ'],
+            rationale: 'Alucinação infra'
+          },
+          {
+            functionType: 'ALI',
+            name: 'ALI - Demandas',
+            operationType: 'ADD',
+            primaryIntent: 'Manter demandas',
+            td: 6,
+            arTr: 1,
+            tdList: ['Protocolo', 'Produto', 'Descrição', 'Prioridade', 'Status', 'Solicitante'],
+            arTrList: ['Demandas'],
+            rationale: 'Entidade principal'
+          },
+          {
+            functionType: 'EE',
+            name: 'EE - Registrar Demanda Validada',
+            operationType: 'ADD',
+            primaryIntent: 'Validar contra catálogo e persistir demanda',
+            td: 7,
+            arTr: 4,
+            complexity: 'Alta', // valor errôneo proposital vindo da IA
+            rawPf: 99,          // valor errôneo proposital vindo da IA
+            finalPf: 99,        // valor errôneo proposital vindo da IA
+            tdList: ['Protocolo', 'Produto', 'Descrição', 'Prioridade', 'Status', 'Acionamento', 'Retorno'],
+            arTrList: ['ALI - Demandas', 'ALI - Catálogo de Produtos', 'AIE - Tabela de Risco', 'Broker Kafka'],
+            rationale: 'EE validando catálogo'
+          }
+        ],
+        inmItems: [
+          { catalogKey: 'webhook_tecnico', quantity: 1, absorbed: false, justification: 'RabbitMQ/SQS e SLA < 3s' },
+          { catalogKey: 'layout_alteracao', quantity: 1, absorbed: false, justification: 'Tags visuais CSS' }
+        ],
+        auditorNotes: []
+      },
+      latencyMs: 120,
+      provider: 'gemini',
+      providerLabel: 'Google Gemini',
+      model: 'gemini-3.5-flash-lite'
+    }, { title: 'Registrar demanda com validação de catálogo' }, { countingType: 'Desenvolvimento' });
+
+    // Broker RabbitMQ/SQS como ALI deve ser removido
+    assert.equal(res.candidates.some(c => /rabbitmq|sqs/i.test(c.name)), false);
+
+    // EE recebeu 3 ARs reais (Broker Kafka removido dos 4) e 7 TDs -> matriz oficial DEVE impor Média (4 PF), ignorando 'Alta'/99
+    const ee = res.candidates.find(c => c.functionType === 'EE');
+    assert.equal(ee.arTr, 3);
+    assert.equal(ee.td, 7);
+    assert.equal(ee.complexity, 'Média');
+    assert.equal(ee.rawPf, 4);
+    assert.equal(ee.finalPf, 4);
+
+    // RNF/FPN acompanhados de IFPUG devem estar absorvidos com 0 PF
+    assert.equal(res.totalInmPf, 0);
+    assert.ok(res.absorbedInmCandidates.length >= 2);
+  });
+
+  it('motor heurístico local conta >= 2 ARs quando formulário valida dados contra catálogo/tabela padronizada (2 AR, 8 TD -> Média 4 PF)', () => {
+    const localRes = analyzeCfpsSpecification({
+      title: 'Cadastrar Demanda com Validação em Catálogo',
+      userStory: 'Como: Atendente\nQuero: registrar demanda (protocolo, produto, categoria, prioridade, descrição, status) validando contra catálogo de produtos e tabela de risco com mensageria RabbitMQ, SLA < 3s e tags visuais CSS.',
+      bdd: 'Quando o atendente clicar em "Salvar" o sistema valida no catálogo de produtos e grava a demanda.'
+    }, { countingType: 'Desenvolvimento', operationType: '' });
+
+    const ee = localRes.candidates.find(c => c.functionType === 'EE');
+    assert.ok(ee, 'Deve gerar EE');
+    assert.equal(ee.arTr, 2);
+    assert.equal(ee.td, 8);
+    assert.equal(ee.complexity, 'Média');
+    assert.equal(ee.rawPf, 4);
+    assert.equal(localRes.totalInmPf, 0);
+    assert.ok(localRes.absorbedInmCandidates.length >= 1, 'RabbitMQ/SLA/CSS devem constar como INM absorvido (0 PF)');
+  });
+});
+
+

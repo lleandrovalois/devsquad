@@ -10,17 +10,15 @@ const {
   IFPUG_RAW_PF,
   calculateApfComplexity,
   calculateApfRawPf,
-  calculateApfFinalPf
+  calculateApfFinalPf,
+  evaluateApfMetrics
 } = require('../ifpug-rules');
 
 describe('IFPUG CPM 4.3.1 - Matriz Entrada Externa (EE)', () => {
-  it('deve classificar 3 ARs e 7 TDs estritamente como Média (4 PF)', () => {
-    const complexity = calculateApfComplexity('EE', 3, 7);
-    const rawPf = calculateApfRawPf('EE', complexity);
-    const finalPf = calculateApfFinalPf(rawPf, 1.0);
-    assert.equal(complexity, 'Média');
-    assert.equal(rawPf, 4);
-    assert.equal(finalPf, 4);
+  it('cenários limítrofes obrigatórios: EE(3,7)->Média/4, EE(2,8)->Média/4, EE(1,8)->Baixa/3', () => {
+    assert.deepEqual(evaluateApfMetrics('EE', 3, 7, 1.0), { complexity: 'Média', rawPf: 4, finalPf: 4 });
+    assert.deepEqual(evaluateApfMetrics('EE', 2, 8, 1.0), { complexity: 'Média', rawPf: 4, finalPf: 4 });
+    assert.deepEqual(evaluateApfMetrics('EE', 1, 8, 1.0), { complexity: 'Baixa', rawPf: 3, finalPf: 3 });
   });
 
   const eeBoundaryCases = [
@@ -28,12 +26,14 @@ describe('IFPUG CPM 4.3.1 - Matriz Entrada Externa (EE)', () => {
     [0, 1, 'Baixa', 3],
     [0, 4, 'Baixa', 3],
     [1, 5, 'Baixa', 3],
+    [1, 8, 'Baixa', 3],
     [1, 15, 'Baixa', 3],
     [1, 16, 'Média', 4],
     // 2 ARs
     [2, 1, 'Baixa', 3],
     [2, 4, 'Baixa', 3],
     [2, 5, 'Média', 4],
+    [2, 8, 'Média', 4],
     [2, 15, 'Média', 4],
     [2, 16, 'Alta', 6],
     // 3+ ARs

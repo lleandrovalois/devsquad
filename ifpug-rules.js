@@ -124,12 +124,24 @@
     return Math.round((rawPf * factorVal) * 100) / 100;
   }
 
+  /**
+   * Calcula de forma determinística (ignorando quaisquer desvios prévios)
+   * Complexidade, PF Bruto e PF Final conforme matriz IFPUG CPM 4.3.1.
+   */
+  function evaluateApfMetrics(type, arTr, td, factor = 1.0) {
+    const complexity = calculateApfComplexity(type, arTr, td);
+    const rawPf = calculateApfRawPf(type, complexity);
+    const finalPf = calculateApfFinalPf(rawPf, factor);
+    return { complexity, rawPf, finalPf };
+  }
+
   return {
     IFPUG_RAW_PF,
     IFPUG_COMPLEXITY_MATRICES,
     calculateApfComplexity,
     calculateApfRawPf,
-    calculateApfFinalPf
+    calculateApfFinalPf,
+    evaluateApfMetrics
   };
 });
 
