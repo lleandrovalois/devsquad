@@ -275,4 +275,97 @@ describe('Regra 3 & 4: Validação Determinística de Pós-Processamento, Catál
   });
 });
 
+describe('Regra 5: SE Parametrizada (Templates, Tags Dinâmicas {{...}} e Lógica Derivada/Condicional -> 2 ARs / Média 5 PF)', () => {
+  const rf06Spec = {
+    code: 'RF-06',
+    title: 'Notificação Dinâmica de Subsídio por E-mail com Tags Estruturadas',
+    feature: 'NOTIFICAÇÃO E SUBSÍDIO DA ÁREA TÉCNICA',
+    userStory: `Como: Analista de Área Técnica / Retaguarda
+Quero: receber e-mails de solicitação de subsídio contendo Protocolo, Nome do Cliente, Resumo do Relato e Indicador SARB 27
+Para que: eu identifique o contexto, o contrato e a urgência da demanda direto da minha caixa de entrada, sem a obrigação de logar no CRM apenas para a leitura prévia.
+Regras de Negócio (RN)
+RN06.1: O template de e-mail deve mapear obrigatoriamente as tags: {{numero_protocolo}}, {{nome_cliente}}, {{resumo_demanda}} e {{indicador_sarb27}}.
+RN06.2: A tag {{resumo_demanda}} deve ser montada concatenando a classificação inicial (Produto + Motivo) com o relato sintético da manifestação.`,
+    bdd: `Cenário: Disparo automático de e-mail para a área técnica
+  Dado que o coordenador solicitou subsídio para a Gerência responsável
+  Quando o e-mail de notificação for despachado pelo sistema
+  Então o assunto do e-mail deve conter "[Ouvidoria] Solicitação de Subsídio - Protocolo {{numero_protocolo}}"
+  E o corpo do e-mail deve exibir o Nome Completo do Titular e o Resumo Conciso da Demanda
+  E, caso a demanda seja SARB 27, deve conter um banner de alerta de atendimento prioritário regulatório.`
+  };
+
+  it('reconcileAiCfpsResult promove SE com 6 TDs e 1 AR para 2 ARs (Média / 5 PF) em RF-06 totalizando 12.00 PF com ALI', () => {
+    const res = reconcileAiCfpsResult({
+      parsed: {
+        operationType: 'ADD',
+        entityName: 'Solicitação de Subsídio',
+        userRole: 'Analista de Área Técnica',
+        userWant: 'receber e-mails de solicitação de subsídio',
+        userBenefit: 'identificar urgência',
+        boundarySummary: 'CRM e canal SMTP externo',
+        detectedFields: ['numero_protocolo', 'nome_cliente', 'resumo_demanda', 'indicador_sarb27'],
+        functions: [
+          {
+            functionType: 'ALI',
+            name: 'ALI - Estrutura de Dados: Solicitação de Subsídio',
+            operationType: 'ADD',
+            primaryIntent: 'Manter solicitações de subsídio',
+            td: 4,
+            arTr: 1,
+            tdList: ['numero_protocolo', 'nome_cliente', 'resumo_demanda', 'indicador_sarb27'],
+            arTrList: ['Solicitação de Subsídio'],
+            rationale: 'ALI transacional'
+          },
+          {
+            functionType: 'SE',
+            name: 'SE - Enviar E-mail de Notificação de Subsídio',
+            operationType: 'ADD',
+            primaryIntent: 'Disparar e-mail com tags dinâmicas e banner condicional',
+            td: 6,
+            arTr: 1, // IA subestimou para 1 AR
+            tdList: ['numero_protocolo', 'nome_cliente', 'resumo_demanda', 'indicador_sarb27', 'Acionamento', 'Retorno'],
+            arTrList: ['ALI - Estrutura de Dados: Solicitação de Subsídio'],
+            rationale: 'SE notificação'
+          }
+        ],
+        inmItems: [],
+        auditorNotes: []
+      },
+      latencyMs: 80,
+      provider: 'gemini',
+      providerLabel: 'Google Gemini',
+      model: 'gemini-3.5-flash-lite'
+    }, rf06Spec, { countingType: 'Desenvolvimento' });
+
+    const ali = res.candidates.find(c => c.functionType === 'ALI');
+    const se = res.candidates.find(c => c.functionType === 'SE');
+    assert.ok(ali);
+    assert.equal(ali.finalPf, 7);
+    assert.ok(se);
+    assert.equal(se.name, 'SE - Enviar E-mail de Notificação de Subsídio');
+    assert.equal(se.td, 6);
+    assert.equal(se.arTr, 2);
+    assert.equal(se.complexity, 'Média');
+    assert.equal(se.rawPf, 5);
+    assert.equal(se.finalPf, 5);
+    assert.equal(res.totalGlobalPf, 12);
+  });
+
+  it('motor heurístico local calcula RF-06 como ALI (7 PF) + SE parametrizada (6 TD, 2 AR -> Média / 5 PF) = 12.00 PF', () => {
+    const localRes = analyzeCfpsSpecification(rf06Spec, { countingType: 'Desenvolvimento', operationType: '' });
+    const ali = localRes.candidates.find(c => c.functionType === 'ALI');
+    const se = localRes.candidates.find(c => c.functionType === 'SE');
+    assert.ok(ali, 'RF-06 em Desenvolvimento Novo deve conter ALI');
+    assert.equal(ali.finalPf, 7);
+    assert.ok(se, 'RF-06 deve detectar SE de notificação por e-mail');
+    assert.equal(se.td, 6);
+    assert.equal(se.arTr, 2);
+    assert.equal(se.complexity, 'Média');
+    assert.equal(se.rawPf, 5);
+    assert.equal(se.finalPf, 5);
+    assert.equal(localRes.totalGlobalPf, 12);
+  });
+});
+
+
 

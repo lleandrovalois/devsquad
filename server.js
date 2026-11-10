@@ -1704,6 +1704,16 @@ function isNonMeasurableInfraLabel(label = '') {
 }
 
 /**
+ * Detecta se uma notificação/SE utiliza parametrização via tags dinâmicas ({{...}}),
+ * templates pré-configurados, layout de e-mail ou parâmetros de notificação (mínimo 2 ARs).
+ */
+function hasParameterizedNotificationTemplate(text = '') {
+  const raw = (text || '');
+  return /\{\{[^}\r\n]{1,64}\}\}/.test(raw)
+    || /\b(?:templates?(?:\s+de\s+e-?mail)?|layout\s+d[eo]\s+e-?mail|par[âa]metros?\s+de\s+(?:notifica[çc][ãa]o|disparo|e-?mail)|tags?\s+(?:din[âa]mic|estruturad)[ao]s?)\b/i.test(raw);
+}
+
+/**
  * Detecta disparo formal de e-mail ou notificação externa com dados/layout/corpo próprio
  * para fora da fronteira (SE - Saída Externa), diferenciando de toasts/avisos inline de tela.
  */
@@ -1714,13 +1724,14 @@ function detectFormalExternalNotificationSe(text = '', isAuthFlow = false) {
     return false;
   }
   const hasChannelDispatch =
-    /(?:\b(?:enviar|envia|envie|envio|disparar|dispara|disparo|encaminhar|remeter|entregar|entregue|entrega|notificar|notifica|emitir|emite|gerar)\b[^.\n;]{0,75}\b(?:por|via|pelo|pela|no|em)\s+(?:e-?mail|correio\s+eletr[ôo]nico|smtp|sms|push|whatsapp)\b)/i.test(lowerText)
-    || /\b(?:disparo|envio|notifica[çc][ãa]o|mensagem|comprovante|recibo|confirma[çc][ãa]o|alerta)\s+(?:formal\s+)?(?:de|por|via)\s+(?:e-?mail|smtp|sms|push)\b/i.test(lowerText)
-    || /\b(?:e-?mail|notifica[çc][ãa]o\s+extern[ao])\b[^.\n;]{0,75}\b(?:layout|corpo\s+pr[óo]prio|template|assunto|com\s+dados|para\s+(?:o\s+)?(?:cliente|cidad[ãa]o|manifestante|usu[áa]rio|solicitante|gestor|coordena[çc][ãa]o|destinat[áa]rio))\b/i.test(lowerText);
+    /(?:\b(?:enviar|envia|envie|envio|disparar|dispara|disparo|despachar|despachado|encaminhar|remeter|entregar|entregue|entrega|notificar|notifica|emitir|emite|gerar|receber)\b[^.\n;]{0,75}\b(?:por|via|pelo|pela|no|em)\s+(?:e-?mail|correio\s+eletr[ôo]nico|smtp|sms|push|whatsapp)\b)/i.test(lowerText)
+    || /\b(?:disparo|envio|despacho|notifica[çc][ãa]o|mensagem|comprovante|recibo|confirma[çc][ãa]o|alerta)(?:\s+[\p{L}]+){0,3}\s+(?:de|por|via)\s+(?:e-?mail|e-?mails|smtp|sms|push)\b/iu.test(lowerText)
+    || /\b(?:e-?mail|e-?mails|notifica[çc][ãa]o\s+extern[ao])\b[^.\n;]{0,85}\b(?:despachad[ao]|disparad[ao]|layout|corpo\s+(?:pr[óo]prio|do\s+e-?mail)|template|assunto|tags?\s+estruturad|com\s+dados|para\s+(?:a\s+[áa]rea|o\s+)?(?:cliente|cidad[ãa]o|manifestante|usu[áa]rio|solicitante|gestor|coordena[çc][ãa]o|destinat[áa]rio|analista|retaguarda))\b/i.test(lowerText)
+    || /\btemplate\s+de\s+e-?mail\b/i.test(lowerText);
 
   if (!hasChannelDispatch) return false;
   // Evita falso positivo em formulários de login simples que só pedem digitação do campo e-mail
-  if (isAuthFlow && !/(?:layout|corpo\s+pr[óo]prio|template|confirma[çc][ãa]o\s+por\s+e-?mail|disparo\s+(?:de|por)\s+e-?mail)/i.test(lowerText)) {
+  if (isAuthFlow && !/(?:layout|corpo\s+(?:pr[óo]prio|do\s+e-?mail)|template|confirma[çc][ãa]o\s+por\s+e-?mail|disparo\s+(?:de|por)\s+e-?mail)/i.test(lowerText)) {
     return false;
   }
   return true;
@@ -1922,8 +1933,20 @@ function analyzeCfpsSpecification(spec, options = {}) {
       }
     }
 
-    // Se a especificação não enumerou os atributos explicitamente entre parênteses, aplica os extratores semânticos e de palavras-chave
-    if (extractedFromParenthesesCount < 2 && !/(?:100%\s+de\s+infraestrutura|estritamente\s+t[ée]cnica\s+de\s+infraestrutura|sem\s+processos\s+elementares)/i.test(lowerText)) {
+    // 3.0-B. Extrator de Tags Dinâmicas de Template ({{tag}}) quando presentes em especificações de e-mail/documento
+    const mustacheTags = [...fullText.matchAll(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g)].map(m => m[1].trim());
+    let extractedMustacheCount = 0;
+    mustacheTags.forEach(tag => {
+      const normTag = tag.toLowerCase();
+      if (!seenNormalizedFields.has(normTag)) {
+        seenNormalizedFields.add(normTag);
+        detectedFields.push(tag);
+        extractedMustacheCount++;
+      }
+    });
+
+    // Se a especificação não enumerou os atributos explicitamente entre parênteses nem tags dinâmicas, aplica os extratores semânticos e de palavras-chave
+    if (extractedFromParenthesesCount < 2 && extractedMustacheCount < 2 && !/(?:100%\s+de\s+infraestrutura|estritamente\s+t[ée]cnica\s+de\s+infraestrutura|sem\s+processos\s+elementares)/i.test(lowerText)) {
       // 3.1. Padrões Semânticos Compostos (Filtros, Dimensões e Indicadores Calculados/Derivados)
       const semanticBusinessPatterns = [
         {
@@ -2269,12 +2292,15 @@ function analyzeCfpsSpecification(spec, options = {}) {
   // 5. Contagem Tradicional IFPUG (CPM 4.3.1)
   const ifpugCandidates = [];
 
-  // Remove orações negativas ("sem alterar...", "não deve criar...") antes de testar persistência e verbos de escrita
-  const textWithoutWriteNegations = lowerText.replace(/\b(?:sem|nem|n[ãa]o\s+deve(?:\s+mais)?|n[ãa]o\s+pode)\s+(?:efetuar\s+|realizar\s+)?(?:altera(?:r|ção)|atualiza(?:r|ção)|modifica(?:r|ção)|excluir|remover|inativar|persistir|gravar|incluir|cadastrar|criar)\b[^.,;\n]*/gi, ' ');
+  // Remove orações negativas ("sem alterar...", "não deve criar...", "sem a obrigação de logar...") antes de testar persistência e verbos de escrita
+  const textWithoutWriteNegations = lowerText.replace(/\b(?:sem|nem|n[ãa]o\s+(?:deve(?:\s+mais)?|pode|precisa(?:r)?))\s+(?:(?:a\s+)?(?:obriga[çc][ãa]o|necessidade)\s+de\s+|precisar\s+(?:de\s+)?|efetuar\s+|realizar\s+|fazer\s+)?(?:altera(?:r|ção)|atualiza(?:r|ção)|modifica(?:r|ção)|excluir|remover|inativar|persistir|gravar|incluir|cadastrar|criar|logar|login|autenticar)\b[^.,;\n]*/gi, ' ');
 
   // Verifica se a demanda é exclusivamente técnica/cosmética (sem processo elementar ou função de dados de negócio)
   const isStrictlyDatabaseInfra = /(?:100%\s+de\s+infraestrutura|estritamente\s+t[ée]cnica\s+de\s+infraestrutura|sem\s+processos\s+elementares)/i.test(lowerText);
-  const hasBusinessProcessVerbs = !isStrictlyDatabaseInfra && /(?:incluir|cadastrar|cadastra|criar\s+registro|criad[ao]\s+no\s+(?:crm|banco|sistema)|adicionar|registrar|registra|inserir|salvar|upload|importar|importad[ao]|carregar|carregando|carga\s+de\s+convers[ãa]o|migrar\s+os\s+[\p{L}]+|ingest[ãa]o|ingerir|capturar|capturad[ao]s?|integrar|integrad[ao]s?|autenticar|login|enviar|submeter|alterar|atualizar|atualiza|editar|modificar|aprovar|rejeitar|concluir|excluir|remover|deletar|inativar|desativar|cancelar|consultar|consultado|buscar|pesquisar|filtrar|listar|visualizar|exibir|exibe|detalhar|emitir|relatório|extrato|demonstrativo|calcular|cálculo|totalizar|manter|mantido|persistir|persiste|persista|persistid[ao]s?|\bali\b|\bcrud\b)/iu.test(textWithoutWriteNegations);
+  const hasBusinessProcessVerbs = !isStrictlyDatabaseInfra && (
+    detectFormalExternalNotificationSe(fullText, isAuthFlow)
+    || /(?:incluir|cadastrar|cadastra|criar\s+registro|criad[ao]\s+no\s+(?:crm|banco|sistema)|adicionar|registrar|registra|inserir|salvar|upload|importar|importad[ao]|carregar|carregando|carga\s+de\s+convers[ãa]o|migrar\s+os\s+[\p{L}]+|ingest[ãa]o|ingerir|capturar|capturad[ao]s?|integrar|integrad[ao]s?|autenticar|login|enviar|submeter|alterar|atualizar|atualiza|editar|modificar|aprovar|rejeitar|concluir|excluir|remover|deletar|inativar|desativar|cancelar|consultar|consultado|buscar|pesquisar|filtrar|listar|visualizar|exibir|exibe|detalhar|emitir|relatório|extrato|demonstrativo|calcular|cálculo|totalizar|manter|mantido|persistir|persiste|persista|persistid[ao]s?|\bali\b|\bcrud\b)/iu.test(textWithoutWriteNegations)
+  );
   const isPurelyTechnical = isStrictlyDatabaseInfra || (rawInmCandidates.length > 0 && !hasBusinessProcessVerbs);
 
   // AIE: Arquivo de Interface Externa (dados mantidos externamente, acessados via API oficial/externa, webservice ou plataforma de terceiros)
@@ -2354,8 +2380,9 @@ function analyzeCfpsSpecification(spec, options = {}) {
   if (/\bmanifesta[çc]/i.test(lowerText)) aliLabelCandidates.push('manifestações');
   const aliAlreadyExistsInProject = projectHasDataFunction(projectId, 'ALI', aliLabelCandidates);
 
+  const hasFormalNotificationPre = detectFormalExternalNotificationSe(fullText, isAuthFlow);
   const shouldCreateAli = !isAuthFlow && !isPurelyTechnical && (
-    (isDesenvolvimentoMode && (hasExplicitAliCreation || (!isUsageOrQueryOnly && hasMaintainingTxPre)))
+    (isDesenvolvimentoMode && (hasExplicitAliCreation || (!isUsageOrQueryOnly && (hasMaintainingTxPre || hasFormalNotificationPre))))
     || (hasExplicitAliCreation && !isUsageOrQueryOnly && (!aliAlreadyExistsInProject || resolvedOpType === 'CHG'))
   );
 
@@ -2586,20 +2613,22 @@ function analyzeCfpsSpecification(spec, options = {}) {
       }
 
       if (!hasExplicitCalculation && hasFormalEmailNotificationSe) {
-        // Disparo formal de e-mail / notificação externa com corpo/layout próprio gera SE (tipicamente Baixa / 4 PF) mesmo coexistindo com EE/CE
+        // Disparo formal de e-mail / notificação externa gera SE autônoma; com templates/tags {{...}}/parâmetros requer >= 2 ARs (Média / 5 PF para 6-19 TDs)
+        const isParameterizedSe = hasParameterizedNotificationTemplate(fullText);
         const seEmailTd = transactionTd;
-        const seEmailAr = 1;
-        const complexity = calculateApfComplexity('SE', seEmailAr, seEmailTd);
-        const rawPf = calculateApfRawPf('SE', complexity);
+        const seEmailAr = isParameterizedSe ? Math.max(2, txAr) : 1;
+        const { complexity, rawPf, finalPf } = evaluateApfMetrics('SE', seEmailAr, seEmailTd, getCandidateFactor('SE', resolvedOpType));
         const candFactor = getCandidateFactor('SE', resolvedOpType);
-        const finalPf = calculateApfFinalPf(rawPf, candFactor);
+        const seArDesc = isParameterizedSe
+          ? `${seEmailAr} ARs (${entityName} [ALI] + Templates de E-mail / Parâmetros [Config])`
+          : `${seEmailAr} AR [${entityName}]`;
         ifpugCandidates.push({
           id: `cand_se_mail_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           functionType: 'SE',
           name: `SE - Disparar E-mail/Notificação Externa (${entityName})`,
           category: 'Transação',
           operationType: resolvedOpType,
-          primaryIntent: 'Formatar e enviar dados com layout/corpo próprio para fora da fronteira (e-mail/notificação externa ao destinatário).',
+          primaryIntent: 'Formatar e enviar dados com layout/corpo próprio ou template parametrizado para fora da fronteira (e-mail/notificação externa).',
           td: seEmailTd,
           arTr: seEmailAr,
           complexity,
@@ -2607,8 +2636,8 @@ function analyzeCfpsSpecification(spec, options = {}) {
           countingType: effectiveCountingType,
           factor: candFactor,
           finalPf,
-          notes: `Saída Externa de disparo formal por e-mail/canal externo (${seEmailTd} TDs = ${businessTdCount} negócio [${detectedFields.join(', ')}] + 2 controle; ${seEmailAr} AR [${entityName}]).`,
-          rationale: `Saída Externa (SE • ${resolvedOpType}): envio formal de e-mail/notificação externa com corpo e dados próprios para fora da fronteira (${seEmailTd} TDs, ${seEmailAr} AR ➔ ${complexity} / ${rawPf} PF).`
+          notes: `Saída Externa de disparo formal por e-mail/canal externo (${seEmailTd} TDs = ${businessTdCount} negócio [${detectedFields.join(', ')}] + 2 controle; ${seArDesc}).`,
+          rationale: `Saída Externa (SE • ${resolvedOpType}): envio formal de e-mail/notificação externa ${isParameterizedSe ? 'parametrizada por template/tags dinâmicas (>= 2 ARs)' : 'com layout próprio'} (${seEmailTd} TDs, ${seEmailAr} ARs ➔ ${complexity} / ${rawPf} PF).`
         });
       }
 
@@ -3137,17 +3166,31 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
       }
 
       let arTr = Math.max(1, parseInt(fn.arTr, 10) || 1);
+      const effectiveArList = [...domainArList];
       if (domainArList.length > 0) {
         arTr = droppedInfraArCount > 0
           ? Math.max(domainArList.length, arTr - droppedInfraArCount, 1)
           : Math.max(arTr, domainArList.length);
       }
 
+      // Regra mandatória de pós-processamento para SE parametrizada (templates, tags {{...}}, layout/parâmetros de notificação): mínimo AR = 2
+      const isNotificationSeFn = fnType === 'SE' && (
+        detectFormalExternalNotificationSe(fullText, false)
+        || /(?:e-?mail|notifica[çc][ãa]o|sms|push|alerta|despach)/i.test(`${fn.name || ''} ${fn.primaryIntent || ''}`)
+      );
+      if (isNotificationSeFn && hasParameterizedNotificationTemplate(fullText) && arTr < 2) {
+        arTr = 2;
+        if (!effectiveArList.some(a => /template|par[âa]metro|config/i.test(a))) {
+          effectiveArList.push('Templates de E-mail / Parâmetros de Notificação');
+        }
+        dedupInventoryNotes.push(`Pós-processamento SE Parametrizada: AR elevado para ${arTr} (ALI transacional + Templates/Parâmetros de Notificação com tags dinâmicas).`);
+      }
+
       // Pós-processamento determinístico estrito: sobrepõe quaisquer valores errôneos de complexidade/PF vindos da IA
       const factor = getCountingTypeFactor(effectiveCountingType, customFactor, candOp, fnType, fullText);
       const { complexity, rawPf, finalPf } = evaluateApfMetrics(fnType, arTr, td, factor);
       const tdDetail = cleanedTdList.join(', ');
-      const arDetail = domainArList.join(', ');
+      const arDetail = effectiveArList.join(', ');
 
       return {
         id: `cand_ai_${fnType.toLowerCase()}_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 5)}`,
@@ -3183,9 +3226,10 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
       return true;
     });
 
-  // Garante em Desenvolvimento Novo a inclusão do ALI mantido por EE (caso não seja estritamente fluxo de login/autenticação)
+  // Garante em Desenvolvimento Novo a inclusão do ALI mantido/referenciado por EE ou SE de notificação formal (exceto login/autenticação)
   const isStrictAuthOnly = /(?:^|\b)(?:login|logar|logout|deslogar|encerrar\s+sessão|autentica(?:r|ção)|recupera(?:r|ção)\s+de?\s*senha|redefinir\s+senha)(?:\b|$)/i.test(`${spec.title || ''} ${parsed.userWant || ''}`);
-  if (isDevCountMode && !isStrictAuthOnly && ifpugCandidates.some(c => c.functionType === 'EE') && ifpugCandidates.every(c => c.functionType !== 'ALI')) {
+  const hasFormalSeCand = detectFormalExternalNotificationSe(fullText, isStrictAuthOnly) && ifpugCandidates.some(c => c.functionType === 'SE');
+  if (isDevCountMode && !isStrictAuthOnly && (ifpugCandidates.some(c => c.functionType === 'EE') || hasFormalSeCand) && ifpugCandidates.every(c => c.functionType !== 'ALI')) {
     const entityLabel = formatApfEntityLabel(parsed.entityName || spec.feature || spec.title || 'Entidade Principal');
     const cleanBusinessFields = (Array.isArray(parsed.detectedFields) ? parsed.detectedFields : [])
       .map(f => String(f || '').trim())
@@ -3216,16 +3260,16 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
     dedupInventoryNotes.push(`Desenvolvimento Novo: ALI "${entityLabel}" incluído por ser mantido diretamente pelas transações da contagem.`);
   }
 
-  // Garante reconhecimento de SE formal para disparo de e-mail / notificação externa com layout/corpo próprio
+  // Garante reconhecimento de SE formal para disparo de e-mail / notificação externa (e AR >= 2 se parametrizada por template/tags)
   if (detectFormalExternalNotificationSe(fullText, isStrictAuthOnly) && ifpugCandidates.every(c => c.functionType !== 'SE')) {
     const emailFields = Array.isArray(parsed.detectedFields) ? parsed.detectedFields : [];
+    const isParamTemplate = hasParameterizedNotificationTemplate(fullText);
     const seTd = Math.max(4, emailFields.length + 2);
-    const seAr = 1;
-    const seComp = calculateApfComplexity('SE', seAr, seTd);
-    const seRawPf = calculateApfRawPf('SE', seComp);
+    const seAr = isParamTemplate ? 2 : 1;
     const seFactor = getCountingTypeFactor(effectiveCountingType, customFactor, rootOpType, 'SE', fullText);
-    const seFinalPf = calculateApfFinalPf(seRawPf, seFactor);
+    const { complexity: seComp, rawPf: seRawPf, finalPf: seFinalPf } = evaluateApfMetrics('SE', seAr, seTd, seFactor);
     const entityLabel = formatApfEntityLabel(parsed.entityName || spec.title || 'Notificação');
+    const seArLabel = isParamTemplate ? `${entityLabel} + Templates de E-mail / Parâmetros` : entityLabel;
     ifpugCandidates.push({
       id: `cand_ai_se_${Date.now()}_mail`,
       functionType: 'SE',
@@ -3240,8 +3284,8 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
       countingType: effectiveCountingType,
       factor: seFactor,
       finalPf: seFinalPf,
-      notes: `${seTd} TD(s) [${emailFields.join(', ')} + 2 controle]; ${seAr} AR [${entityLabel}].`,
-      rationale: `Saída Externa (SE • ${rootOpType}): disparo formal de e-mail/notificação externa com corpo e dados próprios para fora da fronteira (${seTd} TDs, ${seAr} AR ➔ ${seComp} / ${seRawPf} PF).`
+      notes: `${seTd} TD(s) [${emailFields.join(', ')} + 2 controle]; ${seAr} AR(s) [${seArLabel}].`,
+      rationale: `Saída Externa (SE • ${rootOpType}): disparo formal de e-mail/notificação externa ${isParamTemplate ? 'parametrizada por template/tags ({{...}})' : 'com corpo próprio'} (${seTd} TDs, ${seAr} ARs ➔ ${seComp} / ${seRawPf} PF).`
     });
   }
 

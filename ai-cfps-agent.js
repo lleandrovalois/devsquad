@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-const CFPS_PROMPT_VERSION = '2026-11-10-v6';
+const CFPS_PROMPT_VERSION = '2026-11-10-v7';
 
 const PROVIDER_CATALOG = {
   gemini: {
@@ -305,7 +305,12 @@ DIRETRIZES OBRIGATÓRIAS DE CONTAGEM (IFPUG CPM 4.3.1 + SISP):
      * Exemplo típico de integração/ingestão via API externa: um único processo elementar EE que captura os registros da API externa (1 AR = AIE), valida duplicidade/idempotência e grava no banco interno (1 AR = ALI) = 2 ARs (FTRs) no total! Não quebre verificação de duplicidade ou disparo interno de contador SLA em uma CE ou EE separada se fizerem parte do mesmo processo elementar indivisível.
      * Exemplo típico de envio/transmissão externa com confirmação e contingência (ex.: enviar resposta/anexos ao Web Service BCB/RDR, receber protocolo oficial, atualizar status para "Respondida" ou tratar erro HTTP 4xx/5xx mantendo "Erro no Envio" / fila de contingência + alerta visual na tela): TODOS esses caminhos (sucesso e falha) são ramificações lógicas do MESMO processo elementar EE acionado pelo botão/gatilho de envio. NUNCA fragmente erro HTTP, entrada em fila de contingência ou alerta amigável na tela em uma segunda EE, SE ou CE separada!
    - SE (Saída Externa): Envia dados para fora da fronteira contendo pelo menos um cálculo matemático, fórmula, dado derivado, totalizador, manutenção adicional de ALI quando a intenção primária for apresentar/transmitir informação derivada ao usuário/externo, OU **disparo formal de e-mail / notificação por canal externo**:
-     * REGRA DE DISPARO FORMAL DE E-MAIL / NOTIFICAÇÕES EXTERNAS: Toda regra que exigir envio de notificação estruturada para fora da fronteira do sistema (ex.: disparo de e-mail ao cidadão/manifestante com número de protocolo, SMS formal ou push notification com dados/layout próprios) DEVE ser decomposta como uma SAÍDA EXTERNA (SE) autônoma (tipicamente 1 AR e <= 19 TDs ➔ Baixa / 4 PF), INCLUSIVE quando houver uma EE no mesmo requisito — nunca absorvida apenas como detalhe da EE.
+     * REGRA DE DISPARO FORMAL DE E-MAIL / NOTIFICAÇÕES EXTERNAS: Toda regra que exigir envio de notificação estruturada para fora da fronteira do sistema (ex.: disparo de e-mail ao cidadão/manifestante com número de protocolo, e-mail de solicitação de subsídio, SMS formal ou push notification) DEVE ser decomposta como uma SAÍDA EXTERNA (SE) autônoma, INCLUSIVE quando houver uma EE no mesmo requisito — nunca absorvida apenas como detalhe da EE.
+     * REGRA DE ARs EM E-MAILS / NOTIFICAÇÕES PARAMETRIZADAS (OBRIGATÓRIA): Sempre que um processo de notificação externa (SE) envolver preenchimento de templates, layouts pré-configurados, parâmetros de disparo ou tags dinâmicas estruturadas (ex.: {{protocolo}}, {{numero_protocolo}}, {{nome_cliente}}, {{resumo_demanda}}, {{indicador_sarb27}}), considere no mínimo 2 Arquivos Referenciados (ARs / FTRs) em arTrList:
+       1. AR 1: O ALI transacional que fornece os dados da ocorrência/negócio (ex.: Demanda, Solicitação de Subsídio, Cliente);
+       2. AR 2: O ALI/Tabela de Configuração que armazena os modelos, cabeçalhos, tags dinâmicas e parâmetros de disparo (ex.: Templates de E-mail, Parâmetros do Sistema — cite-o em arTrList da SE sem criar um ALI CRUD separado de templates caso não haja requisito de manutenção desse cadastro).
+       Impacto na Matriz SE (CPM 4.3.1): 2 a 3 ARs com 6 a 19 TDs (DET) classifica obrigatoriamente como Complexidade MÉDIA (5 PF).
+     * LÓGICA DERIVADA E REGRAS CONDICIONAIS EM SE: Se houver derivação ou concatenação de campos (ex.: junção de Produto + Motivo + Relato para compor {{resumo_demanda}}) ou renderização condicional (ex.: banner visual de alerta para SARB 27), classifique estritamente como SAÍDA EXTERNA (SE), e NUNCA como Consulta Externa (CE).
      * NÃO confunda com avisos internos, toasts de tela ou flags de contingência sem canal externo/layout próprio (ex.: "exibir mensagem amigável na tela" ou "entrar em fila de contingência com alerta para a coordenação" sem menção a e-mail/SMS/push continuam sendo apenas tratamento de erro/feedback da própria EE).
    - CE (Consulta Externa): Recupera e exibe dados existentes de ALIs/AIEs sem fórmulas matemáticas/dados derivados e sem atualizar ALIs. Inclua CE de carregamento quando a interface consultar catálogos padronizados/tabelas de apoio obrigatórias para exibição/seleção na tela.
    - NÃO DUPLICAR SE E CE para a mesma visualização/relatório.
