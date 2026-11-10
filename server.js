@@ -1669,8 +1669,11 @@ function formatApfEntityLabel(raw) {
     if (['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'para', 'com', 'ao', 'aos', 'via'].includes(w.toLowerCase())) {
       return w.toLowerCase();
     }
-    if (/^(?:api|crm|erp|sla|pix|cpf|cnpj|cep)$/i.test(w)) {
+    if (/^(?:api|crm|erp|sla|pix|cpf|cnpj|cep|rdr|bcb|http|rest|json|soap|sisp|ifpug)(?:\/(?:api|rdr|bcb))?$/i.test(w)) {
       return w.toUpperCase();
+    }
+    if (w.includes('/')) {
+      return w.split('/').map(p => /^(?:api|rdr|bcb|crm|erp|sla|http|rest|json)$/i.test(p) ? p.toUpperCase() : (p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())).join('/');
     }
     return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
   }).join(' ');
@@ -1690,27 +1693,67 @@ function detectExternalInterfaceInfo(fullText, cleanTitle = '') {
     return { isExternal: false, externalSourceName: '' };
   }
 
-  const hasExplicitExternalKeyword = /(?:api\s+externa|api\s+de\s+[\p{L}\s]+hospedada\s+em\s+nuvem|integra[çc][ãa]o\s+externa|sistema\s+externo|servi[çc]o\s+externo|estrutura\s+externa|provedor\s+(?:de\s+software\s+)?externo|plataforma\s+externa|fonte\s+externa|base\s+externa|terceiros|gateway|correios|receita\s+federal|serasa|banco\s+central|sefaz|bacen|via\s*cep|gov\.br|open\s*finance|webservice\s+externo|sistema\s+legado|consulta\s+externa\s+via\s+api)/iu.test(lowerText);
+  const hasExplicitExternalKeyword = /(?:api\s+externa|api\s+de\s+[\p{L}\s]+hospedada\s+em\s+nuvem|integra[çc][ãa]o\s+externa|sistema\s+externo|servi[çc]o\s+externo|estrutura\s+externa|provedor\s+(?:de\s+software\s+)?externo|plataforma\s+externa|fonte\s+externa|base\s+externa|terceiros|gateway|correios|receita\s+federal|serasa|banco\s+central|sefaz|bacen|via\s*cep|gov\.br|open\s*finance|webservice\s+externo|web\s+service\s+do\s+bcb|sistema\s+legado|consulta\s+externa\s+via\s+api|\brdr\/?bcb\b)/iu.test(lowerText);
 
-  // Detecta APIs oficiais ou nomeadas de terceiros sem cruzar quebras de linha (ex.: "via API Reclame Aqui", "na API oficial do Reclame Aqui")
-  const namedApiRegex = /(?:(?:via|na|da|pela|com[ \t]+a|atrav[ée]s[ \t]+d[ae]|integr(?:ar|a[çc][ãa]o)[ \t]+com(?:[ \t]+a)?)[ \t]+)?(?:api(?:[ \t]+(?:oficial|p[úu]blica|externa|rest|graphql))?|webservice)[ \t]+(?:(?:d[aeo]s?[ \t]+)?(?!(?:interna|interno|local|pr[óo]pria|pr[óo]prio|sistema|aplica[çc][ãa]o|plataforma|crm|erp|backend|rest|graphql|soap|http|json)\b)([\p{L}\p{N}_-]+(?:[ \t]+[\p{L}\p{N}_-]+){0,2}))/giu;
+  // Detecta APIs oficiais ou nomeadas de terceiros sem cruzar quebras de linha (ex.: "via API Reclame Aqui", "API do BCB", "endpoint do RDR")
+  const namedApiRegex = /(?:(?:via|na|no|da|do|pela|com[ \t]+a|atrav[ée]s[ \t]+d[aeo]|integr(?:ar|a[çc][ãa]o)[ \t]+com(?:[ \t]+a)?)[ \t]+)?(?:api(?:[ \t]+(?:oficial|p[úu]blica|externa|rest|graphql))?|web\s*service|endpoint)[ \t]+(?:(?:d[aeo]s?[ \t]+)?(?!(?:interna|interno|local|pr[óo]pria|pr[óo]prio|sistema|aplica[çc][ãa]o|plataforma|crm|erp|backend|rest|graphql|soap|http|json)\b)([\p{L}\p{N}_\/-]+(?:[ \t]+[\p{L}\p{N}_\/-]+){0,2}))/giu;
   let namedMatch;
   let capturedSource = '';
   while ((namedMatch = namedApiRegex.exec(text)) !== null) {
     const rawCandidate = (namedMatch[1] || '').split(/[\r\n]/)[0].trim()
-      .split(/\s+(?:para|que|com|em|no|na|e|ou|dos|das|de)\b/i)[0]
+      .split(/\s+(?:para|que|com|em|no|na|e|ou|dos|das|de|retornar|retorna|retorne|enviar|envia|envie|responder|responde|rejeitar|validar|emitir|falhar|for|estiver|enviando)\b/i)[0]
       .replace(/[.,;:()"\n]+$/g, '')
       .trim();
     if (rawCandidate && !/^(?:interna|interno|local|pr[óo]pria|pr[óo]prio|sistema|aplica[çc][ãa]o|plataforma|crm|erp|dados|consulta|consultas|integra[çc][ãa]o|rest|graphql|soap)$/i.test(rawCandidate)) {
-      capturedSource = `API ${formatApfEntityLabel(rawCandidate)}`;
+      if (/\b(?:rdr|bcb|bacen|banco\s+central)\b/i.test(rawCandidate)) {
+        capturedSource = /\b(?:rdr|bcb)\b/i.test(text) ? 'API RDR/BCB' : `API ${formatApfEntityLabel(rawCandidate)}`;
+      } else {
+        capturedSource = `API ${formatApfEntityLabel(rawCandidate)}`;
+      }
       break;
     }
+  }
+
+  if (!capturedSource && /(?:\brdr\/?bcb\b|web\s*service\s+d[eo]\s+bcb|banco\s+central)/i.test(text)) {
+    capturedSource = /\brdr\b/i.test(text) ? 'API RDR/BCB' : 'API Banco Central (BCB)';
   }
 
   const hasOfficialExternalApi = /\bapi\s+(?:oficial|p[úu]blica|de\s+terceiros)\b/i.test(lowerText);
   const isExternal = hasExplicitExternalKeyword || hasOfficialExternalApi || Boolean(capturedSource);
 
   return { isExternal, externalSourceName: capturedSource };
+}
+
+/**
+ * Extrai tokens semânticos de um rótulo de ALI/AIE para comparação robusta de inventário.
+ */
+function extractDataFnTokens(label, functionType) {
+  const cleaned = (label || '')
+    .toLowerCase()
+    .replace(/^(?:ali|aie)\s*-\s*(?:estrutura de dados|interface externa)\s*:\s*/i, '')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[\/\-_:.,;]+/g, ' ')
+    .trim();
+  const commonStop = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'para', 'com', 'via', 'a', 'o', 'estrutura', 'dados', 'interface', 'externa', 'sistema', 'aplicacao', 'crm', 'tabela', 'arquivo', 'logico', 'cadastro', 'registro', 'registros']);
+  if (functionType === 'AIE') {
+    commonStop.add('api');
+    commonStop.add('webservice');
+    commonStop.add('web');
+    commonStop.add('service');
+    commonStop.add('endpoint');
+    commonStop.add('oficial');
+    commonStop.add('anexo');
+    commonStop.add('anexos');
+  }
+  return cleaned
+    .split(/\s+/)
+    .map(t => {
+      if (t === 'bacen' || t === 'bcb') return 'bcb';
+      let norm = t.replace(/(?:ões|oes)$/i, 'ao').replace(/ais$/i, 'al');
+      if (norm.length > 4 && norm.endsWith('s')) norm = norm.slice(0, -1);
+      return norm;
+    })
+    .filter(t => t.length >= 2 && !commonStop.has(t));
 }
 
 /**
@@ -1721,9 +1764,11 @@ function projectHasDataFunction(projectId, functionType, candidateLabels = []) {
   try {
     const existingRows = db.prepare(`SELECT name FROM apf_items WHERE project_id = ? AND function_type = ?`).all(projectId, functionType);
     const normalizedTargets = candidateLabels
-      .map(l => (l || '').toLowerCase().replace(/\([^)]*\)/g, '').trim())
+      .map(l => (l || '').toLowerCase().replace(/^(?:ali|aie)\s*-\s*(?:estrutura de dados|interface externa)\s*:\s*/i, '').replace(/\([^)]*\)/g, '').trim())
       .filter(l => l.length > 2);
     if (normalizedTargets.length === 0) return false;
+    const targetTokenSets = candidateLabels.map(l => extractDataFnTokens(l, functionType)).filter(ts => ts.length > 0);
+
     return existingRows.some(row => {
       const cleanedRowName = (row.name || '')
         .toLowerCase()
@@ -1731,13 +1776,27 @@ function projectHasDataFunction(projectId, functionType, candidateLabels = []) {
         .replace(/\([^)]*\)/g, '')
         .trim();
       if (cleanedRowName.length <= 2) return false;
-      return normalizedTargets.some(target =>
+
+      if (normalizedTargets.some(target =>
         cleanedRowName === target
         || cleanedRowName.startsWith(`${target} `)
         || cleanedRowName.startsWith(`${target}/`)
         || target.startsWith(`${cleanedRowName} `)
         || target.startsWith(`${cleanedRowName}/`)
-      );
+      )) {
+        return true;
+      }
+
+      const rowTokens = extractDataFnTokens(row.name, functionType);
+      if (rowTokens.length === 0) return false;
+
+      if (functionType === 'AIE') {
+        const rowSet = new Set(rowTokens);
+        return targetTokenSets.some(ts => ts.some(t => rowSet.has(t)));
+      }
+
+      // Para ALI, exige equivalência estrita dos tokens principais (evitando confundir "Anexos de Demandas" com "Demandas")
+      return targetTokenSets.some(ts => ts.length === rowTokens.length && ts.every(t => rowTokens.includes(t)));
     });
   } catch (e) {
     return false;
@@ -2384,12 +2443,21 @@ function analyzeCfpsSpecification(spec, options = {}) {
   // Se o requisito for estritamente uma especificação estrutural de Função de Dados (ALI), não gera transações fantasmas (EE/CE/SE)
   if (!isPurelyTechnical && !isDataStructureSpecification) {
     const isFullCrud = /\bcrud\b|manter\s+cadastro\s+completo/i.test(lowerText);
-    const txAr = isExternal ? Math.max(inferredTransAr, 2) : inferredTransAr;
+    let txAr = isExternal ? Math.max(inferredTransAr, 2) : inferredTransAr;
+    const readsAttachmentsAli = isExternal
+      && /\benvi(?:ar|ando)\b[^.\n]*\banexos?\b/i.test(lowerText)
+      && projectHasDataFunction(projectId, 'ALI', ['Anexos de Demandas', 'Anexos'])
+      && projectHasDataFunction(projectId, 'ALI', ['Demandas', 'Demandas (CRM)']);
+    if (readsAttachmentsAli) {
+      txAr = Math.max(txAr, 3);
+    }
     const eeArSummary = detectedArEntities.length > 1
       ? `${txAr} ARs (${detectedArEntities.join(', ')})`
-      : (isExternal && txAr >= 2
-        ? `${txAr} ARs (${entityName} [ALI] + ${externalLabel} [AIE])`
-        : `${txAr} AR referenciado`);
+      : (readsAttachmentsAli
+        ? `${txAr} ARs (Demandas [ALI] + Anexos de Demandas [ALI] + ${externalLabel} [AIE])`
+        : (isExternal && txAr >= 2
+          ? `${txAr} ARs (${entityName} [ALI] + ${externalLabel} [AIE])`
+          : `${txAr} AR referenciado`));
 
     if (isAuthFlow) {
       // Regra de Supressão de CE Fantasma e Escopo Estrito de EE em Autenticação / Login / 2FA:
@@ -3020,11 +3088,21 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
   const countingType = options.countingType || spec.countingType || 'Desenvolvimento';
   const explicitOpType = (options.operationType || spec.operationType || '').toUpperCase().trim();
   const customFactor = options.factor !== undefined ? options.factor : spec.factor;
+  const projectId = spec.projectId || spec.project_id || options.projectId || '';
 
   const fullText = [spec.title, spec.feature, spec.userStory || spec.user_story, spec.bdd, spec.text || spec.specification].filter(Boolean).join('\n');
-  const rootOpType = (explicitOpType === 'ADD' || explicitOpType === 'CHG' || explicitOpType === 'DEL')
-    ? explicitOpType
-    : (['ADD', 'CHG', 'DEL'].includes(parsed.operationType) ? parsed.operationType : 'ADD');
+  const isDevCountAuto = /^desenvolvimento$/i.test(countingType.trim()) && !explicitOpType;
+  const semanticDevOp = isDevCountAuto ? resolveApfOperationType(countingType, '', fullText) : null;
+
+  // Em contagem de Desenvolvimento Novo sem escolha manual de CHG/DEL, trava em ADD (salvo diretriz semântica explícita de melhoria)
+  let rootOpType;
+  if (explicitOpType === 'ADD' || explicitOpType === 'CHG' || explicitOpType === 'DEL') {
+    rootOpType = explicitOpType;
+  } else if (isDevCountAuto) {
+    rootOpType = (semanticDevOp === 'CHG' || semanticDevOp === 'DEL') ? semanticDevOp : 'ADD';
+  } else {
+    rootOpType = ['ADD', 'CHG', 'DEL'].includes(parsed.operationType) ? parsed.operationType : 'ADD';
+  }
 
   const effectiveCountingType = ((rootOpType === 'CHG' || rootOpType === 'DEL') && countingType === 'Desenvolvimento')
     ? 'Melhoria'
@@ -3037,14 +3115,20 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
   const fnOrder = { ALI: 1, AIE: 2, EE: 3, SE: 4, CE: 5 };
   const validFnTypes = new Set(Object.keys(fnOrder));
   const seenCandidateKeys = new Set();
+  const dedupInventoryNotes = [];
 
   const ifpugCandidates = (parsed.functions || [])
     .filter(fn => fn && validFnTypes.has((fn.functionType || '').toUpperCase()))
     .map((fn, idx) => {
       const fnType = fn.functionType.toUpperCase();
-      const candOp = (explicitOpType === 'ADD' || explicitOpType === 'CHG' || explicitOpType === 'DEL')
-        ? explicitOpType
-        : (['ADD', 'CHG', 'DEL'].includes(fn.operationType) ? fn.operationType : rootOpType);
+      let candOp;
+      if (explicitOpType === 'ADD' || explicitOpType === 'CHG' || explicitOpType === 'DEL') {
+        candOp = explicitOpType;
+      } else if (isDevCountAuto && semanticDevOp === 'ADD') {
+        candOp = 'ADD';
+      } else {
+        candOp = ['ADD', 'CHG', 'DEL'].includes(fn.operationType) ? fn.operationType : rootOpType;
+      }
       const isDataFn = fnType === 'ALI' || fnType === 'AIE';
       const rawTdList = Array.isArray(fn.tdList) ? fn.tdList.map(x => String(x || '').trim()).filter(Boolean) : [];
       const cleanedTdList = isDataFn
@@ -3090,6 +3174,13 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
       };
     })
     .filter(cand => {
+      if ((cand.functionType === 'ALI' || cand.functionType === 'AIE') && cand.operationType === 'ADD' && projectId && projectId !== 'all') {
+        const labelsToCheck = [cand.name, cand.name.replace(/^(?:ali|aie)\s*-\s*(?:estrutura de dados|interface externa)\s*:\s*/i, '')];
+        if (projectHasDataFunction(projectId, cand.functionType, labelsToCheck)) {
+          dedupInventoryNotes.push(`Inventário do Projeto (IFPUG): ${cand.name} já cadastrado no projeto foi reutilizado apenas como AR/FTR sem dupla contagem.`);
+          return false;
+        }
+      }
       const dedupKey = `${cand.functionType}:${cand.name.toLowerCase().replace(/\s+/g, ' ').trim()}`;
       if (seenCandidateKeys.has(dedupKey)) return false;
       seenCandidateKeys.add(dedupKey);
@@ -3163,6 +3254,9 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
 
   const detectedFields = Array.isArray(parsed.detectedFields) ? parsed.detectedFields : [];
   const auditorNotes = Array.isArray(parsed.auditorNotes) ? [...parsed.auditorNotes] : [];
+  if (dedupInventoryNotes.length > 0) {
+    auditorNotes.push(...dedupInventoryNotes);
+  }
   if (parsed.boundarySummary) {
     auditorNotes.unshift(`Fronteira da Aplicação (IA): ${parsed.boundarySummary}`);
   }

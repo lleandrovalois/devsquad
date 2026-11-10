@@ -10,14 +10,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-const CFPS_PROMPT_VERSION = '2026-11-10-v2';
+const CFPS_PROMPT_VERSION = '2026-11-10-v3';
 
 const PROVIDER_CATALOG = {
   gemini: {
     id: 'gemini',
     label: 'Google Gemini',
     defaultModel: 'gemini-3.5-flash-lite',
-    suggestedModels: ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-4-argon'],
+    suggestedModels: ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'],
     defaultBaseUrl: 'https://generativelanguage.googleapis.com',
     requiresApiKey: true,
     envKeys: ['GEMINI_API_KEY', 'GOOGLE_API_KEY']
@@ -287,24 +287,29 @@ DIRETRIZES OBRIGATÓRIAS DE CONTAGEM (IFPUG CPM 4.3.1 + SISP):
    - REGRA CRÍTICA DE INVENTÁRIO (NÃO DUPLICAR): Consulte a lista de ALIs e AIEs já existentes no projeto fornecida no prompt.
      * Se um ALI equivalente JÁ existe no inventário do projeto e o requisito não altera sua estrutura de campos/tabelas (operação ADD de transação/consulta sobre tabela existente, ou melhoria de fluxo), NÃO gere novo ALI! Referencie-o apenas como AR/FTR nas transações.
      * Se o projeto NÃO possui esse ALI no inventário e o requisito é de Desenvolvimento Novo (ADD) criando/persistindo essa entidade lógica no banco/CRM pela primeira vez (ex.: ingestão/cadastro que persiste uma nova entidade com seus atributos no CRM/banco), CONTE o ALI (operação ADD) uma única vez!
-     * Da mesma forma, não duplique AIE se a interface externa equivalente já estiver cadastrada no inventário do projeto (salvo em CHG estrutural).
+     * Da mesma forma, não duplique AIE se uma interface externa do MESMO sistema/provedor já estiver cadastrada no inventário do projeto (compare semanticamente por sistema externo: ex., "API RDR/BCB", "Web Service do BCB", "Endpoint RDR" e "API de Anexos do RDR BCB" representam o mesmo sistema externo RDR/BCB; só gere novo AIE se for outro provedor/sistema externo ou CHG estrutural).
    - CONTAGEM DE TDs E TRs EM ALI/AIE:
      * Conte estritamente os atributos/campos de negócio persistidos ou referenciados (incluindo origem/status/chaves reconhecíveis pelo usuário).
      * NUNCA some os +2 TDs de controle de tela/mensagem em funções de dados (ALI/AIE).
      * TRs (RETs): Use 1 TR por padrão; use 2+ TRs apenas se houver explicitamente subgrupos/subtabelas mestre-detalhe reconhecíveis pelo usuário.
 
 3. FUNÇÕES TRANSACIONAIS (PROCESSOS ELEMENTARES) — EE, SE, CE:
+   - REGRA DE OPERAÇÃO (ADD vs CHG vs DEL):
+     * Quando o Tipo de Contagem for "Desenvolvimento" (Desenvolvimento Novo) e o usuário não selecionar explicitamente CHG ou DEL, processos criados pela primeira vez para a aplicação são SEMPRE operação "ADD" (100%).
+     * ATENÇÃO: Transicionar/atualizar o status de um registro ou persistir recibo/protocolo em um ALI existente (ex.: "alterando o status da demanda para Respondida", "manter o status em Erro", "persistir o protocolo no histórico") faz parte da lógica normal de uma nova EE (ADD) — NUNCA classifique isso como "CHG" (Melhoria) em um projeto de Desenvolvimento Novo!
+     * Só use "CHG" em contagens de Melhoria/Manutenção ou quando o requisito pedir explicitamente alterar/evoluir um processo elementar já implementado anteriormente.
    - Cada processo elementar deve ser a menor unidade de atividade significativa para o usuário e autocontida (que deixa o negócio em estado consistente).
    - EE (Entrada Externa): Processa dados ou informações de controle vindos de fora da fronteira (usuário, arquivo, scheduler/webhook consumindo API externa) com intenção primária de manter um ou mais ALIs ou alterar comportamento do sistema.
      * Exemplo típico de integração/ingestão via API externa: um único processo elementar EE que captura os registros da API externa (1 AR = AIE), valida duplicidade/idempotência e grava no banco interno (1 AR = ALI) = 2 ARs (FTRs) no total! Não quebre verificação de duplicidade ou disparo interno de contador SLA em uma CE ou EE separada se fizerem parte do mesmo processo elementar indivisível.
-   - SE (Saída Externa): Envia dados para fora da fronteira contendo pelo menos um cálculo matemático, fórmula, dado derivado, totalizador ou manutenção adicional de ALI.
+     * Exemplo típico de envio/transmissão externa com confirmação e contingência (ex.: enviar resposta/anexos ao Web Service BCB/RDR, receber protocolo oficial, atualizar status para "Respondida" ou tratar erro HTTP 4xx/5xx mantendo "Erro no Envio" / fila de contingência + alerta): TODOS esses caminhos (sucesso e falha) são ramificações lógicas do MESMO processo elementar EE acionado pelo botão/gatilho de envio. NUNCA fragmente erro HTTP, entrada em fila de contingência ou alerta amigável de retorno em uma segunda EE, SE ou CE separada!
+   - SE (Saída Externa): Envia dados para fora da fronteira contendo pelo menos um cálculo matemático, fórmula, dado derivado, totalizador ou manutenção adicional de ALI quando a intenção primária for apresentar/transmitir informação derivada ao usuário/externo.
    - CE (Consulta Externa): Recupera e exibe dados existentes de ALIs/AIEs sem fórmulas matemáticas/dados derivados e sem atualizar ALIs.
    - NÃO DUPLICAR SE E CE para a mesma visualização/relatório.
    - FLUXOS DE AUTENTICAÇÃO (Login / Senha / 2FA): Gerar apenas EE, sem criar ALI nem CE fantasma.
    - ESPECIFICAÇÃO ESTRUTURAL PURA DE DADOS (apenas modelagem de tabela/ALI): Não inventar transações EE/SE/CE se nenhuma operação transacional for especificada.
    - CONTAGEM DE TDs E ARs EM TRANSAÇÕES:
-     * TDs (DETs): Liste os campos de negócio que atravessam a fronteira na entrada/saída (inclua atributos citados explicitamente no BDD/regras, como identificador, origem, status, prazo/SLA quando mantidos/exibidos na transação) + 2 TDs de controle (1 para acionamento/botão/gatilho e 1 para mensagem/feedback/log de retorno). Garanta que "td" seja igual ao número de campos de negócio da transação + 2.
-     * ARs (FTRs): Conte quantos arquivos lógicos distintos (ALIs + AIEs) são lidos ou mantidos durante o processo elementar. Ex.: ler de AIE externa + gravar/validar em ALI interno = 2 ARs.
+     * TDs (DETs): Liste os campos de negócio que atravessam a fronteira na entrada/saída (inclua atributos citados explicitamente no BDD/regras, como identificador, origem, status, protocolo, mensagem de erro externa, prazo/SLA quando mantidos/exibidos na transação) + 2 TDs de controle (1 para acionamento/botão/gatilho e 1 para mensagem/feedback/log de retorno). Garanta que "td" seja igual ao número de campos de negócio da transação + 2.
+     * ARs (FTRs): Conte rigorosamente CADA arquivo lógico distinto do inventário (ALIs + AIEs) efetivamente lido ou mantido durante o processo elementar! Se a transação envia dados de um ALI principal + anexos de um ALI auxiliar existente no inventário (ex.: "ALI - Anexos de Demandas") + interage com uma AIE externa (ex.: "AIE - API RDR/BCB"), liste os 3 arquivos distintos em arTrList (arTr = 3). Se apenas 1 ALI e 1 AIE forem tocados, liste os 2 (arTr = 2).
 
 4. ITENS NÃO-MENSURÁVEIS (FPN / SISP v2.3) E EXCLUSÃO MÚTUA:
    - Se o escopo contiver itens técnicos como webhook/job agendado, componente UI, máscara, menu ou code table JUNTO com um processo elementar IFPUG (EE/SE/CE), você pode listá-los em inmItems com "absorbed": true (pois são remunerados pela própria função IFPUG, sem dupla cobrança).
@@ -334,10 +339,16 @@ function buildCfpsUserPrompt(spec, context = {}) {
     featureRequirements = []
   } = context;
 
+  const isDevCount = /^desenvolvimento$/i.test((countingType || '').trim());
+  const opPromptText = operationType
+    || (isDevCount
+      ? 'ADD (100% — Projeto de Desenvolvimento Novo; nunca usar CHG apenas por atualização de status/campos durante nova transação)'
+      : 'Auto-inferir pelo requisito (ADD / CHG / DEL)');
+
   const sections = [
     `### PARÂMETROS DA CONTAGEM`,
     `- **Tipo de Contagem:** ${countingType}`,
-    `- **Operação Informada pelo Usuário:** ${operationType || 'Auto-inferir pelo requisito (ADD / CHG / DEL)'}`,
+    `- **Operação Informada pelo Usuário:** ${opPromptText}`,
     `- **Escopo:** ${featureRequirements.length > 0 ? `Feature consolidada "${spec.feature}" (${featureRequirements.length} requisitos)` : 'Requisito / Especificação individual'}`
   ];
 
@@ -374,7 +385,7 @@ function buildCfpsUserPrompt(spec, context = {}) {
     }
   }
 
-  sections.push(``, `Execute a auditoria CFPS completa e retorne o JSON estritamente estruturado.`);
+  sections.push(``, `Execute a auditoria CFPS completa e retorne o JSON estritamente estruturado. IMPORTANTE: NÃO inclua no array "functions" nenhum ALI ou AIE cujo sistema externo ou entidade principal já conste no inventário do projeto listado acima — apenas referencie-os como AR/FTR em arTrList.`);
   return sections.join('\n');
 }
 
@@ -412,7 +423,7 @@ async function callGeminiInteractions({ apiKey, model, baseUrl, systemInstructio
   const isDeepCfpsCall = Boolean(responseSchema?.properties?.functions);
   const generationConfig = {
     seed: 42,
-    thinking_level: isDeepCfpsCall ? 'medium' : 'minimal'
+    thinking_level: isDeepCfpsCall ? 'low' : 'minimal'
   };
   if (!/gemini-(?:3\.8|4)/i.test(resolvedModel)) {
     generationConfig.temperature = 0;
@@ -676,7 +687,7 @@ async function runAiCfpsAnalysis(spec, context, effectiveConfig) {
   const userPrompt = buildCfpsUserPrompt(spec, context);
 
   const fallbackModels = effectiveConfig.provider === 'gemini'
-    ? ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'].filter(m => m !== effectiveConfig.model)
+    ? ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'].filter(m => m !== effectiveConfig.model)
     : [];
   const modelsToTry = [effectiveConfig.model, ...fallbackModels];
 
@@ -691,13 +702,13 @@ async function runAiCfpsAnalysis(spec, context, effectiveConfig) {
         systemInstruction,
         userPrompt,
         responseSchema: CFPS_RESPONSE_SCHEMA,
-        timeoutMs: 50000
+        timeoutMs: 60000
       });
       lastErr = null;
       break;
     } catch (err) {
       lastErr = err;
-      const isTransient = /(?:high demand|rate limit|quota|overloaded|unavailable|503|429)/i.test(err.message);
+      const isTransient = /(?:high demand|rate limit|quota|overloaded|unavailable|timed?\s*out|aborted|econnreset|etimedout|fetch\s+failed|502|503|504|429)/i.test(err.message);
       if (!isTransient || i === modelsToTry.length - 1) {
         throw err;
       }
