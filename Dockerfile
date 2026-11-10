@@ -5,6 +5,7 @@ WORKDIR /app
 # Copiar arquivos da aplicação
 COPY package.json ./
 COPY server.js ./
+COPY ai-cfps-agent.js ./
 COPY index.html ./
 COPY style.css ./
 COPY script.js ./

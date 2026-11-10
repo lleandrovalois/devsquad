@@ -1,0 +1,793 @@
+/**
+ * ==============================================================================
+ * Synchro PRO - Agente Especialista CFPS & Mensuração IFPUG / SISP via IA
+ * Motor multi-provedor (Google Gemini Interactions API, OpenAI, Anthropic,
+ * Ollama / Compatíveis OpenAI) com Saída Estruturada JSON e Zero Dependências.
+ * ==============================================================================
+ */
+
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+
+const CFPS_PROMPT_VERSION = '2026-11-10-v2';
+
+const PROVIDER_CATALOG = {
+  gemini: {
+    id: 'gemini',
+    label: 'Google Gemini',
+    defaultModel: 'gemini-3.5-flash-lite',
+    suggestedModels: ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-4-argon'],
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com',
+    requiresApiKey: true,
+    envKeys: ['GEMINI_API_KEY', 'GOOGLE_API_KEY']
+  },
+  openai: {
+    id: 'openai',
+    label: 'OpenAI (ChatGPT / GPT)',
+    defaultModel: 'gpt-4.1',
+    suggestedModels: ['gpt-4.1', 'gpt-4o', 'o4-mini'],
+    defaultBaseUrl: 'https://api.openai.com/v1',
+    requiresApiKey: true,
+    envKeys: ['OPENAI_API_KEY']
+  },
+  anthropic: {
+    id: 'anthropic',
+    label: 'Anthropic Claude',
+    defaultModel: 'claude-sonnet-4-5',
+    suggestedModels: ['claude-sonnet-4-5', 'claude-opus-4-1', 'claude-3-7-sonnet-latest'],
+    defaultBaseUrl: 'https://api.anthropic.com',
+    requiresApiKey: true,
+    envKeys: ['ANTHROPIC_API_KEY']
+  },
+  openai_compatible: {
+    id: 'openai_compatible',
+    label: 'Ollama / OpenRouter / Compatível OpenAI',
+    defaultModel: 'llama3.1',
+    suggestedModels: ['llama3.1', 'qwen2.5', 'deepseek-r1', 'openai/gpt-4.1'],
+    defaultBaseUrl: 'http://localhost:11434/v1',
+    requiresApiKey: false,
+    envKeys: ['AI_API_KEY', 'OPENROUTER_API_KEY', 'GROQ_API_KEY']
+  }
+};
+
+const CFPS_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    operationType: {
+      type: 'string',
+      enum: ['ADD', 'CHG', 'DEL'],
+      description: 'Tipo de operação predominante: ADD (inclusão/novo), CHG (alteração/melhoria) ou DEL (exclusão).'
+    },
+    entityName: {
+      type: 'string',
+      description: 'Nome limpo da entidade de negócio principal tratada pelo requisito.'
+    },
+    userRole: {
+      type: 'string',
+      description: 'Papel ou ator principal da história de usuário.'
+    },
+    userWant: {
+      type: 'string',
+      description: 'Objetivo funcional desejado pelo usuário.'
+    },
+    userBenefit: {
+      type: 'string',
+      description: 'Benefício ou valor de negócio esperado.'
+    },
+    boundarySummary: {
+      type: 'string',
+      description: 'Explicação objetiva da fronteira da aplicação (o que é interno vs externo).'
+    },
+    detectedFields: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Lista de atributos/campos de negócio identificados (sem incluir os +2 TDs de controle).'
+    },
+    functions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          functionType: {
+            type: 'string',
+            enum: ['ALI', 'AIE', 'EE', 'SE', 'CE'],
+            description: 'Classificação oficial IFPUG CPM 4.3.1.'
+          },
+          name: {
+            type: 'string',
+            description: 'Nome claro da função no padrão "<TIPO> - <Descrição>" (ex: "ALI - Estrutura de Dados: Demandas (CRM)", "AIE - Interface Externa: API Reclame Aqui", "EE - Incluir/Processar Reclamações").'
+          },
+          operationType: {
+            type: 'string',
+            enum: ['ADD', 'CHG', 'DEL']
+          },
+          primaryIntent: {
+            type: 'string',
+            description: 'Intenção primária segundo o manual IFPUG CPM 4.3.1.'
+          },
+          td: {
+            type: 'integer',
+            description: 'Quantidade de Tipos de Dados (DETs). Em ALI/AIE contar apenas campos de negócio persistidos/referenciados; em EE/SE/CE somar campos de negócio que cruzam a fronteira + 2 TDs de controle (acionamento + mensagem/log de retorno).'
+          },
+          arTr: {
+            type: 'integer',
+            description: 'Quantidade de TRs (RETs) para ALI/AIE, ou de ARs (FTRs = total de ALIs e AIEs lidos/mantidos) para EE/SE/CE.'
+          },
+          tdList: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Atributos/campos específicos que justificam o td.'
+          },
+          arTrList: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Arquivos lógicos (ALIs/AIEs) ou subgrupos (TRs) referenciados que justificam o arTr.'
+          },
+          rationale: {
+            type: 'string',
+            description: 'Justificativa técnica pericial CFPS citando a regra do IFPUG CPM 4.3.1.'
+          }
+        },
+        required: ['functionType', 'name', 'operationType', 'primaryIntent', 'td', 'arTr', 'tdList', 'arTrList', 'rationale'],
+        additionalProperties: false
+      }
+    },
+    inmItems: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          catalogKey: {
+            type: 'string',
+            enum: [
+              'code_table_inclusao',
+              'code_table_alteracao',
+              'menu_item',
+              'layout_alteracao',
+              'componente_ui',
+              'parametro_sistema',
+              'perfil_seguranca',
+              'db_view_indice',
+              'db_trigger_proc',
+              'script_saneamento',
+              'relatorio_simples',
+              'webhook_tecnico'
+            ]
+          },
+          quantity: { type: 'number' },
+          absorbed: {
+            type: 'boolean',
+            description: 'true quando o item técnico/UI/webhook faz parte de um processo elementar IFPUG já medido (exclusão mútua SISP).'
+          },
+          justification: { type: 'string' }
+        },
+        required: ['catalogKey', 'quantity', 'absorbed', 'justification'],
+        additionalProperties: false
+      }
+    },
+    auditorNotes: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Notas técnicas consolidadas do auditor CFPS sobre fronteira, ciclo de vida de dados e travas SISP.'
+    }
+  },
+  required: [
+    'operationType',
+    'entityName',
+    'userRole',
+    'userWant',
+    'userBenefit',
+    'boundarySummary',
+    'detectedFields',
+    'functions',
+    'inmItems',
+    'auditorNotes'
+  ],
+  additionalProperties: false
+};
+
+/**
+ * Carrega variáveis de um arquivo .env local sem sobrescrever variáveis já definidas no ambiente.
+ */
+function loadDotEnv(envPath = path.join(__dirname, '.env')) {
+  try {
+    if (!fs.existsSync(envPath)) return;
+    const raw = fs.readFileSync(envPath, 'utf8');
+    raw.split(/\r?\n/).forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx <= 0) return;
+      const key = trimmed.slice(0, eqIdx).trim();
+      let val = trimmed.slice(eqIdx + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      if (key && process.env[key] === undefined) {
+        process.env[key] = val;
+      }
+    });
+  } catch (err) {
+    console.warn('⚠️ Falha ao carregar .env:', err.message);
+  }
+}
+
+/**
+ * Mascara API keys para retorno seguro em respostas HTTP ao frontend.
+ */
+function maskApiKey(key) {
+  const clean = (key || '').trim();
+  if (!clean) return '';
+  if (clean.length <= 10) return '••••••';
+  return `${clean.slice(0, 4)}••••${clean.slice(-4)}`;
+}
+
+/**
+ * Resolve a configuração efetiva de IA mesclando SQLite (app_settings) com variáveis de ambiente.
+ */
+function resolveEffectiveAiConfig(savedConfig = {}) {
+  const envProvider = (process.env.AI_PROVIDER || '').trim().toLowerCase();
+  const providerCandidate = (savedConfig.provider || envProvider || 'gemini').trim().toLowerCase();
+  const providerMeta = PROVIDER_CATALOG[providerCandidate] || PROVIDER_CATALOG.gemini;
+
+  const model = (savedConfig.model || process.env.AI_MODEL || '').trim() || providerMeta.defaultModel;
+  const baseUrl = (savedConfig.baseUrl || process.env.AI_BASE_URL || (providerMeta.id === 'openai_compatible' ? process.env.OLLAMA_BASE_URL : '') || '').trim() || providerMeta.defaultBaseUrl;
+
+  let envApiKey = (process.env.AI_API_KEY || '').trim();
+  if (!envApiKey) {
+    for (const k of providerMeta.envKeys) {
+      if (process.env[k] && process.env[k].trim()) {
+        envApiKey = process.env[k].trim();
+        break;
+      }
+    }
+  }
+
+  const savedApiKey = (savedConfig.apiKey || '').trim();
+  const effectiveApiKey = savedApiKey || envApiKey;
+  const enabled = savedConfig.enabled !== undefined ? Boolean(savedConfig.enabled) : true;
+  const fallbackEnabled = savedConfig.fallbackEnabled !== undefined ? Boolean(savedConfig.fallbackEnabled) : true;
+
+  const isReady = enabled && (Boolean(effectiveApiKey) || !providerMeta.requiresApiKey);
+
+  return {
+    enabled,
+    fallbackEnabled,
+    provider: providerMeta.id,
+    providerLabel: providerMeta.label,
+    model,
+    baseUrl,
+    apiKey: effectiveApiKey,
+    hasApiKey: Boolean(effectiveApiKey),
+    apiKeySource: savedApiKey ? 'database' : (envApiKey ? 'env' : 'none'),
+    apiKeyMasked: maskApiKey(effectiveApiKey),
+    requiresApiKey: providerMeta.requiresApiKey,
+    isReady
+  };
+}
+
+/**
+ * Constrói a instrução de sistema do Agente Auditor CFPS (IFPUG CPM 4.3.1 + SISP v2.3).
+ */
+function buildCfpsSystemInstruction() {
+  return `Você é um Especialista Certificado em Análise de Pontos de Função (CFPS - Certified Function Point Specialist) seguindo rigorosamente o Manual de Práticas de Contagem IFPUG CPM 4.3.1 e o Roteiro de Métricas SISP v2.3.
+
+Sua missão é decompor o escopo funcional informado (Requisito, Feature ou História BDD) em Funções de Dados (ALI, AIE), Funções Transacionais (EE, SE, CE) e eventuais Itens Não-Mensuráveis (FPN/SISP), fornecendo contagens exatas e defensáveis de TDs (DETs) e ARs/TRs (FTRs/RETs).
+
+DIRETRIZES OBRIGATÓRIAS DE CONTAGEM (IFPUG CPM 4.3.1 + SISP):
+
+1. FRONTEIRA DA APLICAÇÃO (BOUNDARY):
+   - Identifique com clareza o que pertence ao sistema sendo medido versus o que reside em sistemas/APIs/plataformas externas (ex.: Reclame Aqui, Correios, Receita Federal, Gateways de Pagamento, Webservices de terceiros).
+   - Atenção: APIs, webhooks ou bancos externos consumidos/lidos pela aplicação caracterizam dados mantidos FORA da fronteira (candidatos a AIE). Já APIs internas do próprio sistema são apenas camada técnica interna.
+
+2. FUNÇÕES DE DADOS — ALI e AIE:
+   - ALI (Arquivo Lógico Interno): Grupo lógico de dados mantido DENTRO da fronteira da aplicação por meio de pelo menos um processo elementar.
+   - AIE (Arquivo de Interface Externa): Grupo lógico de dados apenas referenciado/lido pela aplicação, mantido por OUTRA aplicação fora da fronteira.
+   - REGRA CRÍTICA DE INVENTÁRIO (NÃO DUPLICAR): Consulte a lista de ALIs e AIEs já existentes no projeto fornecida no prompt.
+     * Se um ALI equivalente JÁ existe no inventário do projeto e o requisito não altera sua estrutura de campos/tabelas (operação ADD de transação/consulta sobre tabela existente, ou melhoria de fluxo), NÃO gere novo ALI! Referencie-o apenas como AR/FTR nas transações.
+     * Se o projeto NÃO possui esse ALI no inventário e o requisito é de Desenvolvimento Novo (ADD) criando/persistindo essa entidade lógica no banco/CRM pela primeira vez (ex.: ingestão/cadastro que persiste uma nova entidade com seus atributos no CRM/banco), CONTE o ALI (operação ADD) uma única vez!
+     * Da mesma forma, não duplique AIE se a interface externa equivalente já estiver cadastrada no inventário do projeto (salvo em CHG estrutural).
+   - CONTAGEM DE TDs E TRs EM ALI/AIE:
+     * Conte estritamente os atributos/campos de negócio persistidos ou referenciados (incluindo origem/status/chaves reconhecíveis pelo usuário).
+     * NUNCA some os +2 TDs de controle de tela/mensagem em funções de dados (ALI/AIE).
+     * TRs (RETs): Use 1 TR por padrão; use 2+ TRs apenas se houver explicitamente subgrupos/subtabelas mestre-detalhe reconhecíveis pelo usuário.
+
+3. FUNÇÕES TRANSACIONAIS (PROCESSOS ELEMENTARES) — EE, SE, CE:
+   - Cada processo elementar deve ser a menor unidade de atividade significativa para o usuário e autocontida (que deixa o negócio em estado consistente).
+   - EE (Entrada Externa): Processa dados ou informações de controle vindos de fora da fronteira (usuário, arquivo, scheduler/webhook consumindo API externa) com intenção primária de manter um ou mais ALIs ou alterar comportamento do sistema.
+     * Exemplo típico de integração/ingestão via API externa: um único processo elementar EE que captura os registros da API externa (1 AR = AIE), valida duplicidade/idempotência e grava no banco interno (1 AR = ALI) = 2 ARs (FTRs) no total! Não quebre verificação de duplicidade ou disparo interno de contador SLA em uma CE ou EE separada se fizerem parte do mesmo processo elementar indivisível.
+   - SE (Saída Externa): Envia dados para fora da fronteira contendo pelo menos um cálculo matemático, fórmula, dado derivado, totalizador ou manutenção adicional de ALI.
+   - CE (Consulta Externa): Recupera e exibe dados existentes de ALIs/AIEs sem fórmulas matemáticas/dados derivados e sem atualizar ALIs.
+   - NÃO DUPLICAR SE E CE para a mesma visualização/relatório.
+   - FLUXOS DE AUTENTICAÇÃO (Login / Senha / 2FA): Gerar apenas EE, sem criar ALI nem CE fantasma.
+   - ESPECIFICAÇÃO ESTRUTURAL PURA DE DADOS (apenas modelagem de tabela/ALI): Não inventar transações EE/SE/CE se nenhuma operação transacional for especificada.
+   - CONTAGEM DE TDs E ARs EM TRANSAÇÕES:
+     * TDs (DETs): Liste os campos de negócio que atravessam a fronteira na entrada/saída (inclua atributos citados explicitamente no BDD/regras, como identificador, origem, status, prazo/SLA quando mantidos/exibidos na transação) + 2 TDs de controle (1 para acionamento/botão/gatilho e 1 para mensagem/feedback/log de retorno). Garanta que "td" seja igual ao número de campos de negócio da transação + 2.
+     * ARs (FTRs): Conte quantos arquivos lógicos distintos (ALIs + AIEs) são lidos ou mantidos durante o processo elementar. Ex.: ler de AIE externa + gravar/validar em ALI interno = 2 ARs.
+
+4. ITENS NÃO-MENSURÁVEIS (FPN / SISP v2.3) E EXCLUSÃO MÚTUA:
+   - Se o escopo contiver itens técnicos como webhook/job agendado, componente UI, máscara, menu ou code table JUNTO com um processo elementar IFPUG (EE/SE/CE), você pode listá-los em inmItems com "absorbed": true (pois são remunerados pela própria função IFPUG, sem dupla cobrança).
+   - Só retorne inmItems com "absorbed": false quando a demanda for puramente técnica/infraestrutura sem nenhum processo elementar IFPUG (ex.: criação avulsa de índice de banco, script SQL isolado, ajuste estritamente estético de CSS). Usa as chaves exatas do catálogo SISP (ex.: webhook_tecnico, db_view_indice, script_saneamento, layout_alteracao, componente_ui, menu_item, code_table_inclusao, code_table_alteracao, parametro_sistema, perfil_seguranca, db_trigger_proc, relatorio_simples).
+
+5. PRECISÃO NUMÉRICA E CONSISTÊNCIA CFPS (OBRIGATÓRIAS):
+   - INVENTÁRIO vs SUBENTIDADES: Compare entidades por núcleo lógico exato. Por exemplo, um ALI "Anexos de Demandas" (subentidade 1:N) NÃO substitui nem representa o ALI principal "Demandas / Reclamações"; só suprima o ALI se a mesma entidade principal já constar no inventário do projeto.
+   - NÃO FRAGMENTAR PROCESSO ELEMENTAR: Se uma rotina/scheduler/webhook consulta uma API externa para capturar e gravar registros no banco interno (mesmo checando duplicidade e disparando SLA na gravação), tudo compõe UM ÚNICO processo elementar EE com 2 ARs (AIE externa + ALI interno). Só crie CE adicional se houver explícita exibição/listagem interativa para usuário final (ex.: listar arquivos com botão de download).
+   - CONSISTÊNCIA ESTRITA DE TDs E ARs/TRs:
+     * Em ALI e AIE: tdList deve conter APENAS atributos de negócio persistidos/referenciados (NUNCA inclua acionamento/botão/mensagem/log de controle), e o inteiro "td" deve ser exatamente tdList.length (mínimo 1).
+     * Em EE, SE e CE: tdList deve conter os campos de negócio que cruzam a fronteira + exatamente 2 TDs de controle (Acionamento/Gatilho e Mensagem/Log de Retorno), e o inteiro "td" deve ser exatamente tdList.length (mínimo 3).
+     * Em EE, SE e CE: arTrList deve listar nominalmente cada ALI e AIE distinto lido ou mantido, e "arTr" deve ser exatamente arTrList.length (mínimo 1).
+   - ORDEM CANÔNICA: Ordene o array "functions" nesta sequência fixa: ALI, AIE, EE, SE, CE.
+   - NÃO tente calcular complexidade ou PF final no JSON — o motor determinístico do sistema aplicará as matrizes oficiais IFPUG CPM 4.3.1 e os deflatores SISP sobre os valores exatos informados por você.
+   - Responda exclusivamente em Português do Brasil conforme o schema JSON exigido.`;
+}
+
+/**
+ * Monta o prompt de usuário com especificação, inventário do projeto e parâmetros de contagem.
+ */
+function buildCfpsUserPrompt(spec, context = {}) {
+  const {
+    countingType = 'Desenvolvimento',
+    operationType = '',
+    existingAlis = [],
+    existingAies = [],
+    featureRequirements = []
+  } = context;
+
+  const sections = [
+    `### PARÂMETROS DA CONTAGEM`,
+    `- **Tipo de Contagem:** ${countingType}`,
+    `- **Operação Informada pelo Usuário:** ${operationType || 'Auto-inferir pelo requisito (ADD / CHG / DEL)'}`,
+    `- **Escopo:** ${featureRequirements.length > 0 ? `Feature consolidada "${spec.feature}" (${featureRequirements.length} requisitos)` : 'Requisito / Especificação individual'}`
+  ];
+
+  sections.push(``, `### INVENTÁRIO ATUAL DE FUNÇÕES DE DADOS DO PROJETO (EVITAR DUPLA CONTAGEM)`);
+  if (existingAlis.length > 0) {
+    sections.push(`- **ALIs já cadastrados no projeto:** ${existingAlis.map(a => `${a.name} (${a.td} TDs, ${a.ar_tr} TRs)`).join(' | ')}`);
+  } else {
+    sections.push(`- **ALIs já cadastrados no projeto:** Nenhum (projeto sem ALIs registrados até o momento).`);
+  }
+  if (existingAies.length > 0) {
+    sections.push(`- **AIEs já cadastrados no projeto:** ${existingAies.map(a => `${a.name} (${a.td} TDs, ${a.ar_tr} TRs)`).join(' | ')}`);
+  } else {
+    sections.push(`- **AIEs já cadastrados no projeto:** Nenhum.`);
+  }
+
+  sections.push(``, `### ESPECIFICAÇÃO FUNCIONAL A AUDITAR`);
+  if (featureRequirements.length > 0) {
+    featureRequirements.forEach((req, idx) => {
+      sections.push(`\n#### Requisito ${idx + 1}: [${req.code || 'RF'}] ${req.title || ''}`);
+      if (req.userStory || req.user_story) sections.push(`**História de Usuário / Regras:**\n${req.userStory || req.user_story}`);
+      if (req.bdd) sections.push(`**Cenários BDD / Critérios de Aceitação:**\n${req.bdd}`);
+    });
+  } else {
+    if (spec.code) sections.push(`- **Código:** ${spec.code}`);
+    if (spec.title) sections.push(`- **Título:** ${spec.title}`);
+    if (spec.feature) sections.push(`- **Feature/Módulo:** ${spec.feature}`);
+    if (spec.userStory || spec.user_story) sections.push(`\n**História de Usuário / Regras de Negócio:**\n${spec.userStory || spec.user_story}`);
+    if (spec.bdd) sections.push(`\n**Cenários BDD / Critérios de Aceitação:**\n${spec.bdd}`);
+    if (spec.text || spec.specification) {
+      const extraText = spec.text || spec.specification;
+      if (extraText !== (spec.userStory || spec.user_story)) {
+        sections.push(`\n**Especificação Adicional:**\n${extraText}`);
+      }
+    }
+  }
+
+  sections.push(``, `Execute a auditoria CFPS completa e retorne o JSON estritamente estruturado.`);
+  return sections.join('\n');
+}
+
+/**
+ * Extrai e faz parse seguro de JSON retornado por modelos de IA (lida com blocos ```json caso ocorram).
+ */
+function safeParseAiJson(rawText) {
+  if (!rawText || typeof rawText !== 'string') {
+    throw new Error('Resposta vazia recebida do provedor de IA.');
+  }
+  const trimmed = rawText.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch (_) {
+    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenced && fenced[1]) {
+      return JSON.parse(fenced[1].trim());
+    }
+    const firstBrace = trimmed.indexOf('{');
+    const lastBrace = trimmed.lastIndexOf('}');
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1));
+    }
+    throw new Error('O agente de IA retornou texto fora do formato JSON esperado.');
+  }
+}
+
+/**
+ * Executa chamada via Google Gemini Interactions API (/v1beta/interactions).
+ */
+async function callGeminiInteractions({ apiKey, model, baseUrl, systemInstruction, userPrompt, responseSchema, timeoutMs = 45000 }) {
+  const cleanBase = (baseUrl || PROVIDER_CATALOG.gemini.defaultBaseUrl).replace(/\/+$/, '');
+  const endpoint = `${cleanBase}/v1beta/interactions`;
+  const resolvedModel = model || PROVIDER_CATALOG.gemini.defaultModel;
+  const isDeepCfpsCall = Boolean(responseSchema?.properties?.functions);
+  const generationConfig = {
+    seed: 42,
+    thinking_level: isDeepCfpsCall ? 'medium' : 'minimal'
+  };
+  if (!/gemini-(?:3\.8|4)/i.test(resolvedModel)) {
+    generationConfig.temperature = 0;
+  }
+
+  const body = {
+    model: resolvedModel,
+    system_instruction: systemInstruction,
+    input: userPrompt,
+    store: false,
+    generation_config: generationConfig
+  };
+  if (responseSchema) {
+    body.response_format = {
+      type: 'text',
+      mime_type: 'application/json',
+      schema: responseSchema
+    };
+  }
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+      'Api-Revision': '2026-05-20'
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+
+  const rawBody = await res.text();
+  let data;
+  try {
+    data = JSON.parse(rawBody);
+  } catch (_) {
+    throw new Error(`Gemini HTTP ${res.status}: resposta inválida (${rawBody.slice(0, 200)})`);
+  }
+
+  if (!res.ok) {
+    const msg = data?.error?.message || data?.message || `HTTP ${res.status}`;
+    throw new Error(`Gemini API: ${msg}`);
+  }
+
+  if (data.status && ['failed', 'cancelled'].includes(data.status)) {
+    throw new Error(`Gemini Interaction falhou (${data.status}): ${data.error?.message || 'erro desconhecido'}`);
+  }
+
+  const steps = Array.isArray(data.steps) ? data.steps : [];
+  const textChunks = [];
+  for (const step of steps) {
+    if (step?.type === 'model_output' && Array.isArray(step.content)) {
+      for (const part of step.content) {
+        if (part?.type === 'text' && typeof part.text === 'string') {
+          textChunks.push(part.text);
+        }
+      }
+    }
+  }
+  const outputText = textChunks.join('\n').trim() || (typeof data.output_text === 'string' ? data.output_text.trim() : '');
+  if (!outputText) {
+    throw new Error('Gemini Interactions API não retornou conteúdo de texto em model_output.');
+  }
+  return outputText;
+}
+
+/**
+ * Executa chamada via OpenAI Chat Completions ou endpoint compatível (Ollama, OpenRouter, Groq).
+ */
+async function callOpenAiCompatible({ apiKey, model, baseUrl, systemInstruction, userPrompt, responseSchema, isOfficialOpenAi, timeoutMs = 45000 }) {
+  const cleanBase = (baseUrl || (isOfficialOpenAi ? PROVIDER_CATALOG.openai.defaultBaseUrl : PROVIDER_CATALOG.openai_compatible.defaultBaseUrl)).replace(/\/+$/, '');
+  const endpoint = cleanBase.endsWith('/chat/completions') ? cleanBase : `${cleanBase}/chat/completions`;
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+  const buildPayload = (useStrictSchema) => {
+    const resolvedModel = model || (isOfficialOpenAi ? PROVIDER_CATALOG.openai.defaultModel : PROVIDER_CATALOG.openai_compatible.defaultModel);
+    const payload = {
+      model: resolvedModel,
+      messages: [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: userPrompt }
+      ]
+    };
+    if (!/^(?:o\d|gpt-5)/i.test(resolvedModel)) {
+      payload.temperature = 0;
+    }
+    if (isOfficialOpenAi) {
+      payload.seed = 42;
+    }
+    if (responseSchema) {
+      payload.response_format = useStrictSchema
+        ? { type: 'json_schema', json_schema: { name: 'cfps_analysis', strict: true, schema: responseSchema } }
+        : { type: 'json_object' };
+    }
+    return payload;
+  };
+
+  let res = await fetch(endpoint, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(buildPayload(Boolean(responseSchema))),
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+
+  // Servidores compatíveis (ex.: Ollama antigo) podem recusar json_schema e aceitar json_object
+  if (!res.ok && res.status === 400 && responseSchema && !isOfficialOpenAi) {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(buildPayload(false)),
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+  }
+
+  const rawBody = await res.text();
+  let data;
+  try {
+    data = JSON.parse(rawBody);
+  } catch (_) {
+    throw new Error(`OpenAI/Compatible HTTP ${res.status}: resposta inválida (${rawBody.slice(0, 200)})`);
+  }
+
+  if (!res.ok) {
+    const msg = data?.error?.message || data?.message || `HTTP ${res.status}`;
+    throw new Error(`API OpenAI/Compatível: ${msg}`);
+  }
+
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error('API OpenAI/Compatível não retornou mensagem de resposta.');
+  }
+  return content;
+}
+
+/**
+ * Executa chamada via Anthropic Messages API com Tool Use forçado para JSON Schema estruturado.
+ */
+async function callAnthropicMessages({ apiKey, model, baseUrl, systemInstruction, userPrompt, responseSchema, timeoutMs = 45000 }) {
+  const cleanBase = (baseUrl || PROVIDER_CATALOG.anthropic.defaultBaseUrl).replace(/\/+$/, '');
+  const endpoint = `${cleanBase}/v1/messages`;
+
+  const body = {
+    model: model || PROVIDER_CATALOG.anthropic.defaultModel,
+    max_tokens: 4096,
+    temperature: 0,
+    system: systemInstruction,
+    messages: [{ role: 'user', content: userPrompt }]
+  };
+
+  if (responseSchema) {
+    body.tools = [{
+      name: 'emit_cfps_analysis',
+      description: 'Emite o resultado estruturado da auditoria CFPS segundo IFPUG CPM 4.3.1 e SISP.',
+      input_schema: responseSchema
+    }];
+    body.tool_choice = { type: 'tool', name: 'emit_cfps_analysis' };
+  }
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+
+  const rawBody = await res.text();
+  let data;
+  try {
+    data = JSON.parse(rawBody);
+  } catch (_) {
+    throw new Error(`Anthropic HTTP ${res.status}: resposta inválida (${rawBody.slice(0, 200)})`);
+  }
+
+  if (!res.ok) {
+    const msg = data?.error?.message || data?.message || `HTTP ${res.status}`;
+    throw new Error(`Anthropic API: ${msg}`);
+  }
+
+  const blocks = Array.isArray(data.content) ? data.content : [];
+  if (responseSchema) {
+    const toolBlock = blocks.find(b => b.type === 'tool_use' && b.name === 'emit_cfps_analysis');
+    if (toolBlock && toolBlock.input) {
+      return JSON.stringify(toolBlock.input);
+    }
+  }
+  const textBlock = blocks.find(b => b.type === 'text' && b.text);
+  if (!textBlock) {
+    throw new Error('Anthropic API não retornou conteúdo estruturado.');
+  }
+  return textBlock.text;
+}
+
+/**
+ * Despacha uma requisição de inferência para o provedor configurado.
+ */
+async function invokeProvider({ config, systemInstruction, userPrompt, responseSchema, timeoutMs = 45000 }) {
+  if (config.requiresApiKey && !config.apiKey) {
+    throw new Error(`API Key não configurada para o provedor ${config.providerLabel}.`);
+  }
+
+  switch (config.provider) {
+    case 'gemini':
+      return await callGeminiInteractions({
+        apiKey: config.apiKey,
+        model: config.model,
+        baseUrl: config.baseUrl,
+        systemInstruction,
+        userPrompt,
+        responseSchema,
+        timeoutMs
+      });
+    case 'openai':
+      return await callOpenAiCompatible({
+        apiKey: config.apiKey,
+        model: config.model,
+        baseUrl: config.baseUrl,
+        systemInstruction,
+        userPrompt,
+        responseSchema,
+        isOfficialOpenAi: true,
+        timeoutMs
+      });
+    case 'openai_compatible':
+      return await callOpenAiCompatible({
+        apiKey: config.apiKey,
+        model: config.model,
+        baseUrl: config.baseUrl,
+        systemInstruction,
+        userPrompt,
+        responseSchema,
+        isOfficialOpenAi: false,
+        timeoutMs
+      });
+    case 'anthropic':
+      return await callAnthropicMessages({
+        apiKey: config.apiKey,
+        model: config.model,
+        baseUrl: config.baseUrl,
+        systemInstruction,
+        userPrompt,
+        responseSchema,
+        timeoutMs
+      });
+    default:
+      throw new Error(`Provedor de IA não suportado: ${config.provider}`);
+  }
+}
+
+/**
+ * Executa análise semântica CFPS via Agente de IA retornando JSON validado.
+ */
+async function runAiCfpsAnalysis(spec, context, effectiveConfig) {
+  const startedAt = Date.now();
+  const systemInstruction = buildCfpsSystemInstruction();
+  const userPrompt = buildCfpsUserPrompt(spec, context);
+
+  const fallbackModels = effectiveConfig.provider === 'gemini'
+    ? ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'].filter(m => m !== effectiveConfig.model)
+    : [];
+  const modelsToTry = [effectiveConfig.model, ...fallbackModels];
+
+  let usedModel = effectiveConfig.model;
+  let rawOutput;
+  let lastErr = null;
+  for (let i = 0; i < modelsToTry.length; i++) {
+    usedModel = modelsToTry[i];
+    try {
+      rawOutput = await invokeProvider({
+        config: { ...effectiveConfig, model: usedModel },
+        systemInstruction,
+        userPrompt,
+        responseSchema: CFPS_RESPONSE_SCHEMA,
+        timeoutMs: 50000
+      });
+      lastErr = null;
+      break;
+    } catch (err) {
+      lastErr = err;
+      const isTransient = /(?:high demand|rate limit|quota|overloaded|unavailable|503|429)/i.test(err.message);
+      if (!isTransient || i === modelsToTry.length - 1) {
+        throw err;
+      }
+    }
+  }
+  if (lastErr) throw lastErr;
+
+  const parsed = safeParseAiJson(rawOutput);
+  if (!parsed || !Array.isArray(parsed.functions)) {
+    throw new Error('JSON retornado pela IA não contém a lista de funções IFPUG.');
+  }
+
+  return {
+    parsed,
+    latencyMs: Date.now() - startedAt,
+    provider: effectiveConfig.provider,
+    providerLabel: effectiveConfig.providerLabel,
+    model: usedModel
+  };
+}
+
+/**
+ * Testa conectividade e credenciais do provedor de IA configurado.
+ */
+async function testAiConnection(effectiveConfig) {
+  const startedAt = Date.now();
+  const text = await invokeProvider({
+    config: effectiveConfig,
+    systemInstruction: 'Responda apenas com um JSON contendo {"status":"ok"}.',
+    userPrompt: 'Ping de verificação CFPS.',
+    responseSchema: {
+      type: 'object',
+      properties: { status: { type: 'string' } },
+      required: ['status'],
+      additionalProperties: false
+    },
+    timeoutMs: 15000
+  });
+  const parsed = safeParseAiJson(text);
+  return {
+    ok: true,
+    latencyMs: Date.now() - startedAt,
+    provider: effectiveConfig.provider,
+    providerLabel: effectiveConfig.providerLabel,
+    model: effectiveConfig.model,
+    response: parsed
+  };
+}
+
+/**
+ * Gera chave SHA-256 determinística representando exatamente especificação, inventário e parâmetros da contagem.
+ */
+function computeCfpsCacheKey(spec = {}, context = {}, effectiveConfig = {}, options = {}) {
+  const canonicalPayload = {
+    promptVersion: CFPS_PROMPT_VERSION,
+    provider: effectiveConfig.provider || 'gemini',
+    model: effectiveConfig.model || '',
+    countingType: context.countingType || options.countingType || 'Desenvolvimento',
+    operationType: (context.operationType || options.operationType || '').toUpperCase().trim(),
+    factor: options.factor !== undefined ? options.factor : null,
+    spec: {
+      code: (spec.code || '').trim(),
+      title: (spec.title || '').trim(),
+      feature: (spec.feature || '').trim(),
+      userStory: (spec.userStory || spec.user_story || '').trim(),
+      bdd: (spec.bdd || '').trim(),
+      text: (spec.text || spec.specification || '').trim()
+    },
+    featureRequirements: (context.featureRequirements || [])
+      .map(r => ({
+        code: (r.code || '').trim(),
+        title: (r.title || '').trim(),
+        userStory: (r.userStory || r.user_story || '').trim(),
+        bdd: (r.bdd || '').trim()
+      }))
+      .sort((a, b) => `${a.code}:${a.title}`.localeCompare(`${b.code}:${b.title}`)),
+    existingAlis: (context.existingAlis || []).map(a => `${a.name}|${a.td}|${a.ar_tr}`).sort(),
+    existingAies: (context.existingAies || []).map(a => `${a.name}|${a.td}|${a.ar_tr}`).sort()
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(canonicalPayload)).digest('hex');
+}
+
+module.exports = {
+  PROVIDER_CATALOG,
+  CFPS_PROMPT_VERSION,
+  CFPS_RESPONSE_SCHEMA,
+  loadDotEnv,
+  maskApiKey,
+  resolveEffectiveAiConfig,
+  computeCfpsCacheKey,
+  runAiCfpsAnalysis,
+  testAiConnection
+};

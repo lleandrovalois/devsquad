@@ -2008,6 +2008,10 @@ html, body {
   scrollbar-color: rgba(99, 102, 241, 0.4) transparent;
 }
 
+.modal-body > * {
+  flex-shrink: 0;
+}
+
 .modal-body::-webkit-scrollbar {
   width: 6px;
 }
@@ -2023,6 +2027,44 @@ html, body {
 
 .modal-body::-webkit-scrollbar-thumb:hover {
   background: rgba(99, 102, 241, 0.65);
+}
+
+.custom-input,
+.custom-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-subpanel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.75rem;
+  color: var(--text-main);
+  font-family: var(--font-main);
+  font-size: 0.88rem;
+  outline: none;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.custom-input:focus,
+.custom-textarea:focus {
+  border-color: #6366f1;
+  background: rgba(15, 23, 42, 0.85);
+}
+
+.apf-auto-name-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: var(--text-main);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.apf-auto-name-input:focus {
+  border-color: #818cf8;
+  background: rgba(15, 23, 42, 0.9);
 }
 
 .form-group {
@@ -5386,7 +5428,8 @@ tr.highlight-pulse {
   margin-top: 1rem;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   position: relative;
-  overflow: hidden;
+  flex-shrink: 0;
+  overflow: visible;
 }
 
 .apf-live-calc-box::before {
@@ -5590,9 +5633,16 @@ tr.highlight-pulse {
 }
 
 /* Estilos do Assistente de Geração Automática de APF */
+#apf-auto-results-container,
+#apf-auto-inm-container {
+  overflow-x: auto;
+  width: 100%;
+}
+
 .apf-auto-card-row {
   display: grid;
-  grid-template-columns: 36px 70px 1fr 90px 90px 90px 75px 75px;
+  grid-template-columns: 36px 74px minmax(240px, 1fr) 86px 86px 96px 70px 72px;
+  min-width: 740px;
   gap: 8px;
   align-items: center;
   padding: 0.75rem 0.85rem;
@@ -5601,6 +5651,11 @@ tr.highlight-pulse {
   border-radius: var(--radius-sm);
   margin-bottom: 0.5rem;
   transition: all 0.2s ease;
+}
+
+.apf-auto-card-row > div,
+.apf-inm-card-row > div {
+  min-width: 0;
 }
 
 .apf-auto-card-row:hover {
@@ -5615,7 +5670,8 @@ tr.highlight-pulse {
 
 .apf-auto-card-header {
   display: grid;
-  grid-template-columns: 36px 70px 1fr 90px 90px 90px 75px 75px;
+  grid-template-columns: 36px 74px minmax(240px, 1fr) 86px 86px 96px 70px 72px;
+  min-width: 740px;
   gap: 8px;
   padding: 0.4rem 0.85rem;
   font-size: 0.72rem;
@@ -5716,7 +5772,8 @@ tr.highlight-pulse {
 /* Linhas da Tabela de Itens Não-Mensuráveis no Modal CFPS */
 .apf-inm-card-row {
   display: grid;
-  grid-template-columns: 36px 130px 1fr 90px 80px 80px;
+  grid-template-columns: 36px 130px minmax(220px, 1fr) 90px 80px 80px;
+  min-width: 680px;
   gap: 8px;
   align-items: center;
   padding: 0.75rem 0.85rem;
@@ -5739,7 +5796,8 @@ tr.highlight-pulse {
 
 .apf-inm-card-header {
   display: grid;
-  grid-template-columns: 36px 130px 1fr 90px 80px 80px;
+  grid-template-columns: 36px 130px minmax(220px, 1fr) 90px 80px 80px;
+  min-width: 680px;
   gap: 8px;
   padding: 0.4rem 0.85rem;
   font-size: 0.72rem;

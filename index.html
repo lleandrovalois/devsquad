@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   
-  <link rel="stylesheet" href="style.css?v=1.0.4">
+  <link rel="stylesheet" href="style.css?v=1.0.9">
 </head>
 <body>
   <!-- ===================================================================
@@ -1911,6 +1911,9 @@
               <p class="view-subtitle">Mensuração de tamanho funcional por Processos Elementares (EE, SE, CE) e Grupos de Dados (ALI, AIE) com cálculo automático de complexidade e deflatores de contagem.</p>
             </div>
             <div class="header-actions-group" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <button class="btn btn-secondary" id="btn-open-ai-settings-modal" style="border: 1px solid rgba(56,189,248,0.4); color: #38bdf8; font-weight: 600;" title="Configurar Provedor de IA (Gemini, OpenAI, Claude ou Ollama) para o Auditor CFPS">
+                <span>🤖 Configurar IA</span>
+              </button>
               <button class="btn btn-secondary" id="btn-open-ifpug-guide" title="Consultar Matrizes de Decisão e Tabelas Oficiais do IFPUG">
                 <span>📖 Matriz IFPUG</span>
               </button>
@@ -4292,16 +4295,19 @@
 
   <!-- Modal: Geração Automática de Pontos de Função (APF) a partir de Requisito ou Feature -->
   <div class="modal-backdrop" id="modal-apf-auto-generate">
-    <div class="modal-dialog glass-panel" style="max-width: 1040px; width: 96%; max-height: 92vh; overflow-y: auto;">
+    <div class="modal-dialog glass-panel" style="max-width: 1080px; width: 96%; max-height: 92vh;">
       <div class="modal-header">
         <div style="display: flex; align-items: center; gap: 10px;">
           <div style="width: 38px; height: 38px; border-radius: 8px; background: linear-gradient(135deg, rgba(99,102,241,0.35), rgba(168,85,247,0.35)); display: flex; align-items: center; justify-content: center; font-size: 1.35rem;">⚡</div>
           <div>
-            <h2 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+            <h2 class="modal-title" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <span>Auditor Especialista CFPS & Medição de APF</span>
               <span class="badge-subtle" style="font-size: 0.7rem; background: rgba(168,85,247,0.18); color: #c084fc; border: 1px solid rgba(168,85,247,0.4);">IFPUG CPM 4.3.1 + SISP</span>
+              <button type="button" id="btn-apf-auto-config-ai" class="badge-subtle" style="cursor: pointer; font-size: 0.7rem; background: rgba(56,189,248,0.14); color: #38bdf8; border: 1px solid rgba(56,189,248,0.38); font-weight: 700;" title="Configurar API Key e Provedor de IA">
+                🤖 Configurar IA
+              </button>
             </h2>
-            <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Decomposição rigorosa de Histórias de Usuário e BDD em Funções de Dados (ALI/AIE), Funções Transacionais (EE/SE/CE) e Itens Não-Mensuráveis (FPN).</p>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Decomposição inteligente via Agente de IA CFPS (com validação matricial determinística IFPUG CPM 4.3.1 & SISP).</p>
           </div>
         </div>
         <button class="modal-close" data-close="modal-apf-auto-generate">&times;</button>
@@ -4365,13 +4371,23 @@
                 <option value="DEL">Exclusão (DEL • 40% SISP)</option>
               </select>
             </div>
-            <div class="form-group" style="width: 120px;">
+            <div class="form-group" style="width: 110px;">
               <label for="apf-auto-factor-percent">Fator (%)</label>
               <input type="number" id="apf-auto-factor-percent" class="custom-input" value="100" min="1" max="200" step="1">
             </div>
-            <div class="form-group" style="flex: 0 0 auto;">
+            <div class="form-group" style="min-width: 185px;">
+              <label for="apf-auto-engine-select">Motor de Análise</label>
+              <select id="apf-auto-engine-select" class="custom-select">
+                <option value="auto">🤖 Agente IA (c/ Fallback)</option>
+                <option value="local">⚡ Somente Motor Local</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex: 0 0 auto; display: flex; flex-direction: row; gap: 6px; align-items: flex-end;">
               <button type="button" class="btn btn-primary btn-glow" id="btn-run-apf-auto-analysis" style="background: linear-gradient(135deg, #6366f1, #a855f7); border: none; height: 38px; font-weight: 700;">
                 <span>🔍 Auditar e Mensurar (CFPS)</span>
+              </button>
+              <button type="button" class="btn btn-secondary" id="btn-run-apf-auto-reaudit" style="height: 38px; border-color: rgba(168,85,247,0.4); color: #c084fc; font-weight: 600;" title="Ignorar cache determinístico e solicitar nova leitura ao Agente de IA">
+                <span>🔄 Reauditar</span>
               </button>
             </div>
           </div>
@@ -4385,6 +4401,7 @@
               <div id="apf-auto-context-meta" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;"></div>
             </div>
             <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+              <span id="apf-auto-engine-badge" class="badge-subtle" style="font-size: 0.72rem; font-weight: 700; padding: 4px 10px;"></span>
               <span id="apf-auto-nature-badge" class="badge-subtle" style="font-size: 0.74rem; font-weight: 700; padding: 4px 10px;"></span>
               <span id="apf-auto-context-badge" class="badge-subtle" style="font-size: 0.72rem; padding: 4px 8px;"></span>
             </div>
@@ -4449,40 +4466,120 @@
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- HUD de Totais e Ações -->
-        <div id="apf-auto-summary-hud" class="apf-live-calc-box" style="display: none; padding: 1.15rem 1.35rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-            <div style="display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap;">
-              <div>
-                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; font-weight: 700;">Itens Selecionados</span>
-                <strong id="apf-auto-hud-count" style="font-size: 1.25rem; color: var(--text-main);">0</strong>
-              </div>
-              <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.1);"></div>
-              <div>
-                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; font-weight: 700;">IFPUG (Dados/Tx)</span>
-                <strong id="apf-auto-hud-final" style="font-size: 1.2rem; color: #60a5fa;">0.0 PF</strong>
-              </div>
-              <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.1);"></div>
-              <div>
-                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; font-weight: 700;">Não-Mensuráveis (FPN)</span>
-                <strong id="apf-auto-hud-inm" style="font-size: 1.2rem; color: #34d399;">0.0 PF</strong>
-              </div>
-              <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.1);"></div>
-              <div>
-                <span style="font-size: 0.72rem; color: #fbbf24; display: block; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">Total Global Faturável</span>
-                <strong id="apf-auto-hud-global" style="font-size: 1.45rem; color: #10b981;">0.0 PF</strong>
-              </div>
-            </div>
+      <!-- HUD Fixo de Totais e Ações (Rodapé Permanente do Modal) -->
+      <div id="apf-auto-summary-hud" class="apf-live-calc-box" style="display: none; margin: 0 1.5rem 1.25rem; padding: 1rem 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div style="display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap;">
             <div>
-              <button type="button" class="btn btn-primary btn-glow" id="btn-confirm-save-apf-auto" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: 700; padding: 0.7rem 1.5rem;">
-                <span>🚀 Gravar Funções & FPN no Projeto</span>
-              </button>
+              <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; font-weight: 700;">Itens Selecionados</span>
+              <strong id="apf-auto-hud-count" style="font-size: 1.25rem; color: var(--text-main);">0</strong>
             </div>
+            <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.1);"></div>
+            <div>
+              <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; font-weight: 700;">IFPUG (Dados/Tx)</span>
+              <strong id="apf-auto-hud-final" style="font-size: 1.2rem; color: #60a5fa;">0.0 PF</strong>
+            </div>
+            <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.1);"></div>
+            <div>
+              <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase; font-weight: 700;">Não-Mensuráveis (FPN)</span>
+              <strong id="apf-auto-hud-inm" style="font-size: 1.2rem; color: #34d399;">0.0 PF</strong>
+            </div>
+            <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.1);"></div>
+            <div>
+              <span style="font-size: 0.72rem; color: #fbbf24; display: block; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">Total Global Faturável</span>
+              <strong id="apf-auto-hud-global" style="font-size: 1.45rem; color: #10b981;">0.0 PF</strong>
+            </div>
+          </div>
+          <div>
+            <button type="button" class="btn btn-primary btn-glow" id="btn-confirm-save-apf-auto" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: 700; padding: 0.7rem 1.5rem;">
+              <span>🚀 Gravar Funções & FPN no Projeto</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Configuração do Agente de IA CFPS -->
+  <div class="modal-backdrop" id="modal-ai-settings">
+    <div class="modal-dialog glass-panel" style="max-width: 640px; width: 95%;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, rgba(56,189,248,0.28), rgba(99,102,241,0.32)); display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">🤖</div>
+          <div>
+            <h2 class="modal-title">Configurar Agente de IA CFPS</h2>
+            <p style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Escolha o provedor LLM para leitura e decomposição IFPUG CPM 4.3.1 dos requisitos.</p>
+          </div>
+        </div>
+        <button class="modal-close" data-close="modal-ai-settings">&times;</button>
+      </div>
+
+      <form id="form-ai-settings" class="modal-body" style="display: flex; flex-direction: column; gap: 1rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 0.9rem; border-radius: var(--radius-sm); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25);">
+          <div>
+            <strong style="font-size: 0.86rem; color: var(--text-main);">Ativar Agente de IA na Auditoria CFPS</strong>
+            <div style="font-size: 0.74rem; color: var(--text-muted);">Quando ativo e configurado, a IA analisa fronteira, ALIs/AIEs, TDs e ARs antes da matriz matemática IFPUG.</div>
+          </div>
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="ai-cfg-enabled" class="custom-checkbox" checked>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="ai-cfg-provider">Provedor de IA *</label>
+            <select id="ai-cfg-provider" class="custom-select">
+              <option value="gemini">Google Gemini (Interactions API)</option>
+              <option value="openai">OpenAI (GPT / ChatGPT)</option>
+              <option value="anthropic">Anthropic Claude</option>
+              <option value="openai_compatible">Ollama / OpenRouter / Compatível OpenAI</option>
+            </select>
+          </div>
+          <div class="form-group flex-1">
+            <label for="ai-cfg-model">Modelo *</label>
+            <input type="text" id="ai-cfg-model" class="custom-input" list="ai-cfg-model-suggestions" placeholder="Ex.: gemini-3.5-flash-lite">
+            <datalist id="ai-cfg-model-suggestions"></datalist>
           </div>
         </div>
 
-      </div>
+        <div class="form-group">
+          <label for="ai-cfg-api-key" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>API Key <small id="ai-cfg-key-status" style="color: var(--text-muted); font-weight: 500;"></small></span>
+            <button type="button" id="btn-ai-clear-key" class="btn btn-ghost btn-xs" style="display: none; font-size: 0.72rem; color: #f87171;">Remover Chave Salva</button>
+          </label>
+          <div style="display: flex; gap: 6px;">
+            <input type="password" id="ai-cfg-api-key" class="custom-input" style="flex: 1;" placeholder="Cole sua API Key (deixe em branco para manter a chave atual)">
+            <button type="button" id="btn-ai-toggle-key-vis" class="btn btn-secondary btn-xs" title="Mostrar/ocultar chave" style="min-width: 40px;">👁️</button>
+          </div>
+          <small style="font-size: 0.72rem; color: var(--text-muted);">Armazenada apenas no banco local do servidor (<code>synchro.db</code>) e nunca reexibida por completo. Também aceita variáveis de ambiente (<code>GEMINI_API_KEY</code>, <code>OPENAI_API_KEY</code>, etc.).</small>
+        </div>
+
+        <div class="form-group" id="ai-cfg-baseurl-group">
+          <label for="ai-cfg-base-url">URL Base da API <small style="color: var(--text-muted); font-weight: 400;">(Opcional — padrão Ollama: http://localhost:11434/v1)</small></label>
+          <input type="text" id="ai-cfg-base-url" class="custom-input" placeholder="Ex.: http://localhost:11434/v1 ou https://openrouter.ai/api/v1">
+        </div>
+
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-secondary); cursor: pointer;">
+          <input type="checkbox" id="ai-cfg-fallback" class="custom-checkbox" checked>
+          <span>Usar motor heurístico local automaticamente se a IA falhar ou estiver sem chave (Fallback)</span>
+        </label>
+
+        <div id="ai-cfg-test-result" style="display: none; padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); font-size: 0.8rem;"></div>
+
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <button type="button" class="btn btn-secondary" id="btn-ai-test-connection" style="border-color: rgba(56,189,248,0.4); color: #38bdf8;">
+            <span>🔌 Testar Conexão</span>
+          </button>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-ghost" data-close="modal-ai-settings">Cancelar</button>
+            <button type="submit" class="btn btn-primary btn-glow" id="btn-ai-save-settings">
+              <span>💾 Salvar Configuração</span>
+            </button>
+          </div>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -4495,6 +4592,6 @@
   <script src="vendor/jspdf.plugin.autotable.min.js"></script>
 
   <!-- Script Principal da Aplicação -->
-  <script src="script.js?v=1.0.5"></script>
+  <script src="script.js?v=1.0.9"></script>
 </body>
 </html>

@@ -89,7 +89,7 @@ class SynchroAPI {
     return null;
   }
 
-  async apiRequest(endpoint, method = 'GET', body = null) {
+  async apiRequest(endpoint, method = 'GET', body = null, returnErrorJson = false) {
     try {
       const headers = { 'Content-Type': 'application/json' };
       if (typeof authStore !== 'undefined') {
@@ -115,6 +115,15 @@ class SynchroAPI {
         this.updatePillUI(true);
         return await res.json();
       }
+      if (returnErrorJson) {
+        this.isOnline = true;
+        this.updatePillUI(true);
+        try {
+          return await res.json();
+        } catch (_) {
+          return { success: false, message: `HTTP ${res.status} (${res.statusText})` };
+        }
+      }
     } catch (e) {
       this.isOnline = false;
       this.updatePillUI(false);
@@ -135,7 +144,7 @@ class SynchroAPI {
   }
 
   async previewAutoApf(payload) {
-    return await this.apiRequest('/api/apf/auto-generate/preview', 'POST', payload);
+    return await this.apiRequest('/api/apf/auto-generate/preview', 'POST', payload, true);
   }
 
   async batchCreateApf(payload) {
@@ -162,6 +171,19 @@ class SynchroAPI {
 
   async deleteApfInmItem(id) {
     return await this.apiRequest(`/api/apf/inm/${id}`, 'DELETE');
+  }
+
+  // --- MÉTODOS DO AGENTE DE IA CFPS ---
+  async getAiSettings() {
+    return await this.apiRequest('/api/ai/settings', 'GET');
+  }
+
+  async saveAiSettings(payload) {
+    return await this.apiRequest('/api/ai/settings', 'PUT', payload, true);
+  }
+
+  async testAiConnection(payload) {
+    return await this.apiRequest('/api/ai/test', 'POST', payload, true);
   }
 }
 
@@ -13438,7 +13460,13 @@ function initApfEventListeners() {
   const btnRunAnalysis = document.getElementById('btn-run-apf-auto-analysis');
   if (btnRunAnalysis && !btnRunAnalysis.dataset.init) {
     btnRunAnalysis.dataset.init = 'true';
-    btnRunAnalysis.addEventListener('click', runApfAutoAnalysis);
+    btnRunAnalysis.addEventListener('click', () => runApfAutoAnalysis(false));
+  }
+
+  const btnRunReaudit = document.getElementById('btn-run-apf-auto-reaudit');
+  if (btnRunReaudit && !btnRunReaudit.dataset.init) {
+    btnRunReaudit.dataset.init = 'true';
+    btnRunReaudit.addEventListener('click', () => runApfAutoAnalysis(true));
   }
 
   // Botões Marcar Todos / Desmarcar Todos
@@ -13505,8 +13533,238 @@ function initApfEventListeners() {
     btnConfirmBatch.dataset.init = 'true';
     btnConfirmBatch.addEventListener('click', handleSaveApfAutoBatch);
   }
+
+  // Botões e formulário de Configuração do Agente de IA CFPS
+  const btnOpenAiCfg = document.getElementById('btn-open-ai-settings-modal');
+  if (btnOpenAiCfg && !btnOpenAiCfg.dataset.init) {
+    btnOpenAiCfg.dataset.init = 'true';
+    btnOpenAiCfg.addEventListener('click', openAiSettingsModal);
+  }
+
+  const btnAutoCfgAi = document.getElementById('btn-apf-auto-config-ai');
+  if (btnAutoCfgAi && !btnAutoCfgAi.dataset.init) {
+    btnAutoCfgAi.dataset.init = 'true';
+    btnAutoCfgAi.addEventListener('click', openAiSettingsModal);
+  }
+
+  initAiSettingsModalListeners();
+  refreshAiStatusIndicators();
 }
 window.initApfEventListeners = initApfEventListeners;
+
+let cachedAiProviders = [];
+let cachedAiSettings = null;
+let pendingClearAiKey = false;
+
+/**
+ * Atualiza indicadores visuais de status do Agente de IA na tela de APF e no Auditor CFPS.
+ */
+async function refreshAiStatusIndicators() {
+  if (typeof api === 'undefined') return;
+  try {
+    const res = await api.getAiSettings();
+    if (!res || !res.success) return;
+    cachedAiSettings = res.settings || null;
+    cachedAiProviders = Array.isArray(res.providers) ? res.providers : [];
+
+    const s = cachedAiSettings;
+    const isActive = Boolean(s && s.isReady);
+    const label = isActive
+      ? `🤖 IA Ativa: ${s.model}`
+      : (s && !s.enabled ? '🤖 IA Desativada (Local)' : '⚙️ Configurar IA (Sem Chave)');
+
+    ['btn-open-ai-settings-modal', 'btn-apf-auto-config-ai'].forEach(btnId => {
+      const btn = document.getElementById(btnId);
+      if (!btn) return;
+      btn.textContent = label;
+      if (isActive) {
+        btn.style.color = '#34d399';
+        btn.style.borderColor = 'rgba(52,211,153,0.45)';
+        btn.style.background = 'rgba(16,185,129,0.12)';
+      } else {
+        btn.style.color = '#fbbf24';
+        btn.style.borderColor = 'rgba(251,191,36,0.45)';
+        btn.style.background = 'rgba(245,158,11,0.12)';
+      }
+    });
+  } catch (_) { }
+}
+window.refreshAiStatusIndicators = refreshAiStatusIndicators;
+
+function initAiSettingsModalListeners() {
+  const providerSel = document.getElementById('ai-cfg-provider');
+  if (providerSel && !providerSel.dataset.init) {
+    providerSel.dataset.init = 'true';
+    providerSel.addEventListener('change', () => syncAiProviderFields(true));
+  }
+
+  const toggleVis = document.getElementById('btn-ai-toggle-key-vis');
+  if (toggleVis && !toggleVis.dataset.init) {
+    toggleVis.dataset.init = 'true';
+    toggleVis.addEventListener('click', () => {
+      const inp = document.getElementById('ai-cfg-api-key');
+      if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+    });
+  }
+
+  const clearBtn = document.getElementById('btn-ai-clear-key');
+  if (clearBtn && !clearBtn.dataset.init) {
+    clearBtn.dataset.init = 'true';
+    clearBtn.addEventListener('click', () => {
+      pendingClearAiKey = true;
+      const inp = document.getElementById('ai-cfg-api-key');
+      if (inp) inp.value = '';
+      const st = document.getElementById('ai-cfg-key-status');
+      if (st) st.textContent = '(chave será removida ao salvar)';
+      clearBtn.style.display = 'none';
+    });
+  }
+
+  const testBtn = document.getElementById('btn-ai-test-connection');
+  if (testBtn && !testBtn.dataset.init) {
+    testBtn.dataset.init = 'true';
+    testBtn.addEventListener('click', handleTestAiConnection);
+  }
+
+  const form = document.getElementById('form-ai-settings');
+  if (form && !form.dataset.init) {
+    form.dataset.init = 'true';
+    form.addEventListener('submit', handleSaveAiSettings);
+  }
+}
+
+function syncAiProviderFields(resetDefaults = false) {
+  const provider = document.getElementById('ai-cfg-provider')?.value || 'gemini';
+  const meta = cachedAiProviders.find(p => p.id === provider);
+  const modelInput = document.getElementById('ai-cfg-model');
+  const datalist = document.getElementById('ai-cfg-model-suggestions');
+  const baseUrlInput = document.getElementById('ai-cfg-base-url');
+  const baseUrlGroup = document.getElementById('ai-cfg-baseurl-group');
+
+  if (datalist && meta && Array.isArray(meta.suggestedModels)) {
+    datalist.innerHTML = meta.suggestedModels.map(m => `<option value="${escapeHtml(m)}"></option>`).join('');
+  }
+  if (resetDefaults && meta) {
+    if (modelInput) modelInput.value = meta.defaultModel || '';
+    if (baseUrlInput) baseUrlInput.value = provider === 'openai_compatible' ? (meta.defaultBaseUrl || '') : '';
+  }
+  if (baseUrlGroup) {
+    baseUrlGroup.style.display = 'block';
+  }
+}
+
+async function openAiSettingsModal() {
+  pendingClearAiKey = false;
+  const testBox = document.getElementById('ai-cfg-test-result');
+  if (testBox) testBox.style.display = 'none';
+
+  await refreshAiStatusIndicators();
+  const s = cachedAiSettings || {};
+
+  const enabledChk = document.getElementById('ai-cfg-enabled');
+  const fallbackChk = document.getElementById('ai-cfg-fallback');
+  const providerSel = document.getElementById('ai-cfg-provider');
+  const modelInp = document.getElementById('ai-cfg-model');
+  const keyInp = document.getElementById('ai-cfg-api-key');
+  const baseInp = document.getElementById('ai-cfg-base-url');
+  const keyStatus = document.getElementById('ai-cfg-key-status');
+  const clearBtn = document.getElementById('btn-ai-clear-key');
+
+  if (enabledChk) enabledChk.checked = s.enabled !== false;
+  if (fallbackChk) fallbackChk.checked = s.fallbackEnabled !== false;
+  if (providerSel) providerSel.value = s.provider || 'gemini';
+  syncAiProviderFields(false);
+
+  if (modelInp) modelInp.value = s.model || '';
+  if (keyInp) {
+    keyInp.value = '';
+    keyInp.type = 'password';
+  }
+  if (baseInp) baseInp.value = s.provider === 'openai_compatible' ? (s.baseUrl || '') : (s.baseUrl && !s.baseUrl.includes('googleapis.com') && !s.baseUrl.includes('api.openai.com') && !s.baseUrl.includes('anthropic.com') ? s.baseUrl : '');
+
+  if (keyStatus) {
+    if (s.hasApiKey) {
+      keyStatus.textContent = `(Ativa via ${s.apiKeySource === 'env' ? '.env/ambiente' : 'banco'}: ${s.apiKeyMasked})`;
+      keyStatus.style.color = '#34d399';
+    } else {
+      keyStatus.textContent = '(Nenhuma chave configurada)';
+      keyStatus.style.color = '#fbbf24';
+    }
+  }
+  if (clearBtn) {
+    clearBtn.style.display = s.apiKeySource === 'database' ? 'inline-flex' : 'none';
+  }
+
+  openModal('modal-ai-settings');
+}
+window.openAiSettingsModal = openAiSettingsModal;
+
+function collectAiSettingsFormPayload() {
+  const keyVal = document.getElementById('ai-cfg-api-key')?.value?.trim() || '';
+  return {
+    enabled: Boolean(document.getElementById('ai-cfg-enabled')?.checked),
+    fallbackEnabled: Boolean(document.getElementById('ai-cfg-fallback')?.checked),
+    provider: document.getElementById('ai-cfg-provider')?.value || 'gemini',
+    model: document.getElementById('ai-cfg-model')?.value?.trim() || '',
+    baseUrl: document.getElementById('ai-cfg-base-url')?.value?.trim() || '',
+    apiKey: keyVal || undefined,
+    clearApiKey: pendingClearAiKey && !keyVal
+  };
+}
+
+async function handleTestAiConnection() {
+  const testBox = document.getElementById('ai-cfg-test-result');
+  const testBtn = document.getElementById('btn-ai-test-connection');
+  if (testBox) {
+    testBox.style.display = 'block';
+    testBox.style.background = 'rgba(56,189,248,0.1)';
+    testBox.style.border = '1px solid rgba(56,189,248,0.3)';
+    testBox.style.color = '#38bdf8';
+    testBox.textContent = '⏳ Testando comunicação com o provedor de IA...';
+  }
+  if (testBtn) testBtn.disabled = true;
+
+  try {
+    const res = await api.testAiConnection(collectAiSettingsFormPayload());
+    if (res && res.success) {
+      if (testBox) {
+        testBox.style.background = 'rgba(16,185,129,0.12)';
+        testBox.style.border = '1px solid rgba(16,185,129,0.4)';
+        testBox.style.color = '#34d399';
+        testBox.textContent = `✅ Conexão confirmada! ${res.providerLabel} (${res.model}) respondeu em ${res.latencyMs}ms.`;
+      }
+      showToast('Conexão com Agente de IA validada!', 'success');
+    } else {
+      throw new Error(res?.message || 'Falha ao validar conexão.');
+    }
+  } catch (err) {
+    if (testBox) {
+      testBox.style.background = 'rgba(244,63,94,0.12)';
+      testBox.style.border = '1px solid rgba(244,63,94,0.4)';
+      testBox.style.color = '#fb7185';
+      testBox.textContent = `❌ Falha na conexão: ${err.message}`;
+    }
+  } finally {
+    if (testBtn) testBtn.disabled = false;
+  }
+}
+
+async function handleSaveAiSettings(e) {
+  e.preventDefault();
+  try {
+    const res = await api.saveAiSettings(collectAiSettingsFormPayload());
+    if (res && res.success) {
+      pendingClearAiKey = false;
+      await refreshAiStatusIndicators();
+      closeModal('modal-ai-settings');
+      showToast('Configurações do Agente de IA CFPS salvas com sucesso!', 'success');
+    } else {
+      showToast(res?.message || 'Erro ao salvar configuração de IA.', 'error');
+    }
+  } catch (err) {
+    showToast(`Erro ao salvar configuração: ${err.message}`, 'error');
+  }
+}
 
 // ==============================================================================
 // 13. Módulo de Geração Automática de APF & Auditoria CFPS
@@ -13576,6 +13834,7 @@ function openApfAutoModal(initialReqId = null, initialFeature = null) {
   }
 
   setApfAutoTab('ifpug');
+  refreshAiStatusIndicators();
 
   // Se veio pré-selecionado por Requisito
   if (initialReqId) {
@@ -13687,7 +13946,8 @@ window.updateApfAutoFeatureAndReqSelects = updateApfAutoFeatureAndReqSelects;
 /**
  * Executa a análise pericial e mensuração CFPS automática
  */
-async function runApfAutoAnalysis() {
+async function runApfAutoAnalysis(forceRefresh = false) {
+  const isForceRefresh = forceRefresh === true;
   const toggle = document.getElementById('apf-auto-mode-toggle');
   const activeBtn = toggle ? toggle.querySelector('.segment-btn.active') : null;
   const mode = activeBtn ? activeBtn.dataset.mode : 'req';
@@ -13719,11 +13979,13 @@ async function runApfAutoAnalysis() {
   }
 
   const resultsContainer = document.getElementById('apf-auto-results-container');
+  const engineChoice = document.getElementById('apf-auto-engine-select')?.value || 'auto';
+  const willUseAiText = engineChoice !== 'local' && cachedAiSettings?.isReady;
   if (resultsContainer) {
     resultsContainer.innerHTML = `
       <div style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
         <div class="spinner" style="margin: 0 auto 1rem; width: 36px; height: 36px; border: 3px solid rgba(168,85,247,0.2); border-top-color: #c084fc; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
-        <p style="font-size: 0.95rem; color: var(--text-main); font-weight: 600;">Executando Auditoria Especialista CFPS...</p>
+        <p style="font-size: 0.95rem; color: var(--text-main); font-weight: 600;">${willUseAiText ? `🤖 Agente de IA (${escapeHtml(cachedAiSettings.model)}) auditando requisito...` : 'Executando Auditoria Especialista CFPS...'}</p>
         <small style="color: var(--text-muted);">Analisando Fronteira, Funções de Negócio IFPUG (CPM 4.3.1) e Itens Não-Mensuráveis (FPN / SISP)...</small>
       </div>
     `;
@@ -13737,7 +13999,9 @@ async function runApfAutoAnalysis() {
       text: mode === 'spec' ? specText : '',
       countingType,
       operationType,
-      factor
+      factor,
+      engine: engineChoice,
+      forceRefresh: isForceRefresh
     };
 
     const res = await store.previewAutoApf(payload);
@@ -13795,6 +14059,36 @@ async function runApfAutoAnalysis() {
         const effFactorPct = Math.round(((candFactor !== undefined ? candFactor : (res.factor !== undefined ? res.factor : (factor || 1.0)))) * 100);
         const effCountingType = res.countingType || countingType;
         metaEl.textContent = `Projeto: ${pObj ? pObj.name : 'Geral'} | Tipo: ${effCountingType} [${res.operationType || operationType || 'ADD'}] (${effFactorPct}%)`;
+      }
+
+      // Badge do Motor Utilizado (IA vs Fallback / Local)
+      const engineBadge = document.getElementById('apf-auto-engine-badge');
+      if (engineBadge) {
+        const meta = res.aiMeta || {};
+        if (meta.usedAi) {
+          const secs = ((meta.latencyMs || 0) / 1000).toFixed(1);
+          engineBadge.textContent = meta.cached
+            ? `🤖 IA: ${meta.model} (Cache Determinístico)`
+            : `🤖 IA: ${meta.model} (${secs}s)`;
+          engineBadge.title = meta.cached
+            ? `Resultado determinístico reutilizado via ${meta.providerLabel} (${meta.model}). Clique em "Reauditar" para forçar nova leitura.`
+            : `Auditado via ${meta.providerLabel} (${meta.model}) com validação matricial IFPUG CPM 4.3.1.`;
+          engineBadge.style.background = 'rgba(16, 185, 129, 0.16)';
+          engineBadge.style.color = '#34d399';
+          engineBadge.style.border = '1px solid rgba(16, 185, 129, 0.45)';
+        } else if (meta.fallbackUsed) {
+          engineBadge.textContent = '⚠️ Fallback Local';
+          engineBadge.title = `Agente IA indisponível (${meta.fallbackReason || 'erro desconhecido'}). Executado com motor heurístico local.`;
+          engineBadge.style.background = 'rgba(245, 158, 11, 0.16)';
+          engineBadge.style.color = '#fbbf24';
+          engineBadge.style.border = '1px solid rgba(245, 158, 11, 0.45)';
+        } else {
+          engineBadge.textContent = '⚡ Motor Local';
+          engineBadge.title = meta.fallbackReason || 'Motor heurístico determinístico local.';
+          engineBadge.style.background = 'rgba(148, 163, 184, 0.16)';
+          engineBadge.style.color = '#cbd5e1';
+          engineBadge.style.border = '1px solid rgba(148, 163, 184, 0.35)';
+        }
       }
 
       // Badge de Natureza da Demanda
@@ -13918,7 +14212,7 @@ function renderApfAutoCandidates(candidates) {
           <span style="display: block; text-align: center; font-size: 0.63rem; color: var(--text-muted); margin-top: 2px; font-weight: 700;">${cand.operationType || 'ADD'} (${Math.round((cand.factor ?? 1.0) * 100)}%)</span>
         </div>
         <div>
-          <input type="text" class="custom-input apf-auto-name-input" data-idx="${idx}" value="${escapeHtml(cand.name)}" style="font-size: 0.82rem; padding: 4px 8px; font-weight: 600;">
+          <input type="text" class="custom-input apf-auto-name-input" data-idx="${idx}" value="${escapeHtml(cand.name)}" title="${escapeHtml(cand.name)}" style="font-size: 0.84rem; padding: 6px 10px; font-weight: 600;">
           <div class="apf-auto-rationale" title="${escapeHtml(cand.rationale || cand.notes)}">💡 ${escapeHtml(cand.rationale || cand.notes)}</div>
         </div>
         <div>

@@ -9,6 +9,9 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
+const aiAgent = require('./ai-cfps-agent');
+
+aiAgent.loadDotEnv(path.join(__dirname, '.env'));
 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -312,6 +315,21 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_apf_inm_project ON apf_inm_items(project_id);
   CREATE INDEX IF NOT EXISTS idx_apf_inm_req ON apf_inm_items(req_id);
   CREATE INDEX IF NOT EXISTS idx_apf_inm_created ON apf_inm_items(created_at ASC);
+
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS cfps_ai_cache (
+    cache_key TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_cfps_cache_created ON cfps_ai_cache(created_at DESC);
 `);
 
 // Migrações seguras de colunas em bases já existentes
@@ -1644,6 +1662,89 @@ function getFullApfInmItems() {
  */
 
 /**
+ * Normaliza rótulos de entidade em Title Case preservando preposições em minúsculo.
+ */
+function formatApfEntityLabel(raw) {
+  return (raw || '').trim().split(/\s+/).filter(Boolean).map(w => {
+    if (['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'para', 'com', 'ao', 'aos', 'via'].includes(w.toLowerCase())) {
+      return w.toLowerCase();
+    }
+    if (/^(?:api|crm|erp|sla|pix|cpf|cnpj|cep)$/i.test(w)) {
+      return w.toUpperCase();
+    }
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  }).join(' ');
+}
+
+/**
+ * Identifica se a especificação referencia dados mantidos por sistema/API externa (AIE),
+ * distinguindo chamadas a APIs oficiais/terceiros de cargas locais de arquivo ou APIs internas.
+ */
+function detectExternalInterfaceInfo(fullText, cleanTitle = '') {
+  const text = `${cleanTitle}\n${fullText}`;
+  const lowerText = text.toLowerCase();
+
+  const isBatchOrConversionLoad = /(?:importar\s+(?:lote|um\s+arquivo)|anexa\s+um\s+arquivo\s+de\s+carga|via\s+arquivo\s+csv|carga\s+de\s+convers[ãa]o|carga\s+inicial\s+de\s+legado|dump\s+legado|migra[çc][ãa]o\s+de\s+dados)/i.test(lowerText)
+    && !/(?:api|webservice|nuvem|receita\s+federal|governamental)/i.test(lowerText);
+  if (isBatchOrConversionLoad) {
+    return { isExternal: false, externalSourceName: '' };
+  }
+
+  const hasExplicitExternalKeyword = /(?:api\s+externa|api\s+de\s+[\p{L}\s]+hospedada\s+em\s+nuvem|integra[çc][ãa]o\s+externa|sistema\s+externo|servi[çc]o\s+externo|estrutura\s+externa|provedor\s+(?:de\s+software\s+)?externo|plataforma\s+externa|fonte\s+externa|base\s+externa|terceiros|gateway|correios|receita\s+federal|serasa|banco\s+central|sefaz|bacen|via\s*cep|gov\.br|open\s*finance|webservice\s+externo|sistema\s+legado|consulta\s+externa\s+via\s+api)/iu.test(lowerText);
+
+  // Detecta APIs oficiais ou nomeadas de terceiros sem cruzar quebras de linha (ex.: "via API Reclame Aqui", "na API oficial do Reclame Aqui")
+  const namedApiRegex = /(?:(?:via|na|da|pela|com[ \t]+a|atrav[ée]s[ \t]+d[ae]|integr(?:ar|a[çc][ãa]o)[ \t]+com(?:[ \t]+a)?)[ \t]+)?(?:api(?:[ \t]+(?:oficial|p[úu]blica|externa|rest|graphql))?|webservice)[ \t]+(?:(?:d[aeo]s?[ \t]+)?(?!(?:interna|interno|local|pr[óo]pria|pr[óo]prio|sistema|aplica[çc][ãa]o|plataforma|crm|erp|backend|rest|graphql|soap|http|json)\b)([\p{L}\p{N}_-]+(?:[ \t]+[\p{L}\p{N}_-]+){0,2}))/giu;
+  let namedMatch;
+  let capturedSource = '';
+  while ((namedMatch = namedApiRegex.exec(text)) !== null) {
+    const rawCandidate = (namedMatch[1] || '').split(/[\r\n]/)[0].trim()
+      .split(/\s+(?:para|que|com|em|no|na|e|ou|dos|das|de)\b/i)[0]
+      .replace(/[.,;:()"\n]+$/g, '')
+      .trim();
+    if (rawCandidate && !/^(?:interna|interno|local|pr[óo]pria|pr[óo]prio|sistema|aplica[çc][ãa]o|plataforma|crm|erp|dados|consulta|consultas|integra[çc][ãa]o|rest|graphql|soap)$/i.test(rawCandidate)) {
+      capturedSource = `API ${formatApfEntityLabel(rawCandidate)}`;
+      break;
+    }
+  }
+
+  const hasOfficialExternalApi = /\bapi\s+(?:oficial|p[úu]blica|de\s+terceiros)\b/i.test(lowerText);
+  const isExternal = hasExplicitExternalKeyword || hasOfficialExternalApi || Boolean(capturedSource);
+
+  return { isExternal, externalSourceName: capturedSource };
+}
+
+/**
+ * Verifica se já existe ALI ou AIE equivalente cadastrado no projeto para evitar dupla contagem.
+ */
+function projectHasDataFunction(projectId, functionType, candidateLabels = []) {
+  if (!projectId || projectId === 'all') return false;
+  try {
+    const existingRows = db.prepare(`SELECT name FROM apf_items WHERE project_id = ? AND function_type = ?`).all(projectId, functionType);
+    const normalizedTargets = candidateLabels
+      .map(l => (l || '').toLowerCase().replace(/\([^)]*\)/g, '').trim())
+      .filter(l => l.length > 2);
+    if (normalizedTargets.length === 0) return false;
+    return existingRows.some(row => {
+      const cleanedRowName = (row.name || '')
+        .toLowerCase()
+        .replace(/^(?:ali|aie)\s*-\s*(?:estrutura de dados|interface externa)\s*:\s*/i, '')
+        .replace(/\([^)]*\)/g, '')
+        .trim();
+      if (cleanedRowName.length <= 2) return false;
+      return normalizedTargets.some(target =>
+        cleanedRowName === target
+        || cleanedRowName.startsWith(`${target} `)
+        || cleanedRowName.startsWith(`${target}/`)
+        || target.startsWith(`${cleanedRowName} `)
+        || target.startsWith(`${cleanedRowName}/`)
+      );
+    });
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
  * Realiza a análise semântica e mensuração precisa de Pontos de Função (PF)
  * conforme IFPUG CPM 4.3.1 e Padrão SISP / Roteiro de Métricas.
  */
@@ -1672,35 +1773,33 @@ function analyzeCfpsSpecification(spec, options = {}) {
   const getCandidateFactor = (fnType, candOpType = resolvedOpType) =>
     getCountingTypeFactor(effectiveCountingType, customFactor, candOpType, fnType, fullText);
 
-  // 1. Análise de Fronteira e Intenção Primária
+  // 1. Análise de Fronteira e Intenção Primária (suporta formato clássico com vírgulas e bullets multilinha "Como: / Quero: / Para que:")
   let userRole = 'Usuário do Sistema';
   let userWant = title || 'operar processo de negócio';
   let userBenefit = 'atender aos objetivos operacionais e contratuais do negócio';
 
-  const storyMatch = fullText.match(/como\s+([^,]+),\s*(?:eu\s+)?quero\s+([^,]+)(?:,\s*para\s+que\s+([^.]+))?/i);
+  const storyMatch = fullText.match(/(?:^|[\n•\-*])\s*como\s*:\s*([^\n]+?)\s*(?:[\n•\-*]+\s*)?quero\s*:\s*([^\n]+?)(?:\s*(?:[\n•\-*]+\s*)?para\s+que\s*:\s*([^\n]+))?(?=\n|$)/im)
+    || fullText.match(/como\s*:?\s*([^,\n]+),\s*(?:eu\s+)?quero\s*:?\s*([^,\n]+)(?:,\s*para\s+que\s*:?\s*([^.\n]+))?/i);
   if (storyMatch) {
-    userRole = storyMatch[1].trim();
-    userWant = storyMatch[2].trim();
-    if (storyMatch[3]) userBenefit = storyMatch[3].trim();
+    userRole = storyMatch[1].trim().replace(/[.;]+$/, '');
+    userWant = storyMatch[2].trim().replace(/[.;]+$/, '');
+    if (storyMatch[3]) userBenefit = storyMatch[3].trim().replace(/[.;]+$/, '');
   }
 
-  // 2. Extração de Entidade Principal
+  // 2. Extração de Entidade Principal e Identificação de Interface Externa
   const isTechFeatureSlug = /^feat[_\-\s]*\d+$/i.test(feature);
   const cleanTitle = (title || '').replace(/^\s*\[[^\]]+\]\s*/, '').trim();
-  let entityName = (!isTechFeatureSlug && feature) ? feature : (cleanTitle || 'Entidade de Negócio');
-  const entityMatch = cleanTitle.match(/(?:manter|estrutura|gestão|cadastro|cadastrar|módulo|controle|extensão|consulta|consultar|calendário|registro|registo|administração|relatório|demonstrativo|dashboard|painel|extrato|fluxo|trilha|manutenção|listagem|exclusão|excluir|remover|alteração|alterar|integrar)(?:\s+[\p{L}]+){0,2}\s+(?:de|com|novo|nova)\s+([^,\.\n-]+?)(?:\s+para\s+incluir\s+.*)?$/iu)
-    || cleanTitle.match(/para\s+([^,\.\n-]+)/i);
+  const titleWithoutTransport = cleanTitle.replace(/\s+(?:via|atrav[ée]s\s+d[ae]|pela|na)\s+(?:a\s+)?(?:api|webservice|webhook)\b.*$/i, '').trim() || cleanTitle;
+  let entityName = (!isTechFeatureSlug && feature) ? feature : (titleWithoutTransport || 'Entidade de Negócio');
+  const entityMatch = titleWithoutTransport.match(/(?:manter|estrutura|gestão|cadastro|cadastrar|módulo|controle|extensão|consulta|consultar|calendário|registro|registo|administração|relatório|demonstrativo|dashboard|painel|extrato|fluxo|trilha|manutenção|listagem|exclusão|excluir|remover|alteração|alterar|integrar|ingestão|captura|sincronização|integração|importação)(?:\s+[\p{L}]+){0,2}\s+(?:de|com|novo|nova)\s+([^,\.\n-]+?)(?:\s+para\s+incluir\s+.*)?$/iu)
+    || titleWithoutTransport.match(/para\s+([^,\.\n-]+)/i);
   if (entityMatch && entityMatch[1] && entityMatch[1].trim().length > 2) {
     entityName = entityMatch[1].trim();
   } else if (!isTechFeatureSlug && feature && feature.length > 2) {
     entityName = feature;
   }
-  entityName = entityName.split(/\s+/).map(w => {
-    if (['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'para', 'com', 'ao', 'aos'].includes(w.toLowerCase())) {
-      return w.toLowerCase();
-    }
-    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-  }).join(' ');
+  entityName = formatApfEntityLabel(entityName);
+  const externalInfo = detectExternalInterfaceInfo(fullText, cleanTitle);
 
   // 3. Detecção de Fluxo de Autenticação / Ação Única e Extração Rigorosa de TDs (DETs) de Negócio
   const isAuthFlow = /(?:^|\b)(?:login|logar|logout|deslogar|encerrar\s+sessão|autentica(?:r|ção)|recupera(?:r|ção)\s+de?\s*senha|esqueci\s+(?:a\s+|minha\s+)?senha|redefinir\s+senha|troca(?:r)?\s+de?\s*senha|alterar\s+senha)(?:\b|$)/i.test(`${title} ${userWant}`);
@@ -2187,15 +2286,20 @@ function analyzeCfpsSpecification(spec, options = {}) {
   // 5. Contagem Tradicional IFPUG (CPM 4.3.1)
   const ifpugCandidates = [];
 
+  // Remove orações negativas ("sem alterar...", "não deve criar...") antes de testar persistência e verbos de escrita
+  const textWithoutWriteNegations = lowerText.replace(/\b(?:sem|nem|n[ãa]o\s+deve(?:\s+mais)?|n[ãa]o\s+pode)\s+(?:efetuar\s+|realizar\s+)?(?:altera(?:r|ção)|atualiza(?:r|ção)|modifica(?:r|ção)|excluir|remover|inativar|persistir|gravar|incluir|cadastrar|criar)\b[^.,;\n]*/gi, ' ');
+
   // Verifica se a demanda é exclusivamente técnica/cosmética (sem processo elementar ou função de dados de negócio)
   const isStrictlyDatabaseInfra = /(?:100%\s+de\s+infraestrutura|estritamente\s+t[ée]cnica\s+de\s+infraestrutura|sem\s+processos\s+elementares)/i.test(lowerText);
-  const hasBusinessProcessVerbs = !isStrictlyDatabaseInfra && /(?:incluir|cadastrar|cadastra|criar\s+registro|adicionar|registrar|registra|inserir|salvar|upload|importar|carregar|carregando|carga\s+de\s+convers[ãa]o|migrar\s+os\s+[\p{L}]+|autenticar|login|enviar|submeter|alterar|atualizar|atualiza|editar|modificar|aprovar|rejeitar|concluir|excluir|remover|deletar|inativar|desativar|cancelar|consultar|consultado|buscar|pesquisar|filtrar|listar|visualizar|exibir|exibe|detalhar|emitir|relatório|extrato|demonstrativo|calcular|cálculo|totalizar|manter|mantido|persistir|persiste|persista|\bali\b|\bcrud\b)/iu.test(lowerText);
+  const hasBusinessProcessVerbs = !isStrictlyDatabaseInfra && /(?:incluir|cadastrar|cadastra|criar\s+registro|criad[ao]\s+no\s+(?:crm|banco|sistema)|adicionar|registrar|registra|inserir|salvar|upload|importar|importad[ao]|carregar|carregando|carga\s+de\s+convers[ãa]o|migrar\s+os\s+[\p{L}]+|ingest[ãa]o|ingerir|capturar|capturad[ao]s?|integrar|integrad[ao]s?|autenticar|login|enviar|submeter|alterar|atualizar|atualiza|editar|modificar|aprovar|rejeitar|concluir|excluir|remover|deletar|inativar|desativar|cancelar|consultar|consultado|buscar|pesquisar|filtrar|listar|visualizar|exibir|exibe|detalhar|emitir|relatório|extrato|demonstrativo|calcular|cálculo|totalizar|manter|mantido|persistir|persiste|persista|persistid[ao]s?|\bali\b|\bcrud\b)/iu.test(textWithoutWriteNegations);
   const isPurelyTechnical = isStrictlyDatabaseInfra || (rawInmCandidates.length > 0 && !hasBusinessProcessVerbs);
 
-  // AIE: Arquivo de Interface Externa (somente se referenciar dados mantidos externamente, e não mero upload de arquivo CSV/lote local ou carga de conversão/dump legado)
-  const isBatchOrConversionLoad = /(?:importar\s+(?:lote|um\s+arquivo)|anexa\s+um\s+arquivo\s+de\s+carga|via\s+arquivo\s+csv|carga\s+de\s+convers[ãa]o|carga\s+inicial\s+de\s+legado|dump\s+legado|migra[çc][ãa]o\s+de\s+dados)/i.test(`${cleanTitle}\n${lowerText}`) && !/(?:api|webservice|nuvem|receita\s+federal|governamental)/i.test(lowerText);
-  const isExternal = !isBatchOrConversionLoad && /(?:api\s+externa|api\s+de\s+[\p{L}\s]+hospedada\s+em\s+nuvem|integração\s+externa|sistema\s+externo|serviço\s+externo|estrutura\s+externa|provedor\s+de\s+software\s+externo|base\s+externa|terceiros|gateway|correios|receita\s+federal|serasa|banco\s+central|webservice\s+externo|sistema\s+legado|consulta\s+externa\s+via\s+api)/i.test(lowerText);
-  if (isExternal && !isPurelyTechnical) {
+  // AIE: Arquivo de Interface Externa (dados mantidos externamente, acessados via API oficial/externa, webservice ou plataforma de terceiros)
+  const { isExternal, externalSourceName } = externalInfo;
+  const externalLabel = externalSourceName || entityName;
+  const aieAlreadyExistsInProject = isExternal && projectHasDataFunction(projectId, 'AIE', [externalSourceName, externalLabel, entityName]);
+
+  if (isExternal && !isPurelyTechnical && (!aieAlreadyExistsInProject || resolvedOpType === 'CHG')) {
     const aieFields = externalAieFields.length > 0 ? externalAieFields : detectedFields;
     const aieTd = aieFields.length > 0 ? aieFields.length : dataTd;
     const aieTr = inferredDataTr;
@@ -2206,7 +2310,7 @@ function analyzeCfpsSpecification(spec, options = {}) {
     ifpugCandidates.push({
       id: `cand_aie_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       functionType: 'AIE',
-      name: `AIE - Interface Externa: ${entityName}`,
+      name: `AIE - Interface Externa: ${externalLabel}`,
       category: 'Dados',
       operationType: resolvedOpType,
       primaryIntent: 'Referenciar dados lógicos mantidos e disponibilizados por sistema externo.',
@@ -2217,37 +2321,41 @@ function analyzeCfpsSpecification(spec, options = {}) {
       countingType,
       factor: candFactor,
       finalPf,
-      notes: `Grupo de dados mantido externamente referenciado pela aplicação (${aieTd} TDs [${aieFields.join(', ')}], ${aieTr} TR).`,
-      rationale: `Reconhecido como AIE devido à leitura/referência de dados mantidos fora da fronteira da aplicação (${aieTd} TDs, ${aieTr} TR).`
+      notes: `Grupo de dados mantido externamente referenciado pela aplicação via ${externalLabel} (${aieTd} TDs [${aieFields.join(', ')}], ${aieTr} TR).`,
+      rationale: `Reconhecido como AIE (${resolvedOpType}): leitura/referência de dados mantidos fora da fronteira da aplicação (${externalLabel}, ${aieTd} TDs, ${aieTr} TR).`
     });
   }
 
   // Regra 3 (Ciclo de Vida do ALI):
-  // Só gera um novo ALI se o requisito for explicitamente responsável por criar/manter a entidade no banco pela primeira vez.
-  // Se for apenas formulário de uso (ex.: login), busca, relatório ou transação sobre dados já persistidos, referencia apenas como AR/FTR.
+  // Só gera um novo ALI se o requisito criar/estruturar ou persistir pela primeira vez a entidade no banco/CRM do projeto.
+  // Se for apenas formulário de uso (ex.: login), busca, relatório ou transação sobre entidade já existente no projeto, referencia apenas como AR/FTR.
   const isUsageOrQueryOnly = /(?:^|\s)(?:login|autentica[çc][ãa]o|logar|recuperar\s+senha|esqueci\s+a\s+senha|consulta\s+de|listagem\s+de|busca\s+de|filtro\s+de|relat[óo]rio\s+de|extrato\s+de|dashboard\s+de|painel\s+de)/i.test(title)
-    || (!/(?:criar\s+(?:nova\s+)?(?:tabela|entidade|estrutura)|nova\s+entidade|novo\s+arquivo\s+l[óo]gico)/i.test(lowerText) &&
-      /^(?:como\s+[^,]+,\s*)?(?:eu\s+)?quero\s+(?:autenticar|logar|fazer\s+login|consultar|buscar|pesquisar|filtrar|listar|visualizar|emitir|exportar|calcular|alterar\s+status|aprovar|rejeitar|excluir|cancelar)\b/i.test(userStory || fullText));
+    || (!/(?:criar\s+(?:nova\s+)?(?:tabela|entidade|estrutura)|nova\s+entidade|novo\s+arquivo\s+l[óo]gico|devem\s+ser\s+persistid)/i.test(lowerText) &&
+      /^(?:que\s+(?:o|a)\s+[\p{L}]+\s+)?(?:autenticar|logar|fazer\s+login|consultar|buscar|pesquisar|filtrar|listar|visualizar|emitir|exportar|calcular|alterar\s+status|aprovar|rejeitar|excluir|cancelar)\b/iu.test(userWant));
 
   // Reconhecimento Estrutural de Funções de Dados (ALI):
-  // Detecta se o requisito especifica a estrutura/persistência de um Arquivo Lógico Interno (ex.: "Manter Estrutura",
-  // "manter o registo/registro", "persistência mestre-detalhe do ALI", "grupo lógico de dados", "entidade lógica interna").
   const isDataStructureSpecification = /(?:persist[êe]ncia\s+mestre[\s-]detalhe(?:\s+do\s+ali)?|grupo\s+l[óo]gico\s+de\s+dados|entidade\s+l[óo]gica\s+interna|integridade\s+referencial\s+do\s+subgrupo|subgrupos\s+l[óo]gicos\s+integrados|^manter\s+estrutura\s+de\b)/i.test(`${title}\n${lowerText}`);
 
+  const hasExplicitInternalPersistence = resolvedOpType === 'ADD'
+    && !isAuthFlow
+    && !isUsageOrQueryOnly
+    && (detectedFields.length >= 2 || /\b(?:crm|banco|entidade|demanda|manifesta[çc][ãa]o|reclama[çc][ãa]o)\b/i.test(lowerText))
+    && /(?:dados?\s*(?:\([^)]+\))?\s*(?:devem\s+ser|ser[ãa]o|s[ãa]o)\s+persistid[ao]s?|persistir\s+(?:os\s+)?dados|gravar\s+(?:os\s+)?dados\s+no\s+(?:banco|crm|sistema)|nova\s+(?!sess[ãa]o\b|consulta\b|busca\b)[\p{L}]+\s+deve\s+ser\s+criad[ao]\s+no\s+(?:banco|crm|sistema)|integrad[ao]s?\s+(?:automaticamente\s+)?(?:ao|no)\s+(?:crm|banco)|(?:persistir|gravar|salvar|armazenar)\s+(?:os\s+)?(?:dados|registros?)\s+(?:no\s+banco|na\s+base|no\s+crm))/iu.test(textWithoutWriteNegations);
+
   const hasExplicitAliCreation = isDataStructureSpecification
+    || hasExplicitInternalPersistence
     || /(?:criar\s+(?:nova\s+)?(?:tabela|entidade|estrutura\s+de\s+dados|arquivo\s+l[óo]gico|\bali\b)|nova\s+(?:entidade|tabela\s+de\s+neg[óo]cio)|implantar\s+cadastro\s+de|manter\s+(?:o\s+)?(?:cadastro|estrutura|registo|registro)(?:\s+completo)?\s+de|\bcrud\b|persistir\s+nova\s+entidade|armazenar\s+nova\s+entidade|persista\s+os\s+dados\s+cadastrais|armazena\s+internamente|(?:alterar|atualizar|atualiza|incluir\s+(?:novo\s+)?campo\s+n[ao])\s+(?:tabela|entidade|estrutura\s+de\s+dados|arquivo\s+l[óo]gico|\bali\b))/i.test(lowerText)
     || (/^(?:cadastro\s+de|manuten[çc][ãa]o\s+cadastral\s+de|gest[ãa]o\s+cadastral\s+de|manter\s+estrutura\s+de)\s+/i.test(title) && !isUsageOrQueryOnly && resolvedOpType === 'ADD');
 
-  let aliAlreadyExistsInProject = false;
-  if (projectId && projectId !== 'all') {
-    try {
-      const existingAlis = db.prepare(`SELECT name FROM apf_items WHERE project_id = ? AND function_type = 'ALI'`).all(projectId);
-      const normEntity = entityName.toLowerCase().trim();
-      aliAlreadyExistsInProject = existingAlis.some(row => (row.name || '').toLowerCase().includes(normEntity));
-    } catch (e) { }
-  }
+  const aliLabelCandidates = [entityName];
+  if (/\bdemanda/i.test(lowerText)) aliLabelCandidates.push('demandas');
+  if (/\bmanifesta[çc]/i.test(lowerText)) aliLabelCandidates.push('manifestações');
+  const aliAlreadyExistsInProject = projectHasDataFunction(projectId, 'ALI', aliLabelCandidates);
 
-  if (hasExplicitAliCreation && !isUsageOrQueryOnly && !isPurelyTechnical && (!aliAlreadyExistsInProject || resolvedOpType === 'CHG')) {
+  if (hasExplicitAliCreation && !isAuthFlow && !isUsageOrQueryOnly && !isPurelyTechnical && (!aliAlreadyExistsInProject || resolvedOpType === 'CHG')) {
+    const aliEntityLabel = (/\bcrm\b/i.test(lowerText) && !/\bcrm\b/i.test(entityName))
+      ? `${entityName} (CRM)`
+      : entityName;
     const aliTd = dataTd;
     const aliTr = inferredDataTr;
     const complexity = calculateApfComplexity('ALI', aliTr, aliTd);
@@ -2257,7 +2365,7 @@ function analyzeCfpsSpecification(spec, options = {}) {
     ifpugCandidates.push({
       id: `cand_ali_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       functionType: 'ALI',
-      name: `ALI - Estrutura de Dados: ${entityName}`,
+      name: `ALI - Estrutura de Dados: ${aliEntityLabel}`,
       category: 'Dados',
       operationType: resolvedOpType,
       primaryIntent: 'Armazenar e manter dados lógicos relacionais de negócio dentro da fronteira da aplicação.',
@@ -2269,7 +2377,7 @@ function analyzeCfpsSpecification(spec, options = {}) {
       factor: candFactor,
       finalPf,
       notes: `Arquivo Lógico Interno criado/mantido dentro da fronteira da aplicação (${aliTd} TDs [${detectedFields.join(', ')}], ${aliTr} TR(s) — sem +2 TDs de controle).`,
-      rationale: `Reconhecido como ALI (${resolvedOpType}): requisito responsável pela estrutura/persistência da entidade no banco com ${aliTd} TD(s) de negócio e ${aliTr} TR(s) (${aliTr > 1 ? 'Mestre + Detalhe subordinado' : 'Entidade simples'}).`
+      rationale: `Reconhecido como ALI (${resolvedOpType}): requisito responsável pela estrutura/persistência da entidade no banco/CRM com ${aliTd} TD(s) de negócio e ${aliTr} TR(s) (${aliTr > 1 ? 'Mestre + Detalhe subordinado' : 'Entidade simples'}).`
     });
   }
 
@@ -2277,6 +2385,11 @@ function analyzeCfpsSpecification(spec, options = {}) {
   if (!isPurelyTechnical && !isDataStructureSpecification) {
     const isFullCrud = /\bcrud\b|manter\s+cadastro\s+completo/i.test(lowerText);
     const txAr = isExternal ? Math.max(inferredTransAr, 2) : inferredTransAr;
+    const eeArSummary = detectedArEntities.length > 1
+      ? `${txAr} ARs (${detectedArEntities.join(', ')})`
+      : (isExternal && txAr >= 2
+        ? `${txAr} ARs (${entityName} [ALI] + ${externalLabel} [AIE])`
+        : `${txAr} AR referenciado`);
 
     if (isAuthFlow) {
       // Regra de Supressão de CE Fantasma e Escopo Estrito de EE em Autenticação / Login / 2FA:
@@ -2315,14 +2428,11 @@ function analyzeCfpsSpecification(spec, options = {}) {
       // Detecta se o processo principal é estritamente uma exclusão ou inativação lógica (evitando duplicar EE de atualização + EE de inativação)
       const isPrimaryInactivationOrDeletion = /(?:inativa[çc][ãa]o\s+l[óo]gica|submete\s+a\s+inativa[çc][ãa]o|^excluir\s+|^remover\s+|^inativar\s+)/i.test(`${cleanTitle}\n${lowerText}`);
 
-      // Remove orações negativas ("sem alterar...", "sem excluir...", "sem persistir...") antes de testar verbos de escrita de EE
-      const textWithoutWriteNegations = lowerText.replace(/\b(?:sem|nem)\s+(?:efetuar\s+|realizar\s+)?(?:altera(?:r|ção)|atualiza(?:r|ção)|modifica(?:r|ção)|excluir|remover|inativar|persistir|gravar|incluir|cadastrar)\b[^.,;\n]*/gi, ' ');
-
-      // EE (Entrada Externa) - Inclusão / Registro / Submissão / Conversão (CFP)
+      // EE (Entrada Externa) - Inclusão / Registro / Submissão / Ingestão / Integração (CFP)
       const textWithoutFieldAddition = textWithoutWriteNegations
         .replace(/(?:incluir|adicionar|inserir)\s+(?:novo\s+|novos\s+)?(?:campo|campos|atributo|atributos|coluna|colunas)/gi, ' ')
         .replace(/registrar\s+a\s+compet[êe]ncia/gi, ' ');
-      const hasInclusion = !isPrimaryAnalyticalOutput && !isPrimaryInactivationOrDeletion && (isFullCrud || /\b(?:incluir|cadastrar|cadastra|criar\s+novo|adicionar|registrar|registra|inserir|salvar|upload|importar|carregar|carregando|carga\s+de\s+convers[ãa]o|autenticar|login|logar|enviar|submeter)\b/i.test(textWithoutFieldAddition));
+      const hasInclusion = !isPrimaryAnalyticalOutput && !isPrimaryInactivationOrDeletion && (isFullCrud || /\b(?:incluir|cadastrar|cadastra|criar\s+novo|criad[ao]\s+no\s+(?:crm|banco|sistema)|adicionar|registrar|registra|inserir|salvar|upload|importar|importad[ao]|carregar|carregando|carga\s+de\s+convers[ãa]o|ingest[ãa]o|ingerir|capturar|capturad[ao]s?|integrar|integrad[ao]s?|persistid[ao]s?|autenticar|login|logar|enviar|submeter)\b/i.test(textWithoutFieldAddition));
       if (hasInclusion) {
         const eeAddTd = transactionTd;
         const eeAddAr = txAr;
@@ -2344,8 +2454,8 @@ function analyzeCfpsSpecification(spec, options = {}) {
           countingType,
           factor: candFactor,
           finalPf,
-          notes: `Processo elementar de entrada (${eeAddTd} TDs = ${businessTdCount} atributo(s) + 1 acionamento + 1 mensagem; ${eeAddAr} AR referenciado).`,
-          rationale: `Entrada Externa (EE • ${resolvedOpType}): ${eeAddTd} TDs (${businessTdCount} negócio + 2 controle) e ${eeAddAr} AR(s).`
+          notes: `Processo elementar de entrada (${eeAddTd} TDs = ${businessTdCount} atributo(s) + 1 acionamento + 1 mensagem; ${eeArSummary}).`,
+          rationale: `Entrada Externa (EE • ${resolvedOpType}): ${eeAddTd} TDs (${businessTdCount} negócio + 2 controle) e ${eeArSummary}.`
         });
       }
 
@@ -2544,7 +2654,14 @@ function analyzeCfpsSpecification(spec, options = {}) {
   }
 
   if (!ifpugCandidates.some(c => c.functionType === 'ALI') && hasElementaryTransaction) {
-    auditorNotes.push(`Ciclo de Vida do ALI: Como o requisito trata de transação/consulta/uso sobre dados existentes, a entidade "${entityName}" foi contabilizada apenas como Arquivo Referenciado (1 AR/FTR), sem gerar novo ALI duplicado.`);
+    const arNoteCount = isExternal ? Math.max(inferredTransAr, 2) : inferredTransAr;
+    auditorNotes.push(`Ciclo de Vida do ALI: Como o requisito trata de transação/consulta sobre entidade já existente${aliAlreadyExistsInProject ? ' no projeto' : ''}, a entidade "${entityName}" foi contabilizada apenas como Arquivo Referenciado (${arNoteCount} AR/FTR), sem gerar novo ALI duplicado.`);
+  }
+  if (ifpugCandidates.some(c => c.functionType === 'ALI')) {
+    auditorNotes.push(`Função de Dados Interna (ALI): Entidade lógica "${entityName}" mantida dentro da fronteira da aplicação contabilizada com ${dataTd} TD(s) de negócio (sem +2 TDs de controle).`);
+  }
+  if (ifpugCandidates.some(c => c.functionType === 'AIE')) {
+    auditorNotes.push(`Arquivo de Interface Externa (AIE): Dados lógicos mantidos externamente por "${externalLabel}" e referenciados através da fronteira da aplicação.`);
   }
   if (absorbedInmCandidates.length > 0) {
     auditorNotes.push(`Trava de Exclusão Mútua (SISP): ${absorbedInmCandidates.length} item(ns) de interface/menu/máscara/apoio (${absorbedInmCandidates.map(a => a.itemName).join(', ')}) foram marcados como ABSORVIDOS (0,00 PF) pois já integram o Processo Elementar IFPUG mensurado.`);
@@ -2823,6 +2940,440 @@ function inferApfFromFeature(projectId, featureName, options = {}) {
       countCe: allCandidates.filter(c => c.functionType === 'CE').length
     }
   };
+}
+
+/**
+ * Lê configurações salvas do Agente de IA CFPS no SQLite.
+ */
+function getSavedAiSettings() {
+  try {
+    const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('ai_cfps_config');
+    return row ? JSON.parse(row.value) : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+/**
+ * Retorna a configuração efetiva de IA mesclando banco + variáveis de ambiente.
+ */
+function getEffectiveAiSettings() {
+  return aiAgent.resolveEffectiveAiConfig(getSavedAiSettings());
+}
+
+/**
+ * Persiste configurações de IA no SQLite preservando a chave anterior se não alterada.
+ */
+function saveAiSettings(data = {}) {
+  const existing = getSavedAiSettings();
+  const next = {
+    enabled: data.enabled !== undefined ? Boolean(data.enabled) : (existing.enabled !== undefined ? existing.enabled : true),
+    fallbackEnabled: data.fallbackEnabled !== undefined ? Boolean(data.fallbackEnabled) : (existing.fallbackEnabled !== undefined ? existing.fallbackEnabled : true),
+    provider: (data.provider || existing.provider || 'gemini').trim().toLowerCase(),
+    model: (data.model !== undefined ? data.model : (existing.model || '')).trim(),
+    baseUrl: (data.baseUrl !== undefined ? data.baseUrl : (existing.baseUrl || '')).trim(),
+    apiKey: existing.apiKey || ''
+  };
+
+  if (data.clearApiKey === true) {
+    next.apiKey = '';
+  } else if (typeof data.apiKey === 'string') {
+    const incomingKey = data.apiKey.trim();
+    if (incomingKey && !incomingKey.includes('••••')) {
+      next.apiKey = incomingKey;
+    }
+  }
+
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO app_settings (key, value, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `).run('ai_cfps_config', JSON.stringify(next), now);
+
+  return aiAgent.resolveEffectiveAiConfig(next);
+}
+
+/**
+ * Carrega inventário atual de ALIs e AIEs cadastrados no projeto para evitar dupla contagem pela IA.
+ */
+function getProjectDataInventory(projectId) {
+  if (!projectId || projectId === 'all') {
+    return { existingAlis: [], existingAies: [] };
+  }
+  try {
+    const rows = db.prepare(`SELECT name, function_type, td, ar_tr FROM apf_items WHERE project_id = ? AND function_type IN ('ALI', 'AIE')`).all(projectId);
+    return {
+      existingAlis: rows.filter(r => r.function_type === 'ALI'),
+      existingAies: rows.filter(r => r.function_type === 'AIE')
+    };
+  } catch (_) {
+    return { existingAlis: [], existingAies: [] };
+  }
+}
+
+/**
+ * Reconcilia a decomposição semântica da IA com as matrizes matemáticas IFPUG CPM 4.3.1 e travas SISP.
+ */
+function reconcileAiCfpsResult(aiRun, spec, options = {}) {
+  const { parsed, latencyMs, provider, providerLabel, model } = aiRun;
+  const countingType = options.countingType || spec.countingType || 'Desenvolvimento';
+  const explicitOpType = (options.operationType || spec.operationType || '').toUpperCase().trim();
+  const customFactor = options.factor !== undefined ? options.factor : spec.factor;
+
+  const fullText = [spec.title, spec.feature, spec.userStory || spec.user_story, spec.bdd, spec.text || spec.specification].filter(Boolean).join('\n');
+  const rootOpType = (explicitOpType === 'ADD' || explicitOpType === 'CHG' || explicitOpType === 'DEL')
+    ? explicitOpType
+    : (['ADD', 'CHG', 'DEL'].includes(parsed.operationType) ? parsed.operationType : 'ADD');
+
+  const effectiveCountingType = ((rootOpType === 'CHG' || rootOpType === 'DEL') && countingType === 'Desenvolvimento')
+    ? 'Melhoria'
+    : countingType;
+
+  const catalogByKey = new Map(DEFAULT_INM_CATALOG.map(it => [it.key, it]));
+  if (catalogByKey.has('webhook_tecnico')) {
+    catalogByKey.set('job_webhook_rotina', catalogByKey.get('webhook_tecnico'));
+  }
+  const fnOrder = { ALI: 1, AIE: 2, EE: 3, SE: 4, CE: 5 };
+  const validFnTypes = new Set(Object.keys(fnOrder));
+  const seenCandidateKeys = new Set();
+
+  const ifpugCandidates = (parsed.functions || [])
+    .filter(fn => fn && validFnTypes.has((fn.functionType || '').toUpperCase()))
+    .map((fn, idx) => {
+      const fnType = fn.functionType.toUpperCase();
+      const candOp = (explicitOpType === 'ADD' || explicitOpType === 'CHG' || explicitOpType === 'DEL')
+        ? explicitOpType
+        : (['ADD', 'CHG', 'DEL'].includes(fn.operationType) ? fn.operationType : rootOpType);
+      const isDataFn = fnType === 'ALI' || fnType === 'AIE';
+      const rawTdList = Array.isArray(fn.tdList) ? fn.tdList.map(x => String(x || '').trim()).filter(Boolean) : [];
+      const cleanedTdList = isDataFn
+        ? rawTdList.filter(f => !/^(?:acionamento|gatilho|bot[ãa]o|submit|mensagem(?:\s+de\s+retorno)?|log\s+de\s+retorno|feedback)/i.test(f))
+        : rawTdList;
+      const rawArList = Array.isArray(fn.arTrList) ? fn.arTrList.map(x => String(x || '').trim()).filter(Boolean) : [];
+
+      let td = Math.max(1, parseInt(fn.td, 10) || 1);
+      if (isDataFn && cleanedTdList.length > 0 && cleanedTdList.length < rawTdList.length) {
+        td = cleanedTdList.length;
+      } else if (!isDataFn) {
+        td = Math.max(3, td, cleanedTdList.length);
+      }
+
+      let arTr = Math.max(1, parseInt(fn.arTr, 10) || 1);
+      if (rawArList.length > 0) {
+        arTr = Math.max(arTr, rawArList.length);
+      }
+
+      const complexity = calculateApfComplexity(fnType, arTr, td);
+      const rawPf = calculateApfRawPf(fnType, complexity);
+      const factor = getCountingTypeFactor(effectiveCountingType, customFactor, candOp, fnType, fullText);
+      const finalPf = calculateApfFinalPf(rawPf, factor);
+      const tdDetail = cleanedTdList.join(', ');
+      const arDetail = rawArList.join(', ');
+
+      return {
+        id: `cand_ai_${fnType.toLowerCase()}_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 5)}`,
+        functionType: fnType,
+        name: (fn.name || `${fnType} - ${parsed.entityName || spec.title || 'Função'}`).trim(),
+        category: isDataFn ? 'Dados' : 'Transação',
+        operationType: candOp,
+        primaryIntent: (fn.primaryIntent || '').trim(),
+        td,
+        arTr,
+        complexity,
+        rawPf,
+        countingType: effectiveCountingType,
+        factor,
+        finalPf,
+        notes: `${td} TD(s)${tdDetail ? ` [${tdDetail}]` : ''}; ${arTr} ${isDataFn ? 'TR(s)' : 'AR(s)'}${arDetail ? ` [${arDetail}]` : ''}.`,
+        rationale: (fn.rationale || '').trim() || `Classificado via Agente CFPS (${model}) conforme IFPUG CPM 4.3.1.`
+      };
+    })
+    .filter(cand => {
+      const dedupKey = `${cand.functionType}:${cand.name.toLowerCase().replace(/\s+/g, ' ').trim()}`;
+      if (seenCandidateKeys.has(dedupKey)) return false;
+      seenCandidateKeys.add(dedupKey);
+      return true;
+    })
+    .sort((a, b) => (fnOrder[a.functionType] || 99) - (fnOrder[b.functionType] || 99));
+
+  const hasAnyIfpug = ifpugCandidates.length > 0;
+  const inmCandidates = [];
+  const absorbedInmCandidates = [];
+
+  (parsed.inmItems || []).forEach((item, idx) => {
+    const catItem = catalogByKey.get(item?.catalogKey);
+    if (!catItem) return;
+    const quantity = Math.max(0.1, Number(item.quantity) || 1);
+    const baseSubtotal = Math.round(quantity * catItem.unitWeight * 100) / 100;
+    const isAbsorbed = hasAnyIfpug || Boolean(item.absorbed);
+
+    if (isAbsorbed) {
+      absorbedInmCandidates.push({
+        id: `cand_ai_inm_${Date.now()}_${idx}`,
+        catalogKey: catItem.key,
+        itemName: catItem.name,
+        category: catItem.category,
+        absorbableByIfpug: true,
+        quantity,
+        unitWeight: catItem.unitWeight,
+        originalPf: baseSubtotal,
+        calculatedPf: 0,
+        subtotalPf: 0,
+        absorbed: true,
+        selected: false,
+        status: 'Absorvido pelo IFPUG',
+        justification: `[ABSORVIDO PELA FUNÇÃO IFPUG — SISP] ${item.justification || catItem.description}`,
+        evidence: `Auditado pelo Agente IA (${model}).`
+      });
+    } else {
+      inmCandidates.push({
+        id: `cand_ai_inm_${Date.now()}_${idx}`,
+        catalogKey: catItem.key,
+        itemName: catItem.name,
+        category: catItem.category,
+        absorbableByIfpug: false,
+        quantity,
+        unitWeight: catItem.unitWeight,
+        calculatedPf: baseSubtotal,
+        subtotalPf: baseSubtotal,
+        absorbed: false,
+        selected: true,
+        status: 'Aprovado',
+        justification: item.justification || catItem.description,
+        evidence: `Auditado pelo Agente IA (${model}).`
+      });
+    }
+  });
+
+  let nature = 'Pura IFPUG';
+  let natureExplanation = 'Mensuração pericial IFPUG CPM 4.3.1 realizada por Agente Especialista IA com validação matemática determinística.';
+  if (ifpugCandidates.length > 0 && inmCandidates.length > 0) {
+    nature = 'Híbrido';
+    natureExplanation = 'A entrega combina funções IFPUG tradicionais e itens não-mensuráveis SISP avulsos.';
+  } else if (ifpugCandidates.length === 0 && inmCandidates.length > 0) {
+    nature = 'Item Não-Mensurável';
+    natureExplanation = 'Demanda exclusivamente técnica tabelada pelo Roteiro de Métricas SISP (FPN).';
+  }
+
+  const totalRawIfpugPf = ifpugCandidates.reduce((s, c) => s + (c.rawPf || 0), 0);
+  const totalFinalIfpugPf = Math.round(ifpugCandidates.reduce((s, c) => s + (c.finalPf || 0), 0) * 100) / 100;
+  const totalInmPf = Math.round(inmCandidates.reduce((s, c) => s + (c.subtotalPf || 0), 0) * 100) / 100;
+  const totalGlobalPf = Math.round((totalFinalIfpugPf + totalInmPf) * 100) / 100;
+
+  const detectedFields = Array.isArray(parsed.detectedFields) ? parsed.detectedFields : [];
+  const auditorNotes = Array.isArray(parsed.auditorNotes) ? [...parsed.auditorNotes] : [];
+  if (parsed.boundarySummary) {
+    auditorNotes.unshift(`Fronteira da Aplicação (IA): ${parsed.boundarySummary}`);
+  }
+
+  let reportMarkdown = `## 1. Decomposição do Requisito (Agente CFPS • ${providerLabel} / ${model})\n`;
+  reportMarkdown += `- **Resumo da Intenção do Usuário:** Como ${parsed.userRole || 'Usuário'}, necessita ${parsed.userWant || spec.title || 'processo funcional'} a fim de ${parsed.userBenefit || 'atender ao objetivo de negócio'}.\n`;
+  reportMarkdown += `- **Fronteira da Aplicação:** ${parsed.boundarySummary || 'Fronteira delimitada conforme IFPUG CPM 4.3.1.'} (${effectiveCountingType} • Operação: ${rootOpType}).\n`;
+  reportMarkdown += `- **Natureza da Demanda:** **${nature}** — ${natureExplanation}\n\n`;
+  reportMarkdown += `## 2. Memória de Cálculo Detalhada\n\n`;
+
+  if (ifpugCandidates.length > 0) {
+    reportMarkdown += `### A. Funções de Negócio Tradicionais (IFPUG CPM 4.3.1)\n`;
+    reportMarkdown += `| Tipo | Operação | Nome do Processo / Entidade | TDs (DET) | TRs/ARs | Complexidade | PF Bruto | Fator SISP | PF Líquido |\n`;
+    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`;
+    ifpugCandidates.forEach(c => {
+      const arTrLabel = (c.functionType === 'ALI' || c.functionType === 'AIE') ? `${c.arTr} TR` : `${c.arTr} AR`;
+      const factorPct = `${Math.round((c.factor || 1) * 100)}%`;
+      reportMarkdown += `| **${c.functionType}** | \`${c.operationType}\` | ${c.name} | ${c.td} | ${arTrLabel} | ${c.complexity} | ${c.rawPf} PF | ${factorPct} | **${c.finalPf.toFixed(2)} PF** |\n`;
+    });
+    reportMarkdown += `\n`;
+  }
+
+  if (inmCandidates.length > 0 || absorbedInmCandidates.length > 0) {
+    reportMarkdown += `### B. Itens Não-Mensuráveis / Complementares (FPN • Padrão SISP)\n`;
+    reportMarkdown += `| Item Técnico Identificado | Status SISP | Qtd ($Q$) | Peso ($P$) | Justificativa / Regra de Exclusão Mútua | Subtotal (PF) |\n`;
+    reportMarkdown += `| :--- | :--- | :--- | :--- | :--- | :--- |\n`;
+    inmCandidates.forEach(inm => {
+      reportMarkdown += `| ${inm.itemName} | **Pontuado** | ${inm.quantity} | ${inm.unitWeight.toFixed(2)} PF | ${inm.justification} | **${inm.subtotalPf.toFixed(2)} PF** |\n`;
+    });
+    absorbedInmCandidates.forEach(abs => {
+      reportMarkdown += `| ~${abs.itemName}~ | **Absorvido** | ${abs.quantity} | ${abs.unitWeight.toFixed(2)} PF | ${abs.justification} | **0.00 PF** |\n`;
+    });
+    reportMarkdown += `\n`;
+  }
+
+  reportMarkdown += `## 3. Totalização Consolidada\n`;
+  reportMarkdown += `- **PF de Negócio (IFPUG Líquido):** ${totalFinalIfpugPf.toFixed(2)} PF (PF Bruto: ${totalRawIfpugPf} PF)\n`;
+  reportMarkdown += `- **PF Não-Mensuráveis (FPN Líquido Não Absorvido):** ${totalInmPf.toFixed(2)} PF\n`;
+  reportMarkdown += `- **Total Global da Entrega:** **${totalGlobalPf.toFixed(2)} PF**\n\n`;
+
+  if (auditorNotes.length > 0) {
+    reportMarkdown += `## 4. Notas Técnicas e Observações do Auditor CFPS\n`;
+    auditorNotes.forEach(note => { reportMarkdown += `- ${note}\n`; });
+  }
+
+  return {
+    sourceType: spec.id ? 'requirement' : (spec.feature ? 'feature' : 'specification'),
+    sourceId: spec.id || '',
+    sourceCode: spec.code || '',
+    sourceTitle: spec.title || spec.feature || 'Especificação Funcional',
+    feature: spec.feature || '',
+    projectId: spec.projectId || spec.project_id || '',
+    countingType: effectiveCountingType,
+    operationType: rootOpType,
+    nature,
+    natureExplanation,
+    userRole: parsed.userRole || '',
+    userWant: parsed.userWant || '',
+    userBenefit: parsed.userBenefit || '',
+    detectedFields,
+    candidates: ifpugCandidates,
+    inmCandidates,
+    absorbedInmCandidates,
+    totalRawIfpugPf,
+    totalFinalIfpugPf,
+    totalInmPf,
+    totalGlobalPf,
+    auditorNotes,
+    reportMarkdown,
+    aiMeta: {
+      usedAi: true,
+      cached: Boolean(aiRun.cached),
+      provider,
+      providerLabel,
+      model,
+      latencyMs,
+      fallbackUsed: false,
+      fallbackReason: ''
+    },
+    summary: {
+      nature,
+      operationType: rootOpType,
+      totalFunctions: ifpugCandidates.length,
+      totalInmCount: inmCandidates.length,
+      totalAbsorbedInmCount: absorbedInmCandidates.length,
+      totalRawPf: totalRawIfpugPf,
+      totalFinalIfpugPf,
+      totalInmPf,
+      totalGlobalPf,
+      countAli: ifpugCandidates.filter(c => c.functionType === 'ALI').length,
+      countAie: ifpugCandidates.filter(c => c.functionType === 'AIE').length,
+      countEe: ifpugCandidates.filter(c => c.functionType === 'EE').length,
+      countSe: ifpugCandidates.filter(c => c.functionType === 'SE').length,
+      countCe: ifpugCandidates.filter(c => c.functionType === 'CE').length
+    }
+  };
+}
+
+/**
+ * Executa auditoria CFPS via Agente de IA com cache determinístico por conteúdo + fallback seguro.
+ */
+async function executeAiCfpsWithCache(spec, context, options, localFallbackFn) {
+  const effectiveConfig = getEffectiveAiSettings();
+  const forceLocal = options.engine === 'local';
+  const forceRefresh = Boolean(options.forceRefresh);
+
+  if (!forceLocal && effectiveConfig.isReady) {
+    const cacheKey = aiAgent.computeCfpsCacheKey(spec, context, effectiveConfig, options);
+    if (!forceRefresh) {
+      try {
+        const cachedRow = db.prepare('SELECT provider, model, payload_json FROM cfps_ai_cache WHERE cache_key = ?').get(cacheKey);
+        if (cachedRow) {
+          const parsedCached = JSON.parse(cachedRow.payload_json);
+          return reconcileAiCfpsResult({
+            parsed: parsedCached,
+            latencyMs: 0,
+            cached: true,
+            provider: cachedRow.provider,
+            providerLabel: effectiveConfig.providerLabel,
+            model: cachedRow.model
+          }, spec, options);
+        }
+      } catch (_) { }
+    }
+
+    try {
+      const aiRun = await aiAgent.runAiCfpsAnalysis(spec, context, effectiveConfig);
+      try {
+        db.prepare(`
+          INSERT INTO cfps_ai_cache (cache_key, provider, model, payload_json, created_at)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(cache_key) DO UPDATE SET provider = excluded.provider, model = excluded.model, payload_json = excluded.payload_json, created_at = excluded.created_at
+        `).run(cacheKey, aiRun.provider, aiRun.model, JSON.stringify(aiRun.parsed), new Date().toISOString());
+      } catch (_) { }
+      return reconcileAiCfpsResult({ ...aiRun, cached: false }, spec, options);
+    } catch (aiErr) {
+      console.warn(`⚠️ Falha no Agente IA CFPS (${effectiveConfig.provider}/${effectiveConfig.model}):`, aiErr.message);
+      if (!effectiveConfig.fallbackEnabled && options.engine === 'ai') {
+        throw aiErr;
+      }
+      const fallback = localFallbackFn();
+      fallback.aiMeta = {
+        usedAi: false,
+        cached: false,
+        provider: effectiveConfig.provider,
+        providerLabel: effectiveConfig.providerLabel,
+        model: effectiveConfig.model,
+        latencyMs: 0,
+        fallbackUsed: true,
+        fallbackReason: aiErr.message
+      };
+      return fallback;
+    }
+  }
+
+  const localRes = localFallbackFn();
+  localRes.aiMeta = {
+    usedAi: false,
+    cached: false,
+    provider: effectiveConfig.provider,
+    providerLabel: effectiveConfig.providerLabel,
+    model: effectiveConfig.model,
+    latencyMs: 0,
+    fallbackUsed: false,
+    fallbackReason: forceLocal
+      ? 'Modo heurístico local selecionado manualmente.'
+      : (effectiveConfig.enabled ? 'Nenhuma API Key configurada para o provedor de IA.' : 'Agente de IA desativado nas configurações.')
+  };
+  return localRes;
+}
+
+/**
+ * Orquestra auditoria CFPS de um requisito ou especificação usando Agente de IA + cache + fallback.
+ */
+async function analyzeCfpsWithAiOrFallback(spec, options = {}) {
+  const projectId = spec.projectId || spec.project_id || options.projectId || '';
+  const { existingAlis, existingAies } = getProjectDataInventory(projectId);
+  const context = {
+    countingType: options.countingType || 'Desenvolvimento',
+    operationType: options.operationType || '',
+    existingAlis,
+    existingAies
+  };
+  return await executeAiCfpsWithCache(spec, context, options, () => analyzeCfpsSpecification(spec, options));
+}
+
+/**
+ * Orquestra auditoria CFPS de Feature consolidada usando Agente de IA + cache + fallback.
+ */
+async function analyzeFeatureWithAiOrFallback(projectId, featureName, options = {}) {
+  let query = 'SELECT * FROM requirements WHERE feature = ?';
+  const params = [featureName];
+  if (projectId && projectId !== 'all') {
+    query += ' AND project_id = ?';
+    params.push(projectId);
+  }
+  const featureRequirements = db.prepare(query).all(...params);
+  const spec = { title: featureName, feature: featureName, projectId };
+  const { existingAlis, existingAies } = getProjectDataInventory(projectId);
+  const context = {
+    countingType: options.countingType || 'Desenvolvimento',
+    operationType: options.operationType || '',
+    existingAlis,
+    existingAies,
+    featureRequirements
+  };
+
+  const result = await executeAiCfpsWithCache(spec, context, options, () => inferApfFromFeature(projectId, featureName, options));
+  result.sourceType = 'feature';
+  result.requirementsCount = featureRequirements.length;
+  return result;
 }
 
 
@@ -4518,10 +5069,102 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 12.0. API de Geração Automática de APF (Preview e Batch com Motor CFPS)
+    // 11.9. API de Configuração e Teste do Agente de IA CFPS
+    if (pathname === '/api/ai/settings') {
+      if (method === 'GET') {
+        const eff = getEffectiveAiSettings();
+        const providers = Object.values(aiAgent.PROVIDER_CATALOG).map(p => ({
+          id: p.id,
+          label: p.label,
+          defaultModel: p.defaultModel,
+          suggestedModels: p.suggestedModels,
+          defaultBaseUrl: p.defaultBaseUrl,
+          requiresApiKey: p.requiresApiKey
+        }));
+        return sendJson(res, 200, {
+          success: true,
+          settings: {
+            enabled: eff.enabled,
+            fallbackEnabled: eff.fallbackEnabled,
+            provider: eff.provider,
+            providerLabel: eff.providerLabel,
+            model: eff.model,
+            baseUrl: eff.baseUrl,
+            hasApiKey: eff.hasApiKey,
+            apiKeyMasked: eff.apiKeyMasked,
+            apiKeySource: eff.apiKeySource,
+            requiresApiKey: eff.requiresApiKey,
+            isReady: eff.isReady
+          },
+          providers
+        });
+      }
+
+      if (method === 'PUT') {
+        const callerRole = req.headers['x-user-role'] || req.headers['x-role'];
+        if (callerRole === 'dev' || callerRole === 'qa') {
+          return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para alterar configurações do Agente de IA.' });
+        }
+        const body = await parseJsonBody(req);
+        const eff = saveAiSettings(body);
+        const actor = getActorFromReq(req);
+        logAudit({
+          entityType: 'ai_config',
+          entityId: 'ai_cfps_config',
+          entityTitle: `Agente CFPS (${eff.providerLabel})`,
+          action: 'UPDATE',
+          ...actor,
+          details: `Atualizou configurações do Agente de IA CFPS: provedor ${eff.providerLabel}, modelo "${eff.model}", status ${eff.enabled ? 'Ativo' : 'Desativado'}.`
+        });
+        return sendJson(res, 200, {
+          success: true,
+          settings: {
+            enabled: eff.enabled,
+            fallbackEnabled: eff.fallbackEnabled,
+            provider: eff.provider,
+            providerLabel: eff.providerLabel,
+            model: eff.model,
+            baseUrl: eff.baseUrl,
+            hasApiKey: eff.hasApiKey,
+            apiKeyMasked: eff.apiKeyMasked,
+            apiKeySource: eff.apiKeySource,
+            requiresApiKey: eff.requiresApiKey,
+            isReady: eff.isReady
+          }
+        });
+      }
+    }
+
+    if (pathname === '/api/ai/test' && method === 'POST') {
+      const callerRole = req.headers['x-user-role'] || req.headers['x-role'];
+      if (callerRole === 'dev' || callerRole === 'qa') {
+        return sendJson(res, 403, { success: false, message: 'Permissão negada para testar credenciais de IA.' });
+      }
+      const body = await parseJsonBody(req);
+      const saved = getSavedAiSettings();
+      const candidateOverride = {
+        ...saved,
+        provider: (body.provider || saved.provider || 'gemini').trim().toLowerCase(),
+        model: (body.model !== undefined ? body.model : (saved.model || '')).trim(),
+        baseUrl: (body.baseUrl !== undefined ? body.baseUrl : (saved.baseUrl || '')).trim(),
+        enabled: true
+      };
+      if (typeof body.apiKey === 'string' && body.apiKey.trim() && !body.apiKey.includes('••••')) {
+        candidateOverride.apiKey = body.apiKey.trim();
+      }
+      const effTest = aiAgent.resolveEffectiveAiConfig(candidateOverride);
+      try {
+        const testRes = await aiAgent.testAiConnection(effTest);
+        return sendJson(res, 200, { success: true, ...testRes });
+      } catch (err) {
+        return sendJson(res, 400, { success: false, message: err.message, provider: effTest.provider, model: effTest.model });
+      }
+    }
+
+    // 12.0. API de Geração Automática de APF (Preview e Batch com Motor CFPS + Agente de IA)
     if (pathname === '/api/apf/auto-generate/preview' && method === 'POST') {
       const body = await parseJsonBody(req);
-      const { reqId, feature, projectId, countingType, operationType, factor, text, userStory, bdd, specification } = body;
+      const { reqId, feature, projectId, countingType, operationType, factor, text, userStory, bdd, specification, engine, forceRefresh } = body;
 
       let result;
       if (reqId) {
@@ -4529,19 +5172,19 @@ const server = http.createServer(async (req, res) => {
         if (!reqRow) {
           return sendJson(res, 404, { success: false, message: 'Requisito não encontrado.' });
         }
-        result = analyzeCfpsSpecification(reqRow, { countingType, operationType, factor });
+        result = await analyzeCfpsWithAiOrFallback(reqRow, { countingType, operationType, factor, engine, projectId, forceRefresh });
       } else if (text || userStory || bdd || specification) {
         // Modo Auditoria Direta de História de Usuário / BDD Livre
-        result = analyzeCfpsSpecification({
+        result = await analyzeCfpsWithAiOrFallback({
           title: body.title || 'Especificação Sob Demanda',
           userStory: userStory || text || specification,
           bdd: bdd || '',
           text: text || specification || '',
           feature: feature || '',
           projectId: projectId || ''
-        }, { countingType, operationType, factor });
+        }, { countingType, operationType, factor, engine, projectId, forceRefresh });
       } else if (feature) {
-        result = inferApfFromFeature(projectId, feature, { countingType, operationType, factor });
+        result = await analyzeFeatureWithAiOrFallback(projectId, feature, { countingType, operationType, factor, engine, forceRefresh });
       } else {
         return sendJson(res, 400, { success: false, message: 'Informe reqId, feature ou texto com a história/BDD para análise de APF.' });
       }
@@ -4567,6 +5210,7 @@ const server = http.createServer(async (req, res) => {
         absorbedInmCandidates: result.absorbedInmCandidates || [],
         auditorNotes: result.auditorNotes || [],
         reportMarkdown: result.reportMarkdown || '',
+        aiMeta: result.aiMeta || null,
         summary: result.summary
       });
     }
@@ -5247,7 +5891,14 @@ const server = http.createServer(async (req, res) => {
     // --------------------------------------------------------------------------
     // SERVIDOR DE ARQUIVOS ESTÁTICOS (Frontend Synchro PRO)
     // --------------------------------------------------------------------------
-    let filePath = path.join(__dirname, pathname === '/' ? 'index.html' : pathname);
+    const normalizedPath = pathname === '/' ? '/index.html' : pathname;
+    const isProtectedAsset = normalizedPath.includes('/.')
+      || /\.(db|db-wal|db-shm|env|sh)$/i.test(normalizedPath)
+      || /^\/(?:server\.js|ai-cfps-agent\.js|package(?:-lock)?\.json|dockerfile|docker-compose\.yml)$/i.test(normalizedPath);
+
+    let filePath = isProtectedAsset
+      ? path.join(__dirname, 'index.html')
+      : path.join(__dirname, normalizedPath);
     if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
       filePath = path.join(__dirname, 'index.html');
     }

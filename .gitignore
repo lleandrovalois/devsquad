@@ -7,3 +7,4 @@ synchro.db-wal
 synchro.db-shm
 .tools/
 scratch/
+.env
