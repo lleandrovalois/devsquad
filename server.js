@@ -10,6 +10,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const aiAgent = require('./ai-cfps-agent');
+const {
+  IFPUG_RAW_PF,
+  calculateApfComplexity,
+  calculateApfRawPf,
+  calculateApfFinalPf
+} = require('./ifpug-rules');
 
 aiAgent.loadDotEnv(path.join(__dirname, '.env'));
 
@@ -1244,118 +1250,7 @@ function getApfCategory(type) {
   return 'Transação'; // EE, SE, CE
 }
 
-function calculateApfComplexity(type, arTr, td) {
-  const normType = (type || '').toUpperCase().trim();
-  const arTrVal = Math.max(0, parseInt(arTr, 10) || 0);
-  const tdVal = Math.max(1, parseInt(td, 10) || 1);
-
-  // ALI / AIE: Arquivo Lógico Interno e Arquivo de Interface Externa
-  // TRs \ TDs | 1 a 19 TDs | 20 a 50 TDs | 51+ TDs
-  // 1 TR      |   Baixa    |    Baixa    |  Média
-  // 2 a 5 TRs |   Baixa    |    Média    |  Alta
-  // 6+ TRs    |   Média    |    Alta     |  Alta
-  if (normType === 'ALI' || normType === 'AIE') {
-    const tr = Math.max(1, arTrVal);
-    if (tr === 1) {
-      if (tdVal <= 19) return 'Baixa';
-      if (tdVal <= 50) return 'Baixa';
-      return 'Média'; // 51+
-    } else if (tr >= 2 && tr <= 5) {
-      if (tdVal <= 19) return 'Baixa';
-      if (tdVal <= 50) return 'Média';
-      return 'Alta'; // 51+
-    } else { // tr >= 6
-      if (tdVal <= 19) return 'Média';
-      if (tdVal <= 50) return 'Alta';
-      return 'Alta'; // 51+
-    }
-  }
-
-  // EE: Entrada Externa
-  // ARs \ TDs | 1 a 4 TDs | 5 a 15 TDs | 16+ TDs
-  // 0 ou 1 AR |   Baixa   |   Baixa    |  Média
-  // 2 ARs     |   Baixa   |   Média    |  Alta
-  // 3+ ARs    |   Média   |   Alta     |  Alta
-  if (normType === 'EE') {
-    const ar = arTrVal;
-    if (ar <= 1) {
-      if (tdVal <= 4) return 'Baixa';
-      if (tdVal <= 15) return 'Baixa';
-      return 'Média'; // 16+
-    } else if (ar === 2) {
-      if (tdVal <= 4) return 'Baixa';
-      if (tdVal <= 15) return 'Média';
-      return 'Alta'; // 16+
-    } else { // ar >= 3
-      if (tdVal <= 4) return 'Média';
-      if (tdVal <= 15) return 'Alta';
-      return 'Alta'; // 16+
-    }
-  }
-
-  // SE: Saída Externa
-  // ARs \ TDs | 1 a 5 TDs | 6 a 19 TDs | 20+ TDs
-  // 0 ou 1 AR |   Baixa   |   Baixa    |  Média
-  // 2 ou 3 ARs|   Baixa   |   Média    |  Alta
-  // 4+ ARs    |   Média   |   Alta     |  Alta
-  if (normType === 'SE') {
-    const ar = arTrVal;
-    if (ar <= 1) {
-      if (tdVal <= 5) return 'Baixa';
-      if (tdVal <= 19) return 'Baixa';
-      return 'Média'; // 20+
-    } else if (ar >= 2 && ar <= 3) {
-      if (tdVal <= 5) return 'Baixa';
-      if (tdVal <= 19) return 'Média';
-      return 'Alta'; // 20+
-    } else { // ar >= 4
-      if (tdVal <= 5) return 'Média';
-      if (tdVal <= 19) return 'Alta';
-      return 'Alta'; // 20+
-    }
-  }
-
-  // CE: Consulta Externa
-  // ARs \ TDs | 1 a 4 TDs | 5 a 19 TDs | 20+ TDs
-  // 0 ou 1 AR |   Baixa   |   Baixa    |  Média
-  // 2 ou 3 ARs|   Baixa   |   Média    |  Alta
-  // 4+ ARs    |   Média   |   Alta     |  Alta
-  if (normType === 'CE') {
-    const ar = arTrVal;
-    if (ar <= 1) {
-      if (tdVal <= 4) return 'Baixa';
-      if (tdVal <= 19) return 'Baixa';
-      return 'Média'; // 20+
-    } else if (ar >= 2 && ar <= 3) {
-      if (tdVal <= 4) return 'Baixa';
-      if (tdVal <= 19) return 'Média';
-      return 'Alta'; // 20+
-    } else { // ar >= 4
-      if (tdVal <= 4) return 'Média';
-      if (tdVal <= 19) return 'Alta';
-      return 'Alta'; // 20+
-    }
-  }
-
-  return 'Média';
-}
-
-const IFPUG_RAW_PF = {
-  ALI: { 'Baixa': 7, 'Média': 10, 'Alta': 15 },
-  AIE: { 'Baixa': 5, 'Média': 7, 'Alta': 10 },
-  EE: { 'Baixa': 3, 'Média': 4, 'Alta': 6 },
-  SE: { 'Baixa': 4, 'Média': 5, 'Alta': 7 },
-  CE: { 'Baixa': 3, 'Média': 4, 'Alta': 6 }
-};
-
-function calculateApfRawPf(type, complexity) {
-  const normType = (type || '').toUpperCase().trim();
-  const c = complexity || 'Média';
-  if (IFPUG_RAW_PF[normType] && IFPUG_RAW_PF[normType][c] !== undefined) {
-    return IFPUG_RAW_PF[normType][c];
-  }
-  return 4;
-}
+// Regras normativas de complexidade e PF Bruto importadas de ./ifpug-rules.js
 
 // Tabela de Deflatores Contratuais por Tipo de Contagem e Operação de Melhoria (IFPUG CPM 4.3.1 + SISP v2.3)
 const COUNTING_TYPE_FACTORS = {
@@ -1471,11 +1366,7 @@ function getCountingTypeFactor(countingType, customFactor, operationType = null,
   return COUNTING_TYPE_FACTORS[ct] !== undefined ? COUNTING_TYPE_FACTORS[ct] : 1.0;
 }
 
-function calculateApfFinalPf(rawPf, factor) {
-  const f = parseFloat(factor);
-  const factorVal = isNaN(f) ? 1.0 : f;
-  return Math.round((rawPf * factorVal) * 100) / 100;
-}
+// calculateApfFinalPf importado de ./ifpug-rules.js
 
 function getFullApfItems() {
   try {

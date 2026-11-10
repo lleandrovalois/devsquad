@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node --no-warnings --experimental-sqlite server.js",
-    "start:local": ".\\.tools\\node\\node.exe --no-warnings --experimental-sqlite server.js"
+    "start:local": ".\\.tools\\node\\node.exe --no-warnings --experimental-sqlite server.js",
+    "test": "node --test tests/*.test.js"
   },
   "engines": {
     "node": "22.x"

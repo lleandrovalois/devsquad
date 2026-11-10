@@ -11457,104 +11457,17 @@ window.getApfCategory = getApfCategory;
  * @param {number} td Quantidade de Tipos de Dados (TD/DET)
  * @returns {string} 'Baixa', 'Média' ou 'Alta'
  */
+// Regras IFPUG CPM 4.3.1 centralizadas em ifpug-rules.js (carregado via window.IfpugRules)
 function calculateApfComplexity(type, arTr, td) {
-  const normType = (type || '').toUpperCase().trim();
-  const arTrVal = Math.max(0, parseInt(arTr, 10) || 0);
-  const tdVal = Math.max(1, parseInt(td, 10) || 1);
-
-  // 1. Funções de Dados: ALI (Arquivo Lógico Interno) e AIE (Arquivo de Interface Externa)
-  if (normType === 'ALI' || normType === 'AIE') {
-    const tr = Math.max(1, arTrVal);
-    if (tr === 1) {
-      if (tdVal <= 19) return 'Baixa';
-      if (tdVal <= 50) return 'Baixa';
-      return 'Média'; // 51+
-    } else if (tr >= 2 && tr <= 5) {
-      if (tdVal <= 19) return 'Baixa';
-      if (tdVal <= 50) return 'Média';
-      return 'Alta'; // 51+
-    } else { // tr >= 6
-      if (tdVal <= 19) return 'Média';
-      if (tdVal <= 50) return 'Alta';
-      return 'Alta'; // 51+
-    }
-  }
-
-  // 2. Função de Transação: EE (Entrada Externa)
-  if (normType === 'EE') {
-    const ar = arTrVal;
-    if (ar <= 1) {
-      if (tdVal <= 4) return 'Baixa';
-      if (tdVal <= 15) return 'Baixa';
-      return 'Média'; // 16+
-    } else if (ar === 2) {
-      if (tdVal <= 4) return 'Baixa';
-      if (tdVal <= 15) return 'Média';
-      return 'Alta'; // 16+
-    } else { // ar >= 3
-      if (tdVal <= 4) return 'Média';
-      if (tdVal <= 15) return 'Alta';
-      return 'Alta'; // 16+
-    }
-  }
-
-  // 3. Função de Transação: SE (Saída Externa)
-  if (normType === 'SE') {
-    const ar = arTrVal;
-    if (ar <= 1) {
-      if (tdVal <= 5) return 'Baixa';
-      if (tdVal <= 19) return 'Baixa';
-      return 'Média'; // 20+
-    } else if (ar >= 2 && ar <= 3) {
-      if (tdVal <= 5) return 'Baixa';
-      if (tdVal <= 19) return 'Média';
-      return 'Alta'; // 20+
-    } else { // ar >= 4
-      if (tdVal <= 5) return 'Média';
-      if (tdVal <= 19) return 'Alta';
-      return 'Alta'; // 20+
-    }
-  }
-
-  // 4. Função de Transação: CE (Consulta Externa)
-  if (normType === 'CE') {
-    const ar = arTrVal;
-    if (ar <= 1) {
-      if (tdVal <= 4) return 'Baixa';
-      if (tdVal <= 19) return 'Baixa';
-      return 'Média'; // 20+
-    } else if (ar >= 2 && ar <= 3) {
-      if (tdVal <= 4) return 'Baixa';
-      if (tdVal <= 19) return 'Média';
-      return 'Alta'; // 20+
-    } else { // ar >= 4
-      if (tdVal <= 4) return 'Média';
-      if (tdVal <= 19) return 'Alta';
-      return 'Alta'; // 20+
-    }
-  }
-
-  return 'Média';
+  return window.IfpugRules.calculateApfComplexity(type, arTr, td);
 }
 window.calculateApfComplexity = calculateApfComplexity;
 
-// Tabela Oficial de Pontos de Função Não Ajustados (PF Bruto IFPUG)
-const IFPUG_RAW_PF = {
-  ALI: { 'Baixa': 7, 'Média': 10, 'Alta': 15 },
-  AIE: { 'Baixa': 5, 'Média': 7,  'Alta': 10 },
-  EE:  { 'Baixa': 3, 'Média': 4,  'Alta': 6  },
-  SE:  { 'Baixa': 4, 'Média': 5,  'Alta': 7  },
-  CE:  { 'Baixa': 3, 'Média': 4,  'Alta': 6  }
-};
+const IFPUG_RAW_PF = window.IfpugRules.IFPUG_RAW_PF;
 window.IFPUG_RAW_PF = IFPUG_RAW_PF;
 
 function calculateApfRawPf(type, complexity) {
-  const normType = (type || '').toUpperCase().trim();
-  const c = complexity || 'Média';
-  if (IFPUG_RAW_PF[normType] && IFPUG_RAW_PF[normType][c] !== undefined) {
-    return IFPUG_RAW_PF[normType][c];
-  }
-  return 4;
+  return window.IfpugRules.calculateApfRawPf(type, complexity);
 }
 window.calculateApfRawPf = calculateApfRawPf;
 
@@ -11600,9 +11513,7 @@ function getCountingTypeDefaultFactor(countingType, customFactor, operationType 
 window.getCountingTypeDefaultFactor = getCountingTypeDefaultFactor;
 
 function calculateApfFinalPf(rawPf, factor) {
-  const f = parseFloat(factor);
-  const factorVal = isNaN(f) ? 1.0 : f;
-  return Math.round((rawPf * factorVal) * 100) / 100;
+  return window.IfpugRules.calculateApfFinalPf(rawPf, factor);
 }
 window.calculateApfFinalPf = calculateApfFinalPf;
 
