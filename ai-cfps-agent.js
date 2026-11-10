@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-const CFPS_PROMPT_VERSION = '2026-11-10-v3';
+const CFPS_PROMPT_VERSION = '2026-11-10-v5';
 
 const PROVIDER_CATALOG = {
   gemini: {
@@ -278,16 +278,16 @@ Sua missão é decompor o escopo funcional informado (Requisito, Feature ou Hist
 DIRETRIZES OBRIGATÓRIAS DE CONTAGEM (IFPUG CPM 4.3.1 + SISP):
 
 1. FRONTEIRA DA APLICAÇÃO (BOUNDARY):
-   - Identifique com clareza o que pertence ao sistema sendo medido versus o que reside em sistemas/APIs/plataformas externas (ex.: Reclame Aqui, Correios, Receita Federal, Gateways de Pagamento, Webservices de terceiros).
-   - Atenção: APIs, webhooks ou bancos externos consumidos/lidos pela aplicação caracterizam dados mantidos FORA da fronteira (candidatos a AIE). Já APIs internas do próprio sistema são apenas camada técnica interna.
+   - Identifique com clareza o que pertence ao sistema sendo medido versus o que reside em sistemas/APIs/plataformas externas de terceiros (ex.: Reclame Aqui, Web Service RDR/BCB, Correios, Receita Federal, Gateways de Pagamento).
+   - Atenção: APIs, webhooks ou bancos externos de TERCEIROS consumidos/lidos pela aplicação caracterizam dados mantidos FORA da fronteira (candidatos a AIE). Já APIs internas, portais do próprio sistema ("Portal Externo de Ouvidoria") e filas/mensageria internas pertencem à fronteira da aplicação (não são AIE).
 
-2. FUNÇÕES DE DADOS — ALI e AIE:
+2. FUNÇÕES DE DADOS — ALI e AIE (RESPEITAR O TIPO DE CONTAGEM!):
    - ALI (Arquivo Lógico Interno): Grupo lógico de dados mantido DENTRO da fronteira da aplicação por meio de pelo menos um processo elementar.
    - AIE (Arquivo de Interface Externa): Grupo lógico de dados apenas referenciado/lido pela aplicação, mantido por OUTRA aplicação fora da fronteira.
-   - REGRA CRÍTICA DE INVENTÁRIO (NÃO DUPLICAR): Consulte a lista de ALIs e AIEs já existentes no projeto fornecida no prompt.
-     * Se um ALI equivalente JÁ existe no inventário do projeto e o requisito não altera sua estrutura de campos/tabelas (operação ADD de transação/consulta sobre tabela existente, ou melhoria de fluxo), NÃO gere novo ALI! Referencie-o apenas como AR/FTR nas transações.
-     * Se o projeto NÃO possui esse ALI no inventário e o requisito é de Desenvolvimento Novo (ADD) criando/persistindo essa entidade lógica no banco/CRM pela primeira vez (ex.: ingestão/cadastro que persiste uma nova entidade com seus atributos no CRM/banco), CONTE o ALI (operação ADD) uma única vez!
-     * Da mesma forma, não duplique AIE se uma interface externa do MESMO sistema/provedor já estiver cadastrada no inventário do projeto (compare semanticamente por sistema externo: ex., "API RDR/BCB", "Web Service do BCB", "Endpoint RDR" e "API de Anexos do RDR BCB" representam o mesmo sistema externo RDR/BCB; só gere novo AIE se for outro provedor/sistema externo ou CHG estrutural).
+   - REGRA CRÍTICA POR TIPO DE CONTAGEM (DESENVOLVIMENTO NOVO vs MELHORIA):
+     * QUANDO "Tipo de Contagem" FOR "Desenvolvimento" (Desenvolvimento Novo): NÃO assuma que os ALIs já sejam pré-existentes! Inclua OBRIGATORIAMENTE todos os ALIs criados ou mantidos pelas transações identificadas (ex.: EE de cadastro, registro, submissão, ingestão, fila/persistência de demandas, atualização de protocolo/status), contando cada ALI distinto uma única vez no escopo auditado (operação ADD). Só não crie ALI em fluxos estritamente de Login/Autenticação ou consultas/relatórios 100% somente leitura sem manutenção de dados.
+     * QUANDO "Tipo de Contagem" FOR "Melhoria" / manutenção: Consulte a lista de ALIs já cadastrados no inventário do projeto. Se o ALI equivalente já existe no inventário e não sofre alteração estrutural de campos/TRs, NÃO gere novo ALI (assuma-o como pré-existente e referencie apenas como AR/FTR nas transações).
+     * PARA AIEs: Consulte existingAies — não duplique AIE se uma interface externa do MESMO sistema/provedor de terceiros já estiver cadastrada no inventário (ex.: "API RDR/BCB", "Web Service do BCB", "Endpoint RDR" e "API de Anexos do RDR BCB" representam o mesmo sistema externo RDR/BCB; só gere novo AIE se for outro provedor externo ou CHG estrutural).
    - CONTAGEM DE TDs E TRs EM ALI/AIE:
      * Conte estritamente os atributos/campos de negócio persistidos ou referenciados (incluindo origem/status/chaves reconhecíveis pelo usuário).
      * NUNCA some os +2 TDs de controle de tela/mensagem em funções de dados (ALI/AIE).
@@ -296,13 +296,15 @@ DIRETRIZES OBRIGATÓRIAS DE CONTAGEM (IFPUG CPM 4.3.1 + SISP):
 3. FUNÇÕES TRANSACIONAIS (PROCESSOS ELEMENTARES) — EE, SE, CE:
    - REGRA DE OPERAÇÃO (ADD vs CHG vs DEL):
      * Quando o Tipo de Contagem for "Desenvolvimento" (Desenvolvimento Novo) e o usuário não selecionar explicitamente CHG ou DEL, processos criados pela primeira vez para a aplicação são SEMPRE operação "ADD" (100%).
-     * ATENÇÃO: Transicionar/atualizar o status de um registro ou persistir recibo/protocolo em um ALI existente (ex.: "alterando o status da demanda para Respondida", "manter o status em Erro", "persistir o protocolo no histórico") faz parte da lógica normal de uma nova EE (ADD) — NUNCA classifique isso como "CHG" (Melhoria) em um projeto de Desenvolvimento Novo!
+     * ATENÇÃO: Transicionar/atualizar o status de um registro ou persistir recibo/protocolo em um ALI (ex.: "alterando o status da demanda para Respondida", "manter o status em Erro", "persistir o protocolo no histórico") faz parte da lógica normal de uma nova EE (ADD) — NUNCA classifique isso como "CHG" (Melhoria) em um projeto de Desenvolvimento Novo!
      * Só use "CHG" em contagens de Melhoria/Manutenção ou quando o requisito pedir explicitamente alterar/evoluir um processo elementar já implementado anteriormente.
    - Cada processo elementar deve ser a menor unidade de atividade significativa para o usuário e autocontida (que deixa o negócio em estado consistente).
-   - EE (Entrada Externa): Processa dados ou informações de controle vindos de fora da fronteira (usuário, arquivo, scheduler/webhook consumindo API externa) com intenção primária de manter um ou mais ALIs ou alterar comportamento do sistema.
+   - EE (Entrada Externa): Processa dados ou informações de controle vindos de fora da fronteira (usuário, formulário/portal, arquivo, scheduler/webhook consumindo API externa) com intenção primária de manter um ou mais ALIs ou alterar comportamento do sistema.
      * Exemplo típico de integração/ingestão via API externa: um único processo elementar EE que captura os registros da API externa (1 AR = AIE), valida duplicidade/idempotência e grava no banco interno (1 AR = ALI) = 2 ARs (FTRs) no total! Não quebre verificação de duplicidade ou disparo interno de contador SLA em uma CE ou EE separada se fizerem parte do mesmo processo elementar indivisível.
-     * Exemplo típico de envio/transmissão externa com confirmação e contingência (ex.: enviar resposta/anexos ao Web Service BCB/RDR, receber protocolo oficial, atualizar status para "Respondida" ou tratar erro HTTP 4xx/5xx mantendo "Erro no Envio" / fila de contingência + alerta): TODOS esses caminhos (sucesso e falha) são ramificações lógicas do MESMO processo elementar EE acionado pelo botão/gatilho de envio. NUNCA fragmente erro HTTP, entrada em fila de contingência ou alerta amigável de retorno em uma segunda EE, SE ou CE separada!
-   - SE (Saída Externa): Envia dados para fora da fronteira contendo pelo menos um cálculo matemático, fórmula, dado derivado, totalizador ou manutenção adicional de ALI quando a intenção primária for apresentar/transmitir informação derivada ao usuário/externo.
+     * Exemplo típico de envio/transmissão externa com confirmação e contingência (ex.: enviar resposta/anexos ao Web Service BCB/RDR, receber protocolo oficial, atualizar status para "Respondida" ou tratar erro HTTP 4xx/5xx mantendo "Erro no Envio" / fila de contingência + alerta visual na tela): TODOS esses caminhos (sucesso e falha) são ramificações lógicas do MESMO processo elementar EE acionado pelo botão/gatilho de envio. NUNCA fragmente erro HTTP, entrada em fila de contingência ou alerta amigável na tela em uma segunda EE, SE ou CE separada!
+   - SE (Saída Externa): Envia dados para fora da fronteira contendo pelo menos um cálculo matemático, fórmula, dado derivado, totalizador, manutenção adicional de ALI quando a intenção primária for apresentar/transmitir informação derivada ao usuário/externo, OU **disparo formal de e-mail / notificação por canal externo**:
+     * REGRA DE DISPARO FORMAL DE E-MAIL / NOTIFICAÇÕES EXTERNAS: Contabilize **1 SE distinta** (tipicamente 1 AR e <= 19 TDs ➔ Baixa / 4 PF), INCLUSIVE quando houver uma EE no mesmo requisito, SOMENTE quando houver disparo formal para canal externo com conteúdo/layout/corpo próprio explicitado (ex.: "entregue por e-mail ao manifestante", "enviar e-mail/SMTP/SMS/push com comprovante, resumo ou template próprio").
+     * NÃO confunda com avisos internos, toasts de tela ou flags de contingência sem canal externo/layout próprio (ex.: "exibir mensagem amigável na tela" ou "entrar em fila de contingência com alerta para a coordenação" sem menção a e-mail/canal externo e layout próprio continuam sendo apenas tratamento de erro/feedback da própria EE).
    - CE (Consulta Externa): Recupera e exibe dados existentes de ALIs/AIEs sem fórmulas matemáticas/dados derivados e sem atualizar ALIs.
    - NÃO DUPLICAR SE E CE para a mesma visualização/relatório.
    - FLUXOS DE AUTENTICAÇÃO (Login / Senha / 2FA): Gerar apenas EE, sem criar ALI nem CE fantasma.
@@ -352,11 +354,13 @@ function buildCfpsUserPrompt(spec, context = {}) {
     `- **Escopo:** ${featureRequirements.length > 0 ? `Feature consolidada "${spec.feature}" (${featureRequirements.length} requisitos)` : 'Requisito / Especificação individual'}`
   ];
 
-  sections.push(``, `### INVENTÁRIO ATUAL DE FUNÇÕES DE DADOS DO PROJETO (EVITAR DUPLA CONTAGEM)`);
-  if (existingAlis.length > 0) {
-    sections.push(`- **ALIs já cadastrados no projeto:** ${existingAlis.map(a => `${a.name} (${a.td} TDs, ${a.ar_tr} TRs)`).join(' | ')}`);
+  sections.push(``, `### INVENTÁRIO DE DADOS E REGRA DO TIPO DE CONTAGEM`);
+  if (isDevCount && featureRequirements.length === 0) {
+    sections.push(`- **ALIs (Desenvolvimento Novo):** Como o Tipo de Contagem é Desenvolvimento Novo, NÃO assuma que os ALIs já são pré-existentes! Inclua obrigatoriamente os ALIs criados ou mantidos pelas transações identificadas neste requisito (cada entidade distinta 1x).`);
+  } else if (existingAlis.length > 0) {
+    sections.push(`- **ALIs já cadastrados no projeto (não duplicar em Melhoria):** ${existingAlis.map(a => `${a.name} (${a.td} TDs, ${a.ar_tr} TRs)`).join(' | ')}`);
   } else {
-    sections.push(`- **ALIs já cadastrados no projeto:** Nenhum (projeto sem ALIs registrados até o momento).`);
+    sections.push(`- **ALIs já cadastrados no projeto:** Nenhum — inclua os ALIs criados ou mantidos pelas transações identificadas.`);
   }
   if (existingAies.length > 0) {
     sections.push(`- **AIEs já cadastrados no projeto:** ${existingAies.map(a => `${a.name} (${a.td} TDs, ${a.ar_tr} TRs)`).join(' | ')}`);
@@ -385,7 +389,10 @@ function buildCfpsUserPrompt(spec, context = {}) {
     }
   }
 
-  sections.push(``, `Execute a auditoria CFPS completa e retorne o JSON estritamente estruturado. IMPORTANTE: NÃO inclua no array "functions" nenhum ALI ou AIE cujo sistema externo ou entidade principal já conste no inventário do projeto listado acima — apenas referencie-os como AR/FTR em arTrList.`);
+  const inventoryInstruction = isDevCount && featureRequirements.length === 0
+    ? 'Em Desenvolvimento Novo, INCLUA obrigatoriamente os ALIs mantidos/criados pelas transações identificadas (e só não duplique AIE externo cujo sistema já conste em existingAies acima).'
+    : 'NÃO inclua no array "functions" nenhum ALI ou AIE que já conste no inventário pré-existente listado acima — apenas referencie-os como AR/FTR em arTrList.';
+  sections.push(``, `Execute a auditoria CFPS completa e retorne o JSON estritamente estruturado. IMPORTANTE: ${inventoryInstruction}`);
   return sections.join('\n');
 }
 

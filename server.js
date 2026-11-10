@@ -1695,6 +1695,29 @@ function projectHasDataFunction(projectId, functionType, candidateLabels = []) {
 }
 
 /**
+ * Detecta disparo formal de e-mail ou notificação externa com dados/layout/corpo próprio
+ * para fora da fronteira (SE - Saída Externa), diferenciando de toasts/avisos inline de tela.
+ */
+function detectFormalExternalNotificationSe(text = '', isAuthFlow = false) {
+  const lowerText = (text || '').toLowerCase();
+  if (!lowerText) return false;
+  if (/(?:sem\s+(?:envio|disparo|gera[çc][ãa]o)\s+de\s+(?:e-?mail|notifica[çc][ãa]o)|sem\s+e-?mail\s+de\s+confirma)/i.test(lowerText)) {
+    return false;
+  }
+  const hasChannelDispatch =
+    /(?:\b(?:enviar|envia|envie|envio|disparar|dispara|disparo|encaminhar|remeter|entregar|entregue|entrega|notificar|notifica|emitir|emite|gerar)\b[^.\n;]{0,75}\b(?:por|via|pelo|pela|no|em)\s+(?:e-?mail|correio\s+eletr[ôo]nico|smtp|sms|push|whatsapp)\b)/i.test(lowerText)
+    || /\b(?:disparo|envio|notifica[çc][ãa]o|mensagem|comprovante|recibo|confirma[çc][ãa]o|alerta)\s+(?:formal\s+)?(?:de|por|via)\s+(?:e-?mail|smtp|sms|push)\b/i.test(lowerText)
+    || /\b(?:e-?mail|notifica[çc][ãa]o\s+extern[ao])\b[^.\n;]{0,75}\b(?:layout|corpo\s+pr[óo]prio|template|assunto|com\s+dados|para\s+(?:o\s+)?(?:cliente|cidad[ãa]o|manifestante|usu[áa]rio|solicitante|gestor|coordena[çc][ãa]o|destinat[áa]rio))\b/i.test(lowerText);
+
+  if (!hasChannelDispatch) return false;
+  // Evita falso positivo em formulários de login simples que só pedem digitação do campo e-mail
+  if (isAuthFlow && !/(?:layout|corpo\s+pr[óo]prio|template|confirma[çc][ãa]o\s+por\s+e-?mail|disparo\s+(?:de|por)\s+e-?mail)/i.test(lowerText)) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Realiza a análise semântica e mensuração precisa de Pontos de Função (PF)
  * conforme IFPUG CPM 4.3.1 e Padrão SISP / Roteiro de Métricas.
  */
@@ -1728,8 +1751,8 @@ function analyzeCfpsSpecification(spec, options = {}) {
   let userWant = title || 'operar processo de negócio';
   let userBenefit = 'atender aos objetivos operacionais e contratuais do negócio';
 
-  const storyMatch = fullText.match(/(?:^|[\n•\-*])\s*como\s*:\s*([^\n]+?)\s*(?:[\n•\-*]+\s*)?quero\s*:\s*([^\n]+?)(?:\s*(?:[\n•\-*]+\s*)?para\s+que\s*:\s*([^\n]+))?(?=\n|$)/im)
-    || fullText.match(/como\s*:?\s*([^,\n]+),\s*(?:eu\s+)?quero\s*:?\s*([^,\n]+)(?:,\s*para\s+que\s*:?\s*([^.\n]+))?/i);
+  const storyMatch = fullText.match(/(?:^|[\n•\-*])\s*c?omo\s*:\s*([^\n]+?)\s*(?:[\n•\-*]+\s*)?quero\s*:\s*([^\n]+?)(?:\s*(?:[\n•\-*]+\s*)?para\s+que\s*:\s*([^\n]+))?(?=\n|$)/im)
+    || fullText.match(/c?omo\s*:?\s*([^,\n]+),\s*(?:eu\s+)?quero\s*:?\s*([^,\n]+)(?:,\s*para\s+que\s*:?\s*([^.\n]+))?/i);
   if (storyMatch) {
     userRole = storyMatch[1].trim().replace(/[.;]+$/, '');
     userWant = storyMatch[2].trim().replace(/[.;]+$/, '');
@@ -1741,7 +1764,7 @@ function analyzeCfpsSpecification(spec, options = {}) {
   const cleanTitle = (title || '').replace(/^\s*\[[^\]]+\]\s*/, '').trim();
   const titleWithoutTransport = cleanTitle.replace(/\s+(?:via|atrav[ée]s\s+d[ae]|pela|na)\s+(?:a\s+)?(?:api|webservice|webhook)\b.*$/i, '').trim() || cleanTitle;
   let entityName = (!isTechFeatureSlug && feature) ? feature : (titleWithoutTransport || 'Entidade de Negócio');
-  const entityMatch = titleWithoutTransport.match(/(?:manter|estrutura|gestão|cadastro|cadastrar|módulo|controle|extensão|consulta|consultar|calendário|registro|registo|administração|relatório|demonstrativo|dashboard|painel|extrato|fluxo|trilha|manutenção|listagem|exclusão|excluir|remover|alteração|alterar|integrar|ingestão|captura|sincronização|integração|importação)(?:\s+[\p{L}]+){0,2}\s+(?:de|com|novo|nova)\s+([^,\.\n-]+?)(?:\s+para\s+incluir\s+.*)?$/iu)
+  const entityMatch = titleWithoutTransport.match(/(?:manter|estrutura|gestão|cadastro|cadastrar|módulo|controle|extensão|consulta|consultar|calendário|registro|registo|administração|relatório|demonstrativo|dashboard|painel|extrato|fluxo|trilha|manutenção|listagem|exclusão|excluir|remover|alteração|alterar|integrar|ingestão|captura|sincronização|integração|importação|fila\s+de\s+entrada|recep[çc][ãa]o|submiss[ãa]o)(?:\s+[\p{L}]+){0,2}\s+(?:de|com|novo|nova)\s+([^,\.\n-]+?)(?:\s+(?:do|no|para)\s+(?:portal|incluir)\s*.*)?$/iu)
     || titleWithoutTransport.match(/para\s+([^,\.\n-]+)/i);
   if (entityMatch && entityMatch[1] && entityMatch[1].trim().length > 2) {
     entityName = entityMatch[1].trim();
@@ -2001,7 +2024,7 @@ function analyzeCfpsSpecification(spec, options = {}) {
           'horário', 'status', 'situação', 'valor', 'preço', 'saldo', 'total', 'taxa', 'desconto',
           'código', 'identificador', 'categoria', 'observação', 'motivo',
           'anexo', 'foto', 'avatar', 'competência', 'nota', 'pontuação',
-          'token', 'chave', 'quantidade', 'origem',
+          'token', 'chave', 'quantidade', 'origem', 'protocolo', 'resposta',
           'destino', 'agência', 'pix', 'cartão', 'responsável'
         ];
 
@@ -2276,12 +2299,31 @@ function analyzeCfpsSpecification(spec, options = {}) {
     });
   }
 
-  // Regra 3 (Ciclo de Vida do ALI):
-  // Só gera um novo ALI se o requisito criar/estruturar ou persistir pela primeira vez a entidade no banco/CRM do projeto.
-  // Se for apenas formulário de uso (ex.: login), busca, relatório ou transação sobre entidade já existente no projeto, referencia apenas como AR/FTR.
-  const isUsageOrQueryOnly = /(?:^|\s)(?:login|autentica[çc][ãa]o|logar|recuperar\s+senha|esqueci\s+a\s+senha|consulta\s+de|listagem\s+de|busca\s+de|filtro\s+de|relat[óo]rio\s+de|extrato\s+de|dashboard\s+de|painel\s+de)/i.test(title)
-    || (!/(?:criar\s+(?:nova\s+)?(?:tabela|entidade|estrutura)|nova\s+entidade|novo\s+arquivo\s+l[óo]gico|devem\s+ser\s+persistid)/i.test(lowerText) &&
-      /^(?:que\s+(?:o|a)\s+[\p{L}]+\s+)?(?:autenticar|logar|fazer\s+login|consultar|buscar|pesquisar|filtrar|listar|visualizar|emitir|exportar|calcular|alterar\s+status|aprovar|rejeitar|excluir|cancelar)\b/iu.test(userWant));
+  // Regra 3 (Ciclo de Vida do ALI e Respeito ao Tipo de Contagem):
+  // Em 'Desenvolvimento Novo', qualquer entidade criada/mantida por processos transacionais identificados deve incluir seu ALI (ADD).
+  // Em 'Melhoria', só gera novo ALI se houver criação estrutural explícita ou alteração CHG (caso contrário assume ALI pré-existente).
+  const isDesenvolvimentoMode = /^desenvolvimento$/i.test((effectiveCountingType || '').trim());
+  const isStrictlyReadOnlyTitle = /(?:^|\s)(?:login|autentica[çc][ãa]o|logar|recuperar\s+senha|esqueci\s+a\s+senha|consulta\s+de|listagem\s+de|busca\s+de|filtro\s+de|relat[óo]rio\s+de|extrato\s+de|dashboard\s+de|painel\s+de)/i.test(title);
+  const isUsageOrQueryOnly = isStrictlyReadOnlyTitle
+    || (!isDesenvolvimentoMode && !/(?:criar\s+(?:nova\s+)?(?:tabela|entidade|estrutura)|nova\s+entidade|novo\s+arquivo\s+l[óo]gico|devem\s+ser\s+persistid)/i.test(lowerText) &&
+      /^(?:que\s+(?:o|a)\s+[\p{L}]+\s+)?(?:autenticar|logar|fazer\s+login|consultar|buscar|pesquisar|filtrar|listar|visualizar|emitir|exportar|calcular|alterar\s+status|aprovar|rejeitar|excluir|cancelar)\b/iu.test(userWant))
+    || (isDesenvolvimentoMode && /^(?:que\s+(?:o|a)\s+[\p{L}]+\s+)?(?:autenticar|logar|fazer\s+login|consultar|buscar|pesquisar|filtrar|listar|visualizar|emitir|exportar|calcular)\b/iu.test(userWant) && !/\b(?:persist|gravar|registr|protocolo|enfileir)/i.test(lowerText));
+
+  // Pré-avalia se existem transações de escrita/manutenção para decidir inclusão de ALI em Desenvolvimento Novo
+  const isPrimaryAnalyticalOutputPre = /(?:balancete\s+anal[íi]tico|demonstrativo\s+(?:anal[íi]tico|consolidado)|relat[óo]rio\s+anal[íi]tico|painel\s+anal[íi]tico|dashboard\s+anal[íi]tico|fechamento\s+e\s+concilia[çc][ãa]o\s+financeira)/i.test(lowerText);
+  const isPrimaryInactivationPre = /(?:inativa[çc][ãa]o\s+l[óo]gica|submete\s+a\s+inativa[çc][ãa]o|^excluir\s+|^remover\s+|^inativar\s+)/i.test(`${cleanTitle}\n${lowerText}`);
+  const textWithoutFieldAdditionPre = textWithoutWriteNegations
+    .replace(/(?:incluir|adicionar|inserir)\s+(?:novo\s+|novos\s+)?(?:campo|campos|atributo|atributos|coluna|colunas)/gi, ' ')
+    .replace(/registrar\s+a\s+compet[êe]ncia/gi, ' ');
+  const textWithoutAuditAndChgPre = textWithoutWriteNegations
+    .replace(/(?:registra(?:r)?|atualiza(?:r)?|grava(?:r)?)\s+(?:a\s+|o\s+)?(?:hist[óo]rico|log|trilha)\s+de\s+auditoria/gi, ' ')
+    .replace(/(?:alterar|modificar|atualizar|evoluir|refatorar)\s+(?:o\s+|a\s+)?(?:fluxo|processo|funcionalidade|regra|rotina|tela|m[óo]dulo)(?:\s+existente)?|altera[çc][ãa]o\s+d[aeo]\s+(?:processo|fluxo|l[óo]gica|funcionalidade)/gi, ' ');
+  const hasMaintainingTxPre = !isPrimaryAnalyticalOutputPre && (
+    /\b(?:incluir|cadastrar|cadastra|criar\s+novo|criad[ao]\s+no\s+(?:crm|banco|sistema)|adicionar|registrar|registra|inserir|salvar|upload|importar|importad[ao]|carregar|carregando|ingest[ãa]o|ingerir|capturar|capturad[ao]s?|integrar|integrad[ao]s?|persistid[ao]s?|persist[êe]ncia|enfileir(?:ar|a)|enviar|submeter|crud)\b/i.test(textWithoutFieldAdditionPre)
+    || /\b(?:alterar|atualizar|atualiza|editar|modificar|progresso|revisar|mudar\s+status|concluir|aprovar|rejeitar|homologar)\b/i.test(textWithoutAuditAndChgPre)
+    || isPrimaryInactivationPre
+    || /\b(?:excluir|remover|deletar|inativar|desativar|cancelar\s+registro|apagar)\b/i.test(lowerText)
+  );
 
   // Reconhecimento Estrutural de Funções de Dados (ALI):
   const isDataStructureSpecification = /(?:persist[êe]ncia\s+mestre[\s-]detalhe(?:\s+do\s+ali)?|grupo\s+l[óo]gico\s+de\s+dados|entidade\s+l[óo]gica\s+interna|integridade\s+referencial\s+do\s+subgrupo|subgrupos\s+l[óo]gicos\s+integrados|^manter\s+estrutura\s+de\b)/i.test(`${title}\n${lowerText}`);
@@ -2302,7 +2344,12 @@ function analyzeCfpsSpecification(spec, options = {}) {
   if (/\bmanifesta[çc]/i.test(lowerText)) aliLabelCandidates.push('manifestações');
   const aliAlreadyExistsInProject = projectHasDataFunction(projectId, 'ALI', aliLabelCandidates);
 
-  if (hasExplicitAliCreation && !isAuthFlow && !isUsageOrQueryOnly && !isPurelyTechnical && (!aliAlreadyExistsInProject || resolvedOpType === 'CHG')) {
+  const shouldCreateAli = !isAuthFlow && !isPurelyTechnical && (
+    (isDesenvolvimentoMode && (hasExplicitAliCreation || (!isUsageOrQueryOnly && hasMaintainingTxPre)))
+    || (hasExplicitAliCreation && !isUsageOrQueryOnly && (!aliAlreadyExistsInProject || resolvedOpType === 'CHG'))
+  );
+
+  if (shouldCreateAli) {
     const aliEntityLabel = (/\bcrm\b/i.test(lowerText) && !/\bcrm\b/i.test(entityName))
       ? `${entityName} (CRM)`
       : entityName;
@@ -2484,6 +2531,7 @@ function analyzeCfpsSpecification(spec, options = {}) {
       // Trava de Negação Semântica para SE: se o requisito contiver expressões como "sem cálculo", "sem fórmulas matemáticas",
       // "sem alteração de estado" ou "apenas listagem/apresentação informativa", desativa qualquer gatilho de SE e classifica como CE.
       const hasSemanticSeNegation = /(?:sem\s+(?:realizar\s+|efetuar\s+)?(?:altera[çc][ãa]o\s+de\s+estado|c[áa]lculos?(?:\s+matem[áa]ticos?|\s+anal[íi]ticos?)?|f[óo]rmulas?(?:\s+matem[áa]ticas?)?|totais|totaliza(?:r|ção|dores)?|soma\s+agregada|dados?\s+derivados?)|nem\s+(?:aplica[çc][ãa]o\s+de\s+)?f[óo]rmulas?(?:\s+matem[áa]ticas?)?|apenas\s+(?:listagem|apresenta[çc][ãa]o)(?:\s+informativa)?|listagem\s+informativa\s+no\s+(?:ecr[ãa]|tela)\s+sem)/i.test(lowerText);
+      const hasFormalEmailNotificationSe = !hasSemanticSeNegation && detectFormalExternalNotificationSe(fullText, isAuthFlow);
       const textWithoutNegativeCalcClauses = lowerText
         .replace(/\b(?:sem|não\s+h[áa]|não\s+possui|não\s+realiza|isento\s+de)\s+[^.;\n]*?\b(?:fórmula|fórmulas|cálculo|cálculos|calculado|calculados|totais|totaliza(?:r|ção|dores)?|dado\s+derivado|dados\s+derivados|média|somatório|estatístic[ao]s?|indicador(?:es)?)\b[^.;\n]*/gi, ' ')
         .replace(/\bnem\s+(?:aplicação\s+de\s+|realização\s+de\s+|uso\s+de\s+)?(?:fórmula|fórmulas|cálculo|cálculos|totais|totaliza(?:r|ção|dores)?|dado\s+derivado|dados\s+derivados)\b[^.,;\n]*/gi, ' ');
@@ -2525,7 +2573,36 @@ function analyzeCfpsSpecification(spec, options = {}) {
           notes: `Saída Externa com processamento matemático/derivação explícita (${seTd} TDs = ${businessTdCount} negócio [${detectedFields.join(', ')}] + 2 controle; ${arDetailText}).`,
           rationale: `Saída Externa (SE • ${resolvedOpType}): ${seTd} TDs (${businessTdCount} negócio + 2 controle) e ${arDetailText}. Evidência explícita de cálculo matemático/dado derivado sem CE duplicada.`
         });
-      } else if (hasExplicitMultiRecordReadView || hasStandaloneQueryIntent) {
+      }
+
+      if (!hasExplicitCalculation && hasFormalEmailNotificationSe) {
+        // Disparo formal de e-mail / notificação externa com corpo/layout próprio gera SE (tipicamente Baixa / 4 PF) mesmo coexistindo com EE/CE
+        const seEmailTd = transactionTd;
+        const seEmailAr = 1;
+        const complexity = calculateApfComplexity('SE', seEmailAr, seEmailTd);
+        const rawPf = calculateApfRawPf('SE', complexity);
+        const candFactor = getCandidateFactor('SE', resolvedOpType);
+        const finalPf = calculateApfFinalPf(rawPf, candFactor);
+        ifpugCandidates.push({
+          id: `cand_se_mail_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          functionType: 'SE',
+          name: `SE - Disparar E-mail/Notificação Externa (${entityName})`,
+          category: 'Transação',
+          operationType: resolvedOpType,
+          primaryIntent: 'Formatar e enviar dados com layout/corpo próprio para fora da fronteira (e-mail/notificação externa ao destinatário).',
+          td: seEmailTd,
+          arTr: seEmailAr,
+          complexity,
+          rawPf,
+          countingType: effectiveCountingType,
+          factor: candFactor,
+          finalPf,
+          notes: `Saída Externa de disparo formal por e-mail/canal externo (${seEmailTd} TDs = ${businessTdCount} negócio [${detectedFields.join(', ')}] + 2 controle; ${seEmailAr} AR [${entityName}]).`,
+          rationale: `Saída Externa (SE • ${resolvedOpType}): envio formal de e-mail/notificação externa com corpo e dados próprios para fora da fronteira (${seEmailTd} TDs, ${seEmailAr} AR ➔ ${complexity} / ${rawPf} PF).`
+        });
+      }
+
+      if (!hasExplicitCalculation && (hasExplicitMultiRecordReadView || hasStandaloneQueryIntent)) {
         // Gera exclusivamente CE (Consulta Externa) para recuperação direta de dados sem cálculo derivado
         const ceTd = transactionTd;
         const ceAr = txAr;
@@ -3008,6 +3085,7 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
   const seenCandidateKeys = new Set();
   const dedupInventoryNotes = [];
 
+  const isDevCountMode = /^desenvolvimento$/i.test((effectiveCountingType || '').trim());
   const ifpugCandidates = (parsed.functions || [])
     .filter(fn => fn && validFnTypes.has((fn.functionType || '').toUpperCase()))
     .map((fn, idx) => {
@@ -3065,7 +3143,9 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
       };
     })
     .filter(cand => {
-      if ((cand.functionType === 'ALI' || cand.functionType === 'AIE') && cand.operationType === 'ADD' && projectId && projectId !== 'all') {
+      // Em Desenvolvimento Novo, ALIs mantidos pelas transações são obrigatoriamente incluídos; apenas AIE externo evita duplicidade ou ALIs em Melhoria
+      const shouldCheckExistingInventory = cand.functionType === 'AIE' || (cand.functionType === 'ALI' && !isDevCountMode);
+      if (shouldCheckExistingInventory && cand.operationType === 'ADD' && projectId && projectId !== 'all') {
         const labelsToCheck = [cand.name, cand.name.replace(/^(?:ali|aie)\s*-\s*(?:estrutura de dados|interface externa)\s*:\s*/i, '')];
         if (projectHasDataFunction(projectId, cand.functionType, labelsToCheck)) {
           dedupInventoryNotes.push(`Inventário do Projeto (IFPUG): ${cand.name} já cadastrado no projeto foi reutilizado apenas como AR/FTR sem dupla contagem.`);
@@ -3076,8 +3156,71 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
       if (seenCandidateKeys.has(dedupKey)) return false;
       seenCandidateKeys.add(dedupKey);
       return true;
-    })
-    .sort((a, b) => (fnOrder[a.functionType] || 99) - (fnOrder[b.functionType] || 99));
+    });
+
+  // Garante em Desenvolvimento Novo a inclusão do ALI mantido por EE (caso não seja estritamente fluxo de login/autenticação)
+  const isStrictAuthOnly = /(?:^|\b)(?:login|logar|logout|deslogar|encerrar\s+sessão|autentica(?:r|ção)|recupera(?:r|ção)\s+de?\s*senha|redefinir\s+senha)(?:\b|$)/i.test(`${spec.title || ''} ${parsed.userWant || ''}`);
+  if (isDevCountMode && !isStrictAuthOnly && ifpugCandidates.some(c => c.functionType === 'EE') && ifpugCandidates.every(c => c.functionType !== 'ALI')) {
+    const entityLabel = formatApfEntityLabel(parsed.entityName || spec.feature || spec.title || 'Entidade Principal');
+    const cleanBusinessFields = (Array.isArray(parsed.detectedFields) ? parsed.detectedFields : [])
+      .map(f => String(f || '').trim())
+      .filter(f => f && !/^(?:acionamento|gatilho|bot[ãa]o|submit|mensagem|feedback)/i.test(f));
+    const aliTd = Math.max(1, cleanBusinessFields.length || 4);
+    const aliTr = 1;
+    const aliComp = calculateApfComplexity('ALI', aliTr, aliTd);
+    const aliRawPf = calculateApfRawPf('ALI', aliComp);
+    const aliFactor = getCountingTypeFactor(effectiveCountingType, customFactor, rootOpType, 'ALI', fullText);
+    const aliFinalPf = calculateApfFinalPf(aliRawPf, aliFactor);
+    ifpugCandidates.unshift({
+      id: `cand_ai_ali_${Date.now()}_sync`,
+      functionType: 'ALI',
+      name: `ALI - Estrutura de Dados: ${entityLabel}`,
+      category: 'Dados',
+      operationType: 'ADD',
+      primaryIntent: 'Manter e persistir dentro da fronteira da aplicação o grupo lógico de dados tratado pelas transações de Desenvolvimento Novo.',
+      td: aliTd,
+      arTr: aliTr,
+      complexity: aliComp,
+      rawPf: aliRawPf,
+      countingType: effectiveCountingType,
+      factor: aliFactor,
+      finalPf: aliFinalPf,
+      notes: `${aliTd} TD(s)${cleanBusinessFields.length ? ` [${cleanBusinessFields.join(', ')}]` : ''}; ${aliTr} TR(s).`,
+      rationale: `Regra Desenvolvimento Novo (IFPUG CPM 4.3.1): incluído o ALI "${entityLabel}" criado/mantido pelas transações identificadas neste escopo (${aliTd} TDs, 1 TR).`
+    });
+    dedupInventoryNotes.push(`Desenvolvimento Novo: ALI "${entityLabel}" incluído por ser mantido diretamente pelas transações da contagem.`);
+  }
+
+  // Garante reconhecimento de SE formal para disparo de e-mail / notificação externa com layout/corpo próprio
+  if (detectFormalExternalNotificationSe(fullText, isStrictAuthOnly) && ifpugCandidates.every(c => c.functionType !== 'SE')) {
+    const emailFields = Array.isArray(parsed.detectedFields) ? parsed.detectedFields : [];
+    const seTd = Math.max(4, emailFields.length + 2);
+    const seAr = 1;
+    const seComp = calculateApfComplexity('SE', seAr, seTd);
+    const seRawPf = calculateApfRawPf('SE', seComp);
+    const seFactor = getCountingTypeFactor(effectiveCountingType, customFactor, rootOpType, 'SE', fullText);
+    const seFinalPf = calculateApfFinalPf(seRawPf, seFactor);
+    const entityLabel = formatApfEntityLabel(parsed.entityName || spec.title || 'Notificação');
+    ifpugCandidates.push({
+      id: `cand_ai_se_${Date.now()}_mail`,
+      functionType: 'SE',
+      name: `SE - Disparar E-mail/Notificação Externa (${entityLabel})`,
+      category: 'Transação',
+      operationType: rootOpType,
+      primaryIntent: 'Enviar dados formatados com layout/corpo próprio para fora da fronteira da aplicação por e-mail/notificação externa.',
+      td: seTd,
+      arTr: seAr,
+      complexity: seComp,
+      rawPf: seRawPf,
+      countingType: effectiveCountingType,
+      factor: seFactor,
+      finalPf: seFinalPf,
+      notes: `${seTd} TD(s) [${emailFields.join(', ')} + 2 controle]; ${seAr} AR [${entityLabel}].`,
+      rationale: `Saída Externa (SE • ${rootOpType}): disparo formal de e-mail/notificação externa com corpo e dados próprios para fora da fronteira (${seTd} TDs, ${seAr} AR ➔ ${seComp} / ${seRawPf} PF).`
+    });
+  }
+
+  ifpugCandidates.sort((a, b) => (fnOrder[a.functionType] || 99) - (fnOrder[b.functionType] || 99));
 
   const hasAnyIfpug = ifpugCandidates.length > 0;
   const inmCandidates = [];
@@ -3324,11 +3467,13 @@ async function executeAiCfpsWithCache(spec, context, options, localFallbackFn) {
  */
 async function analyzeCfpsWithAiOrFallback(spec, options = {}) {
   const projectId = spec.projectId || spec.project_id || options.projectId || '';
+  const countingType = options.countingType || 'Desenvolvimento';
+  const isDevCounting = /^desenvolvimento$/i.test(countingType.trim());
   const { existingAlis, existingAies } = getProjectDataInventory(projectId);
   const context = {
-    countingType: options.countingType || 'Desenvolvimento',
+    countingType,
     operationType: options.operationType || '',
-    existingAlis,
+    existingAlis: isDevCounting ? [] : existingAlis,
     existingAies
   };
   return await executeAiCfpsWithCache(spec, context, options, () => analyzeCfpsSpecification(spec, options));
@@ -3346,11 +3491,13 @@ async function analyzeFeatureWithAiOrFallback(projectId, featureName, options = 
   }
   const featureRequirements = db.prepare(query).all(...params);
   const spec = { title: featureName, feature: featureName, projectId };
+  const countingType = options.countingType || 'Desenvolvimento';
+  const isDevCounting = /^desenvolvimento$/i.test(countingType.trim());
   const { existingAlis, existingAies } = getProjectDataInventory(projectId);
   const context = {
-    countingType: options.countingType || 'Desenvolvimento',
+    countingType,
     operationType: options.operationType || '',
-    existingAlis,
+    existingAlis: isDevCounting ? [] : existingAlis,
     existingAies,
     featureRequirements
   };
@@ -5912,27 +6059,37 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Inicialização do Servidor na Porta e Host Definidos (0.0.0.0 escuta em todas as interfaces de rede local)
-server.listen(PORT, HOST, () => {
-  const os = require('node:os');
-  const nets = os.networkInterfaces();
-  const lanIps = [];
-  for (const name of Object.keys(nets)) {
-    for (const net of nets[name]) {
-      if (net.family === 'IPv4' && !net.internal) {
-        lanIps.push({ iface: name, ip: net.address });
+if (require.main === module) {
+  server.listen(PORT, HOST, () => {
+    const os = require('node:os');
+    const nets = os.networkInterfaces();
+    const lanIps = [];
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name]) {
+        if (net.family === 'IPv4' && !net.internal) {
+          lanIps.push({ iface: name, ip: net.address });
+        }
       }
     }
-  }
 
-  console.log(`==================================================`);
-  console.log(`🌐 Servidor Synchro PRO rodando com sucesso!`);
-  console.log(`🔗 Acesso Local:        http://localhost:${PORT}`);
-  console.log(`🔗 Acesso Loopback:     http://127.0.0.1:${PORT}`);
-  if (lanIps.length > 0) {
-    lanIps.forEach(item => {
-      console.log(`📡 Acesso na Rede (${item.iface}): http://${item.ip}:${PORT}`);
-    });
-  }
-  console.log(`⚡ API REST:            http://localhost:${PORT}/api/health`);
-  console.log(`==================================================`);
-});
+    console.log(`==================================================`);
+    console.log(`🌐 Servidor Synchro PRO rodando com sucesso!`);
+    console.log(`🔗 Acesso Local:        http://localhost:${PORT}`);
+    console.log(`🔗 Acesso Loopback:     http://127.0.0.1:${PORT}`);
+    if (lanIps.length > 0) {
+      lanIps.forEach(item => {
+        console.log(`📡 Acesso na Rede (${item.iface}): http://${item.ip}:${PORT}`);
+      });
+    }
+    console.log(`⚡ API REST:            http://localhost:${PORT}/api/health`);
+    console.log(`==================================================`);
+  });
+}
+
+module.exports = {
+  db,
+  detectFormalExternalNotificationSe,
+  analyzeCfpsSpecification,
+  reconcileAiCfpsResult,
+  analyzeCfpsWithAiOrFallback
+};
