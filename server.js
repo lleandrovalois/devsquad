@@ -1714,6 +1714,26 @@ function hasParameterizedNotificationTemplate(text = '') {
 }
 
 /**
+ * Detecta cálculo temporal dinâmico / derivação matemática em tempo de execução
+ * (contagem regressiva de SLA, dias úteis, fórmulas de prazo), que pelo IFPUG CPM 4.3.1
+ * converte compulsoriamente o processo elementar de CE para SE.
+ */
+function hasDynamicRuntimeSlaOrFormula(text = '') {
+  const lower = (text || '').toLowerCase();
+  const hasExplicitNegation = /(?:sem\s+(?:realizar\s+|efetuar\s+)?(?:altera[çc][ãa]o\s+de\s+estado|c[áa]lculos?(?:\s+matem[áa]ticos?|\s+anal[íi]ticos?)?|f[óo]rmulas?(?:\s+matem[áa]ticas?)?|totais|totaliza(?:r|ção|dores)?|soma\s+agregada|dados?\s+derivados?)|nem\s+(?:aplica[çc][ãa]o\s+de\s+)?f[óo]rmulas?(?:\s+matem[áa]ticas?)?)/i.test(lower);
+  if (hasExplicitNegation) return false;
+  return /\b(?:contagem\s+regressiva|contagem\s+decrescente|tempo\s+restante|dias\s+[úu]teis|c[áa]lculo\s+de\s+sla|c[áa]lculos?\s+de\s+prazos?|tempo\s+decorrido|f[óo]rmula\s+de\s+prazo|sla\s+regressivo)\b/i.test(lower);
+}
+
+/**
+ * Indica se o cálculo de prazo/SLA referencia tabela auxiliar de parâmetros de SLA,
+ * calendário operacional ou feriados/dias úteis, exigindo ao menos 2 ARs (FTRs).
+ */
+function requiresBusinessCalendarSlaAr(text = '') {
+  return /\b(?:dias\s+[úu]teis|calend[áa]rio(?:\s+operacional|\s+de\s+feriados)?|feriados?|par[âa]metros?\s+de\s+sla|prazo\s+regulat[óo]rio)\b/i.test((text || '').toLowerCase());
+}
+
+/**
  * Detecta disparo formal de e-mail ou notificação externa com dados/layout/corpo próprio
  * para fora da fronteira (SE - Saída Externa), diferenciando de toasts/avisos inline de tela.
  */
@@ -1868,6 +1888,9 @@ function analyzeCfpsSpecification(spec, options = {}) {
         .map(p => p.replace(/^[\s•\-:]+|[\s.;:]+$/g, '').trim())
         .filter(Boolean);
 
+      // Ignora listas entre aspas que exemplificam valores de domínio/status (ex.: ("Pendente Retorno Área" e "Pronta para Resposta"))
+      if (rawParts.length > 0 && rawParts.every(p => /^["'].*["']$/.test(p))) continue;
+
       // Verifica se os itens parecem nomes de atributos (1 a 6 palavras cada)
       const isSingleIdParen = rawParts.length === 1 && /^(?:id|identificador|c[óo]digo)\s+d[eo]\s+[\p{L}\s]+$/iu.test(rawParts[0]);
       if ((rawParts.length >= 2 || isSingleIdParen) && rawParts.every(p => p.split(/\s+/).length <= 6)) {
@@ -1984,6 +2007,42 @@ function analyzeCfpsSpecification(spec, options = {}) {
           canonical: 'indice_eficiencia',
           excludes: ['taxa'],
           regex: /(?:[íi]ndice(?:\s+percentual)?\s+de\s+efici[êe]ncia|percentual\s+de\s+conformidade|taxa\s+de\s+efici[êe]ncia)/i
+        },
+        {
+          label: 'data/hora de entrada',
+          canonical: 'data_entrada',
+          excludes: ['data'],
+          regex: /\bdata(?:\s*\/\s*hora)?\s+de\s+entrada\b/i
+        },
+        {
+          label: 'tempo restante (SLA)',
+          canonical: 'tempo_restante_sla',
+          excludes: [],
+          regex: /\b(?:tempo\s+restante|contagem\s+regressiva(?:\s+de\s+sla)?|tempo\s+decorrido)\b/i
+        },
+        {
+          label: 'status do subsídio',
+          canonical: 'status',
+          excludes: [],
+          regex: /\bstatus\s+do\s+subs[íi]dio\b/i
+        },
+        {
+          label: 'flag de prorrogação',
+          canonical: 'flag_prorrogacao',
+          excludes: [],
+          regex: /\b(?:flag\s+de\s+prorroga[çc][ãa]o|prorroga[çc][ãa]o\s+utilizada|coluna\s+"prorrogado")\b/i
+        },
+        {
+          label: 'agente atribuído',
+          canonical: 'agente_atribuido',
+          excludes: [],
+          regex: /\b(?:agente\s+logado|atribu[íi]d[ao]s?\s+ao\s+agente)\b/i
+        },
+        {
+          label: 'identificador da demanda',
+          canonical: 'identificador_demanda',
+          excludes: [],
+          regex: /\b(?:demandas?\s+atribu[íi]das?\s+ao\s+agente|casos?\s+pendentes\s+de\s+a[çc][ãa]o)\b/i
         }
       ];
 
@@ -2339,11 +2398,12 @@ function analyzeCfpsSpecification(spec, options = {}) {
   // Em 'Desenvolvimento Novo', qualquer entidade criada/mantida por processos transacionais identificados deve incluir seu ALI (ADD).
   // Em 'Melhoria', só gera novo ALI se houver criação estrutural explícita ou alteração CHG (caso contrário assume ALI pré-existente).
   const isDesenvolvimentoMode = /^desenvolvimento$/i.test((effectiveCountingType || '').trim());
+  const hasSlaPanelPre = hasDynamicRuntimeSlaOrFormula(fullText);
   const isStrictlyReadOnlyTitle = /(?:^|\s)(?:login|autentica[çc][ãa]o|logar|recuperar\s+senha|esqueci\s+a\s+senha|consulta\s+de|listagem\s+de|busca\s+de|filtro\s+de|relat[óo]rio\s+de|extrato\s+de|dashboard\s+de|painel\s+de)/i.test(title);
-  const isUsageOrQueryOnly = isStrictlyReadOnlyTitle
+  const isUsageOrQueryOnly = (!hasSlaPanelPre && isStrictlyReadOnlyTitle)
     || (!isDesenvolvimentoMode && !/(?:criar\s+(?:nova\s+)?(?:tabela|entidade|estrutura)|nova\s+entidade|novo\s+arquivo\s+l[óo]gico|devem\s+ser\s+persistid)/i.test(lowerText) &&
       /^(?:que\s+(?:o|a)\s+[\p{L}]+\s+)?(?:autenticar|logar|fazer\s+login|consultar|buscar|pesquisar|filtrar|listar|visualizar|emitir|exportar|calcular|alterar\s+status|aprovar|rejeitar|excluir|cancelar)\b/iu.test(userWant))
-    || (isDesenvolvimentoMode && /^(?:que\s+(?:o|a)\s+[\p{L}]+\s+)?(?:autenticar|logar|fazer\s+login|consultar|buscar|pesquisar|filtrar|listar|visualizar|emitir|exportar|calcular)\b/iu.test(userWant) && !/\b(?:persist|gravar|registr|protocolo|enfileir)/i.test(lowerText));
+    || (isDesenvolvimentoMode && !hasSlaPanelPre && /^(?:que\s+(?:o|a)\s+[\p{L}]+\s+)?(?:autenticar|logar|fazer\s+login|consultar|buscar|pesquisar|filtrar|listar|visualizar|emitir|exportar|calcular)\b/iu.test(userWant) && !/\b(?:persist|gravar|registr|protocolo|enfileir)/i.test(lowerText));
 
   // Pré-avalia se existem transações de escrita/manutenção para decidir inclusão de ALI em Desenvolvimento Novo
   const isPrimaryAnalyticalOutputPre = /(?:balancete\s+anal[íi]tico|demonstrativo\s+(?:anal[íi]tico|consolidado)|relat[óo]rio\s+anal[íi]tico|painel\s+anal[íi]tico|dashboard\s+anal[íi]tico|fechamento\s+e\s+concilia[çc][ãa]o\s+financeira)/i.test(lowerText);
@@ -2382,7 +2442,7 @@ function analyzeCfpsSpecification(spec, options = {}) {
 
   const hasFormalNotificationPre = detectFormalExternalNotificationSe(fullText, isAuthFlow);
   const shouldCreateAli = !isAuthFlow && !isPurelyTechnical && (
-    (isDesenvolvimentoMode && (hasExplicitAliCreation || (!isUsageOrQueryOnly && (hasMaintainingTxPre || hasFormalNotificationPre))))
+    (isDesenvolvimentoMode && (hasExplicitAliCreation || (!isUsageOrQueryOnly && (hasMaintainingTxPre || hasFormalNotificationPre || hasSlaPanelPre))))
     || (hasExplicitAliCreation && !isUsageOrQueryOnly && (!aliAlreadyExistsInProject || resolvedOpType === 'CHG'))
   );
 
@@ -2572,7 +2632,8 @@ function analyzeCfpsSpecification(spec, options = {}) {
       const textWithoutNegativeCalcClauses = lowerText
         .replace(/\b(?:sem|não\s+h[áa]|não\s+possui|não\s+realiza|isento\s+de)\s+[^.;\n]*?\b(?:fórmula|fórmulas|cálculo|cálculos|calculado|calculados|totais|totaliza(?:r|ção|dores)?|dado\s+derivado|dados\s+derivados|média|somatório|estatístic[ao]s?|indicador(?:es)?)\b[^.;\n]*/gi, ' ')
         .replace(/\bnem\s+(?:aplicação\s+de\s+|realização\s+de\s+|uso\s+de\s+)?(?:fórmula|fórmulas|cálculo|cálculos|totais|totaliza(?:r|ção|dores)?|dado\s+derivado|dados\s+derivados)\b[^.,;\n]*/gi, ' ');
-      const hasExplicitCalculation = !hasSemanticSeNegation && !hasAnyEe && /(?:cálculo|calcular|calculado|calculando|\bcalcula\b|fórmula|média|somatório|totaliza(?:r|ção|dores)?|dado\s+derivado|consolida(?:r|ção)\s+analític|balancete\s+analític|taxa\s+calculada|percentual\s+calculado|projeção\s+matemática|estatístic|agregação\s+matemática|saldo\s+calculado|indicador\s+calculado|\bkpi\b|atualiza(?:r)?\s+o\s+hist[óo]rico\s+de\s+auditoria\s+com\s+a\s+data(?:\s*\/\s*hora)?\s+da\s+emiss[ãa]o)/i.test(textWithoutNegativeCalcClauses);
+      const hasDynamicSlaCalculation = !hasSemanticSeNegation && !hasAnyEe && hasDynamicRuntimeSlaOrFormula(fullText);
+      const hasExplicitCalculation = hasDynamicSlaCalculation || (!hasSemanticSeNegation && !hasAnyEe && /(?:cálculo|calcular|calculado|calculando|\bcalcula\b|fórmula|média|somatório|totaliza(?:r|ção|dores)?|dado\s+derivado|consolida(?:r|ção)\s+analític|balancete\s+analític|taxa\s+calculada|percentual\s+calculado|projeção\s+matemática|estatístic|agregação\s+matemática|saldo\s+calculado|indicador\s+calculado|\bkpi\b|atualiza(?:r)?\s+o\s+hist[óo]rico\s+de\s+auditoria\s+com\s+a\s+data(?:\s*\/\s*hora)?\s+da\s+emiss[ãa]o)/i.test(textWithoutNegativeCalcClauses));
       const textWithoutRedirectsAndFeedback = lowerText
         .replace(/exib(?:ir|e)\s+(?:a\s+)?(?:mensagem|alerta|notificação|erro|sucesso|toast|feedback)[^.,;\n]*/gi, ' ')
         .replace(/redireciona(?:r)?\s+(?:o\s+[\p{L}]+\s+)?para\s+[^.,;\n]+/giu, ' ')
@@ -2586,29 +2647,34 @@ function analyzeCfpsSpecification(spec, options = {}) {
         : `${txAr} AR`;
 
       if (hasExplicitCalculation) {
-        // Gera exclusivamente SE (Saída Externa) para a apresentação analítica/derivada
+        // Gera exclusivamente SE (Saída Externa) para a apresentação analítica, cálculo de SLA/dias úteis ou dado derivado
+        const seNeedsCalendarAr = hasDynamicSlaCalculation && requiresBusinessCalendarSlaAr(fullText);
         const seTd = transactionTd;
-        const seAr = txAr;
-        const complexity = calculateApfComplexity('SE', seAr, seTd);
-        const rawPf = calculateApfRawPf('SE', complexity);
+        const seAr = seNeedsCalendarAr ? Math.max(2, txAr) : txAr;
+        const { complexity, rawPf, finalPf } = evaluateApfMetrics('SE', seAr, seTd, getCandidateFactor('SE', resolvedOpType));
         const candFactor = getCandidateFactor('SE', resolvedOpType);
-        const finalPf = calculateApfFinalPf(rawPf, candFactor);
+        const seArSummary = seNeedsCalendarAr && txAr < 2
+          ? `${seAr} ARs (${entityName} [ALI] + Parâmetros de SLA / Calendário de Dias Úteis)`
+          : arDetailText;
+        const seTitle = hasDynamicSlaCalculation
+          ? `SE - ${cleanTitle || `Painel de ${entityName}`} (SLA Regressivo)`
+          : `SE - Demonstrativo/Relatório Analítico de ${entityName}`;
         ifpugCandidates.push({
           id: `cand_se_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           functionType: 'SE',
-          name: `SE - Demonstrativo/Relatório Analítico de ${entityName}`,
+          name: seTitle,
           category: 'Transação',
           operationType: resolvedOpType,
-          primaryIntent: 'Apresentar informações ao usuário com criação de dados derivados, totalizadores ou fórmulas matemáticas.',
+          primaryIntent: 'Apresentar informações ao usuário com criação de dados derivados, cálculo temporal em dias úteis/SLA ou fórmulas matemáticas.',
           td: seTd,
           arTr: seAr,
           complexity,
           rawPf,
-          countingType,
+          countingType: effectiveCountingType,
           factor: candFactor,
           finalPf,
-          notes: `Saída Externa com processamento matemático/derivação explícita (${seTd} TDs = ${businessTdCount} negócio [${detectedFields.join(', ')}] + 2 controle; ${arDetailText}).`,
-          rationale: `Saída Externa (SE • ${resolvedOpType}): ${seTd} TDs (${businessTdCount} negócio + 2 controle) e ${arDetailText}. Evidência explícita de cálculo matemático/dado derivado sem CE duplicada.`
+          notes: `Saída Externa com ${hasDynamicSlaCalculation ? 'cálculo dinâmico de prazo/SLA em tempo de execução' : 'processamento matemático/derivação explícita'} (${seTd} TDs = ${businessTdCount} negócio [${detectedFields.join(', ')}] + 2 controle; ${seArSummary}).`,
+          rationale: `Saída Externa (SE • ${resolvedOpType}): ${seTd} TDs (${businessTdCount} negócio + 2 controle) e ${seArSummary}. Regra IFPUG CPM 4.3.1: lógica derivada/cálculo temporal converte CE em SE sem duplicação.`
         });
       }
 
@@ -3126,6 +3192,8 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
 
   const quarantinedInfraNotes = [];
   const isDevCountMode = /^desenvolvimento$/i.test((effectiveCountingType || '').trim());
+  const hasDynamicSla = hasDynamicRuntimeSlaOrFormula(fullText);
+  const needsCalendarSlaAr = requiresBusinessCalendarSlaAr(fullText);
   const ifpugCandidates = (parsed.functions || [])
     .filter(fn => {
       if (!fn || !validFnTypes.has((fn.functionType || '').toUpperCase())) return false;
@@ -3138,7 +3206,9 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
       return true;
     })
     .map((fn, idx) => {
-      const fnType = fn.functionType.toUpperCase();
+      const originalFnType = fn.functionType.toUpperCase();
+      let fnType = originalFnType;
+      let fnName = (fn.name || `${fnType} - ${parsed.entityName || spec.title || 'Função'}`).trim();
       let candOp;
       if (explicitOpType === 'ADD' || explicitOpType === 'CHG' || explicitOpType === 'DEL') {
         candOp = explicitOpType;
@@ -3173,10 +3243,28 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
           : Math.max(arTr, domainArList.length);
       }
 
+      // Regra mandatória IFPUG CPM 4.3.1: cálculo dinâmico de SLA / contagem regressiva / dias úteis converte CE -> SE
+      let slaConversionNote = '';
+      if (hasDynamicSla && fnType === 'CE') {
+        fnType = 'SE';
+        fnName = /^ce\b/i.test(fnName) ? fnName.replace(/^ce\b/i, 'SE') : `SE - ${fnName}`;
+        slaConversionNote = `Pós-processamento CE ➔ SE: cálculo temporal dinâmico/SLA em tempo de execução converte obrigatoriamente "${fn.name || 'CE'}" em Saída Externa (SE).`;
+        dedupInventoryNotes.push(slaConversionNote);
+      }
+      if (fnType === 'SE' && hasDynamicSla && needsCalendarSlaAr && arTr < 2) {
+        arTr = 2;
+        if (!effectiveArList.some(a => /sla|calend|feriad|prazo|par[âa]metro/i.test(a))) {
+          effectiveArList.push('Parâmetros de SLA / Calendário de Dias Úteis');
+        }
+        const arBumpNote = `Pós-processamento SE (Cálculo de Prazo/SLA): AR elevado para ${arTr} (ALI principal + Parâmetros de SLA / Calendário de Dias Úteis).`;
+        slaConversionNote = slaConversionNote ? `${slaConversionNote} ${arBumpNote}` : arBumpNote;
+        dedupInventoryNotes.push(arBumpNote);
+      }
+
       // Regra mandatória de pós-processamento para SE parametrizada (templates, tags {{...}}, layout/parâmetros de notificação): mínimo AR = 2
       const isNotificationSeFn = fnType === 'SE' && (
         detectFormalExternalNotificationSe(fullText, false)
-        || /(?:e-?mail|notifica[çc][ãa]o|sms|push|alerta|despach)/i.test(`${fn.name || ''} ${fn.primaryIntent || ''}`)
+        || /(?:e-?mail|notifica[çc][ãa]o|sms|push|alerta|despach)/i.test(`${fnName} ${fn.primaryIntent || ''}`)
       );
       if (isNotificationSeFn && hasParameterizedNotificationTemplate(fullText) && arTr < 2) {
         arTr = 2;
@@ -3191,11 +3279,12 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
       const { complexity, rawPf, finalPf } = evaluateApfMetrics(fnType, arTr, td, factor);
       const tdDetail = cleanedTdList.join(', ');
       const arDetail = effectiveArList.join(', ');
+      const baseRationale = (fn.rationale || '').trim() || `Classificado via Agente CFPS (${model}) conforme IFPUG CPM 4.3.1.`;
 
       return {
         id: `cand_ai_${fnType.toLowerCase()}_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 5)}`,
         functionType: fnType,
-        name: (fn.name || `${fnType} - ${parsed.entityName || spec.title || 'Função'}`).trim(),
+        name: fnName,
         category: isDataFn ? 'Dados' : 'Transação',
         operationType: candOp,
         primaryIntent: (fn.primaryIntent || '').trim(),
@@ -3207,7 +3296,7 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
         factor,
         finalPf,
         notes: `${td} TD(s)${tdDetail ? ` [${tdDetail}]` : ''}; ${arTr} ${isDataFn ? 'TR(s)' : 'AR(s)'}${arDetail ? ` [${arDetail}]` : ''}.`,
-        rationale: (fn.rationale || '').trim() || `Classificado via Agente CFPS (${model}) conforme IFPUG CPM 4.3.1.`
+        rationale: slaConversionNote ? `${baseRationale} (${slaConversionNote})` : baseRationale
       };
     })
     .filter(cand => {
@@ -3226,9 +3315,24 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
       return true;
     });
 
-  // Garante em Desenvolvimento Novo a inclusão do ALI mantido/referenciado por EE ou SE de notificação formal (exceto login/autenticação)
+  // Remove ALI secundário de tabela de parâmetros/calendário/templates quando o requisito não mantém esse cadastro (ex.: usado apenas como AR 2 de SE de SLA ou notificação)
+  const isConfigAuxAli = (name = '') => /\b(?:par[âa]metros?(?:\s+d[eo]\s+(?:sla|sistema|notifica[çc][ãa]o))?|calend[áa]rio(?:\s+d[eo]\s+feriados|\s+operacional|\s+dias\s+[úu]teis)?|feriados?|templates?(?:\s+de\s+e-?mail)?)\b/i.test(name);
+  const hasFeatureScope = Array.isArray(options.featureRequirements) && options.featureRequirements.length > 0;
+  const nonConfigAlis = ifpugCandidates.filter(c => c.functionType === 'ALI' && !isConfigAuxAli(c.name));
+  const hasConfigEeMaintenance = ifpugCandidates.some(c => c.functionType === 'EE' && isConfigAuxAli(`${c.name} ${c.primaryIntent}`));
+  if (!hasFeatureScope && nonConfigAlis.length >= 1 && !hasConfigEeMaintenance && (hasDynamicSla || hasParameterizedNotificationTemplate(fullText))) {
+    for (let i = ifpugCandidates.length - 1; i >= 0; i--) {
+      const c = ifpugCandidates[i];
+      if (c.functionType === 'ALI' && isConfigAuxAli(c.name)) {
+        dedupInventoryNotes.push(`Pós-processamento AR Auxiliar (IFPUG CPM 4.3.1): "${c.name}" não sofre manutenção neste requisito; contabilizado exclusivamente como AR (FTR) da SE.`);
+        ifpugCandidates.splice(i, 1);
+      }
+    }
+  }
+
+  // Garante em Desenvolvimento Novo a inclusão do ALI mantido/referenciado por EE, SE de notificação formal ou SE de painel SLA dinâmico (exceto login/autenticação)
   const isStrictAuthOnly = /(?:^|\b)(?:login|logar|logout|deslogar|encerrar\s+sessão|autentica(?:r|ção)|recupera(?:r|ção)\s+de?\s*senha|redefinir\s+senha)(?:\b|$)/i.test(`${spec.title || ''} ${parsed.userWant || ''}`);
-  const hasFormalSeCand = detectFormalExternalNotificationSe(fullText, isStrictAuthOnly) && ifpugCandidates.some(c => c.functionType === 'SE');
+  const hasFormalSeCand = (detectFormalExternalNotificationSe(fullText, isStrictAuthOnly) || hasDynamicSla) && ifpugCandidates.some(c => c.functionType === 'SE');
   if (isDevCountMode && !isStrictAuthOnly && (ifpugCandidates.some(c => c.functionType === 'EE') || hasFormalSeCand) && ifpugCandidates.every(c => c.functionType !== 'ALI')) {
     const entityLabel = formatApfEntityLabel(parsed.entityName || spec.feature || spec.title || 'Entidade Principal');
     const cleanBusinessFields = (Array.isArray(parsed.detectedFields) ? parsed.detectedFields : [])

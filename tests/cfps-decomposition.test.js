@@ -367,5 +367,186 @@ RN06.2: A tag {{resumo_demanda}} deve ser montada concatenando a classificação
   });
 });
 
+describe('Regra 6: Conversão CE -> SE por Lógica Derivada e Cálculo Dinâmico de SLA/Dias Úteis (2 ARs / Média 5 PF)', () => {
+  const rf07Spec = {
+    code: 'RF-07',
+    title: 'Painel Operacional da Caixa de Entrada do Agente de Ouvidoria',
+    feature: 'CAIXA DE ENTRADA DO AGENTE & GESTÃO DA FILA',
+    userStory: `Como: Agente de Ouvidoria
+
+Quero: visualizar uma caixa de trabalho dedicada exclusivamente aos meus casos pendentes de ação ("Pendente Retorno Área" e "Pronta para Resposta"), com contagem regressiva de SLA e controle de prorrogação
+
+Para que: eu gerencie meus prazos regulatórios com clareza, distinguindo minha fila de trabalho das telas de pesquisa geral.
+Regras de Negócio (RN)
+RN07.1: A tela "Minha Caixa de Entrada" deve listar apenas demandas atribuídas ao agente logado com status em aberto.
+RN07.2: Cada linha deve exibir: Data/hora de entrada. Tempo restante (contagem regressiva em dias úteis e horas, com código de cores: verde > 48h, amarelo entre 24h e 48h, vermelho < 24h). Status do subsídio (Pendente de Retorno da Área ou Pronta para Resposta). Flag de Prorrogação (Sim ou Não).`,
+    bdd: `Cenário: Visualização de prazos e contagem regressiva
+  Dado que o agente acessa a sua Caixa de Entrada
+  Quando o grid for renderizado
+  Então deve exibir a coluna "Tempo Restante" com a contagem decrescente para o vencimento do prazo regulatório
+  E destacar em vermelho casos com menos de 24 horas restantes.
+
+Cenário: Indicação de prorrogação utilizada
+  Dado que uma demanda já teve seu prazo prorrogado uma vez
+  Quando exibida na caixa de entrada
+  Então a coluna "Prorrogado" deve conter a tag "Sim"
+  E o botão de solicitar nova prorrogação deve permanecer desabilitado caso atinja o teto da regra de negócio.`
+  };
+
+  it('reconcileAiCfpsResult converte CE com SLA regressivo em dias úteis para SE com >= 2 ARs (Média / 5 PF) e total 12.00 PF em RF-07', () => {
+    const res = reconcileAiCfpsResult({
+      parsed: {
+        operationType: 'ADD',
+        entityName: 'Demandas de Ouvidoria',
+        userRole: 'Agente de Ouvidoria',
+        userWant: 'visualizar caixa de entrada com contagem regressiva de SLA',
+        userBenefit: 'gerenciar prazos regulatórios',
+        boundarySummary: 'Sistema interno de Ouvidoria',
+        detectedFields: ['Demanda', 'Agente', 'Data/hora de entrada', 'Tempo restante', 'Status do subsídio', 'Flag de prorrogação'],
+        functions: [
+          {
+            functionType: 'ALI',
+            name: 'ALI - Demandas de Ouvidoria',
+            operationType: 'ADD',
+            primaryIntent: 'Armazenar demandas de ouvidoria',
+            td: 6,
+            arTr: 1,
+            tdList: ['Demanda', 'Agente', 'Data/hora de entrada', 'SLA Regulatório', 'Status do subsídio', 'Flag de prorrogação'],
+            arTrList: ['Demandas de Ouvidoria'],
+            rationale: 'ALI principal'
+          },
+          {
+            functionType: 'CE', // Alucinação conceitual: IA classificou SLA regressivo como CE com 1 AR
+            name: 'CE - Painel da Caixa de Entrada com SLA Regressivo',
+            operationType: 'ADD',
+            primaryIntent: 'Consultar casos com contagem regressiva de tempo restante em dias úteis',
+            td: 8,
+            arTr: 1,
+            tdList: ['Demanda', 'Agente', 'Data/hora de entrada', 'Tempo restante', 'Status do subsídio', 'Flag de prorrogação', 'Acionamento', 'Mensagem'],
+            arTrList: ['ALI - Demandas de Ouvidoria'],
+            rationale: 'IA classificou incorretamente como CE'
+          }
+        ],
+        inmItems: [],
+        auditorNotes: []
+      },
+      latencyMs: 90,
+      provider: 'gemini',
+      providerLabel: 'Google Gemini',
+      model: 'gemini-3.5-flash-lite'
+    }, rf07Spec, { countingType: 'Desenvolvimento' });
+
+    assert.equal(res.candidates.some(c => c.functionType === 'CE'), false, 'CE deve ser convertida em SE quando houver cálculo dinâmico de SLA');
+    const ali = res.candidates.find(c => c.functionType === 'ALI');
+    const se = res.candidates.find(c => c.functionType === 'SE');
+    assert.ok(ali);
+    assert.equal(ali.td, 6);
+    assert.equal(ali.arTr, 1);
+    assert.equal(ali.complexity, 'Baixa');
+    assert.equal(ali.finalPf, 7);
+
+    assert.ok(se);
+    assert.equal(se.name, 'SE - Painel da Caixa de Entrada com SLA Regressivo');
+    assert.equal(se.td, 8);
+    assert.equal(se.arTr, 2);
+    assert.equal(se.complexity, 'Média');
+    assert.equal(se.rawPf, 5);
+    assert.equal(se.finalPf, 5);
+    assert.equal(res.totalGlobalPf, 12);
+  });
+
+  it('motor heurístico local calcula RF-07 como ALI (1 RET, 6 DET -> Baixa / 7 PF) + SE (2 FTR, 8 DET -> Média / 5 PF) = 12.00 PF', () => {
+    const localRes = analyzeCfpsSpecification(rf07Spec, { countingType: 'Desenvolvimento', operationType: '' });
+    assert.equal(localRes.candidates.some(c => c.functionType === 'CE'), false, 'Não deve gerar CE em painel com contagem regressiva de SLA');
+
+    const ali = localRes.candidates.find(c => c.functionType === 'ALI');
+    const se = localRes.candidates.find(c => c.functionType === 'SE');
+    assert.ok(ali, 'Desenvolvimento Novo deve incluir ALI de Demandas');
+    assert.equal(ali.arTr, 1);
+    assert.equal(ali.td, 6);
+    assert.equal(ali.complexity, 'Baixa');
+    assert.equal(ali.finalPf, 7);
+
+    assert.ok(se, 'Deve classificar painel com cálculo de SLA em dias úteis como SE');
+    assert.equal(se.arTr, 2);
+    assert.equal(se.td, 8);
+    assert.equal(se.complexity, 'Média');
+    assert.equal(se.rawPf, 5);
+    assert.equal(se.finalPf, 5);
+    assert.equal(localRes.totalGlobalPf, 12);
+  });
+
+  it('mantém como CE quando houver negação explícita de cálculos ou fórmulas matemáticas', () => {
+    const pureCe = analyzeCfpsSpecification({
+      title: 'Listagem Informativa de Demandas Sem Cálculo',
+      userStory: 'Como: Atendente\nQuero: listar demandas com protocolo, status, data e tempo restante fixo sem cálculo de SLA e sem fórmulas matemáticas no grid.'
+    }, { countingType: 'Melhoria', operationType: 'ADD' });
+
+    assert.equal(pureCe.candidates.some(c => c.functionType === 'SE'), false);
+    assert.ok(pureCe.candidates.some(c => c.functionType === 'CE'));
+  });
+
+  it('reconcileAiCfpsResult remove ALI secundário de Parâmetros de SLA quando usado apenas como AR 2 da SE em RF-07 (total 12.00 PF)', () => {
+    const res = reconcileAiCfpsResult({
+      parsed: {
+        operationType: 'ADD',
+        entityName: 'Demandas',
+        userRole: 'Agente de Ouvidoria',
+        userWant: 'visualizar caixa de entrada com SLA regressivo',
+        userBenefit: 'gerenciar prazos',
+        boundarySummary: 'Sistema interno',
+        detectedFields: ['Demanda', 'Agente', 'Data/hora entrada', 'Tempo restante', 'Status', 'Prorrogado'],
+        functions: [
+          {
+            functionType: 'ALI',
+            name: 'ALI - Estrutura de Dados: Demandas',
+            operationType: 'ADD',
+            primaryIntent: 'Armazenar demandas',
+            td: 6,
+            arTr: 1,
+            tdList: ['Demanda', 'Agente', 'Data/hora entrada', 'Prazo SLA', 'Status', 'Prorrogado'],
+            arTrList: ['Demandas'],
+            rationale: 'ALI principal'
+          },
+          {
+            functionType: 'ALI',
+            name: 'ALI - Estrutura de Dados: Parâmetros de SLA',
+            operationType: 'ADD',
+            primaryIntent: 'Tabela auxiliar de SLA',
+            td: 3,
+            arTr: 1,
+            tdList: ['id_regra', 'dias_uteis', 'horario_limite'],
+            arTrList: ['Parametros_SLA'],
+            rationale: 'ALI auxiliar indevido'
+          },
+          {
+            functionType: 'SE',
+            name: 'SE - Painel da Caixa de Entrada com SLA Regressivo',
+            operationType: 'ADD',
+            primaryIntent: 'Exibir painel com cálculo de SLA em dias úteis',
+            td: 8,
+            arTr: 2,
+            tdList: ['Demanda', 'Agente', 'Data/hora entrada', 'Tempo restante', 'Status', 'Prorrogado', 'Acionamento', 'Retorno'],
+            arTrList: ['ALI - Demandas', 'ALI - Parâmetros de SLA'],
+            rationale: 'SE painel SLA'
+          }
+        ],
+        inmItems: [],
+        auditorNotes: []
+      },
+      latencyMs: 80,
+      provider: 'gemini',
+      providerLabel: 'Gemini',
+      model: 'gemini-3.5-flash-lite'
+    }, rf07Spec, { countingType: 'Desenvolvimento' });
+
+    const alis = res.candidates.filter(c => c.functionType === 'ALI');
+    assert.equal(alis.length, 1);
+    assert.equal(alis[0].name, 'ALI - Estrutura de Dados: Demandas');
+    assert.equal(res.totalGlobalPf, 12);
+  });
+});
+
+
 
 

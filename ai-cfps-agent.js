@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-const CFPS_PROMPT_VERSION = '2026-11-10-v7';
+const CFPS_PROMPT_VERSION = '2026-11-10-v8';
 
 const PROVIDER_CATALOG = {
   gemini: {
@@ -285,7 +285,7 @@ DIRETRIZES OBRIGATÓRIAS DE CONTAGEM (IFPUG CPM 4.3.1 + SISP):
    - ALI (Arquivo Lógico Interno): Grupo lógico de dados mantido DENTRO da fronteira da aplicação por meio de pelo menos um processo elementar.
    - AIE (Arquivo de Interface Externa): Grupo lógico de dados apenas referenciado/lido pela aplicação, mantido por OUTRA aplicação fora da fronteira.
    - REGRA CRÍTICA POR TIPO DE CONTAGEM (DESENVOLVIMENTO NOVO vs MELHORIA):
-     * QUANDO "Tipo de Contagem" FOR "Desenvolvimento" (Desenvolvimento Novo): NÃO assuma que tabelas/ALIs já sejam pré-existentes! É MANDATÓRIO gerar o ALI correspondente à entidade de negócio criada ou mantida pelo requisito (ex.: ALI Demanda = Baixa / 7 PF), contando cada ALI distinto uma única vez no escopo auditado (operação ADD). Só não crie ALI em fluxos estritamente de Login/Autenticação ou consultas/relatórios 100% somente leitura sem manutenção de dados.
+     * QUANDO "Tipo de Contagem" FOR "Desenvolvimento" (Desenvolvimento Novo): NÃO assuma que tabelas/ALIs já sejam pré-existentes! É MANDATÓRIO gerar o ALI correspondente à entidade de negócio criada ou mantida pelo requisito (ex.: ALI Demanda = Baixa / 7 PF), contando cada ALI distinto uma única vez no escopo auditado (operação ADD). Só não crie ALI em fluxos estritamente de Login/Autenticação ou consultas CE 100% somente leitura sem entidade de negócio mantida no sistema (painéis operacionais com cálculo de SLA em Desenvolvimento Novo referenciam e incluem o ALI principal da entidade, ex.: Demandas, quando não existir em existingAlis).
      * CADASTROS DE APOIO E CATÁLOGOS PADRONIZADOS: Se o requisito citar cadastros de apoio ou catálogos padronizados obrigatórios (ex.: Catálogo de Produtos, Tabela de Risco, Naturezas/Motivos padronizados), identifique o respectivo ALI de apoio (em Desenvolvimento Novo quando criado/mantido) ou compute a Consulta Externa (CE) associada utilizada para alimentar/carregar a tela.
      * QUANDO "Tipo de Contagem" FOR "Melhoria" / manutenção: Consulte a lista de ALIs já cadastrados no inventário do projeto. Se o ALI equivalente já existe no inventário e não sofre alteração estrutural de campos/TRs, NÃO gere novo ALI (assuma-o como pré-existente e referencie apenas como AR/FTR nas transações).
      * PARA AIEs: Consulte existingAies — não duplique AIE se uma interface externa do MESMO sistema/provedor de terceiros já estiver cadastrada no inventário (ex.: "API RDR/BCB", "Web Service do BCB", "Endpoint RDR" e "API de Anexos do RDR BCB" representam o mesmo sistema externo RDR/BCB; só gere novo AIE se for outro provedor externo ou CHG estrutural).
@@ -305,6 +305,17 @@ DIRETRIZES OBRIGATÓRIAS DE CONTAGEM (IFPUG CPM 4.3.1 + SISP):
      * Exemplo típico de integração/ingestão via API externa: um único processo elementar EE que captura os registros da API externa (1 AR = AIE), valida duplicidade/idempotência e grava no banco interno (1 AR = ALI) = 2 ARs (FTRs) no total! Não quebre verificação de duplicidade ou disparo interno de contador SLA em uma CE ou EE separada se fizerem parte do mesmo processo elementar indivisível.
      * Exemplo típico de envio/transmissão externa com confirmação e contingência (ex.: enviar resposta/anexos ao Web Service BCB/RDR, receber protocolo oficial, atualizar status para "Respondida" ou tratar erro HTTP 4xx/5xx mantendo "Erro no Envio" / fila de contingência + alerta visual na tela): TODOS esses caminhos (sucesso e falha) são ramificações lógicas do MESMO processo elementar EE acionado pelo botão/gatilho de envio. NUNCA fragmente erro HTTP, entrada em fila de contingência ou alerta amigável na tela em uma segunda EE, SE ou CE separada!
    - SE (Saída Externa): Envia dados para fora da fronteira contendo pelo menos um cálculo matemático, fórmula, dado derivado, totalizador, manutenção adicional de ALI quando a intenção primária for apresentar/transmitir informação derivada ao usuário/externo, OU **disparo formal de e-mail / notificação por canal externo**:
+     * REGRA MANDATÓRIA DE CONVERSÃO CE ➔ SE POR LÓGICA DERIVADA E CÁLCULO DE PRAZOS (IFPUG CPM 4.3.1):
+       Se uma tela de consulta, grid, fila de trabalho ou painel envolver:
+       1. Cálculos de SLA dinâmicos, contagem regressiva/decrescente, apuração de tempo restante, tempo decorrido ou cálculo de dias úteis/horas corridas em tempo real;
+       2. Fórmulas matemáticas ou algoritmos que combinem datas/horários com calendários operacionais ou tabelas de prazo/feriados (ex.: cálculo de SLA, fórmula de prazo regulatório);
+       3. Campos derivados calculados em tempo de execução (ou renderização condicional baseada em cálculo temporal, como código de cores >48h / 24-48h / <24h) que não existem como coluna estática persistida direta;
+       ➔ A TRANSAÇÃO DEVE SER CLASSIFICADA OBRIGATORIAMENTE COMO **SAÍDA EXTERNA (SE)**, e **NUNCA como Consulta Externa (CE)**!
+     * CONTAGEM DE ARs (FTRs) EM PAINÉIS / GRIDS COM CÁLCULO DE PRAZO EM DIAS ÚTEIS:
+       Painéis/consultas com cálculo de prazo regulatório em dias úteis referenciam no mínimo **2 Arquivos (ARs / FTRs)** em arTrList:
+       1. AR 1: ALI principal de Demandas/Tarefas (dados do caso, status e data/hora de abertura);
+       2. AR 2: ALI/Tabela de Parâmetros de SLA ou Calendário de Feriados/Dias Úteis (cite-o em arTrList da SE sem criar um segundo ALI CRUD separado de Parâmetros/Calendário caso o requisito não especifique manutenção/cadastro dessa tabela).
+       Impacto na Matriz SE (CPM 4.3.1): 2 ARs com 6 a 19 TDs (DET) resulta obrigatoriamente em Complexidade **MÉDIA (5 PF)**.
      * REGRA DE DISPARO FORMAL DE E-MAIL / NOTIFICAÇÕES EXTERNAS: Toda regra que exigir envio de notificação estruturada para fora da fronteira do sistema (ex.: disparo de e-mail ao cidadão/manifestante com número de protocolo, e-mail de solicitação de subsídio, SMS formal ou push notification) DEVE ser decomposta como uma SAÍDA EXTERNA (SE) autônoma, INCLUSIVE quando houver uma EE no mesmo requisito — nunca absorvida apenas como detalhe da EE.
      * REGRA DE ARs EM E-MAILS / NOTIFICAÇÕES PARAMETRIZADAS (OBRIGATÓRIA): Sempre que um processo de notificação externa (SE) envolver preenchimento de templates, layouts pré-configurados, parâmetros de disparo ou tags dinâmicas estruturadas (ex.: {{protocolo}}, {{numero_protocolo}}, {{nome_cliente}}, {{resumo_demanda}}, {{indicador_sarb27}}), considere no mínimo 2 Arquivos Referenciados (ARs / FTRs) em arTrList:
        1. AR 1: O ALI transacional que fornece os dados da ocorrência/negócio (ex.: Demanda, Solicitação de Subsídio, Cliente);
@@ -312,7 +323,7 @@ DIRETRIZES OBRIGATÓRIAS DE CONTAGEM (IFPUG CPM 4.3.1 + SISP):
        Impacto na Matriz SE (CPM 4.3.1): 2 a 3 ARs com 6 a 19 TDs (DET) classifica obrigatoriamente como Complexidade MÉDIA (5 PF).
      * LÓGICA DERIVADA E REGRAS CONDICIONAIS EM SE: Se houver derivação ou concatenação de campos (ex.: junção de Produto + Motivo + Relato para compor {{resumo_demanda}}) ou renderização condicional (ex.: banner visual de alerta para SARB 27), classifique estritamente como SAÍDA EXTERNA (SE), e NUNCA como Consulta Externa (CE).
      * NÃO confunda com avisos internos, toasts de tela ou flags de contingência sem canal externo/layout próprio (ex.: "exibir mensagem amigável na tela" ou "entrar em fila de contingência com alerta para a coordenação" sem menção a e-mail/SMS/push continuam sendo apenas tratamento de erro/feedback da própria EE).
-   - CE (Consulta Externa): Recupera e exibe dados existentes de ALIs/AIEs sem fórmulas matemáticas/dados derivados e sem atualizar ALIs. Inclua CE de carregamento quando a interface consultar catálogos padronizados/tabelas de apoio obrigatórias para exibição/seleção na tela.
+   - CE (Consulta Externa): Recupera e exibe dados existentes de ALIs/AIEs estritamente SEM fórmulas matemáticas, SEM cálculos temporais em tempo real (SLA/dias úteis/contagem regressiva), SEM dados derivados e SEM atualizar ALIs. Inclua CE de carregamento quando a interface consultar catálogos padronizados/tabelas de apoio obrigatórias para exibição/seleção na tela.
    - NÃO DUPLICAR SE E CE para a mesma visualização/relatório.
    - FLUXOS DE AUTENTICAÇÃO (Login / Senha / 2FA): Gerar apenas EE, sem criar ALI nem CE fantasma.
    - ESPECIFICAÇÃO ESTRUTURAL PURA DE DADOS (apenas modelagem de tabela/ALI): Não inventar transações EE/SE/CE se nenhuma operação transacional for especificada.
