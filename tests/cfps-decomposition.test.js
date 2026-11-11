@@ -684,6 +684,151 @@ Cenário: Repasse de demanda entre ouvidores
   });
 });
 
+describe('Regra 8: Copiloto de IA / LLM (AIE Externa 5 PF + Comandos Interativos como EE Média 4 PF — RF-09 -> 20.00 PF)', () => {
+  const rf09Spec = {
+    code: 'RF-09',
+    title: 'Copiloto de IA para Rascunho e Refinamento de Respostas Oficiais',
+    feature: 'ASSISTENTE DE IA NA ELABORAÇÃO DE RESPOSTAS',
+    userStory: `Como: Agente de Ouvidoria
+
+Quero: que um assistente de inteligência artificial sugira um rascunho de resposta oficial integrando a minuta padrão do tema ao parecer técnico da retaguarda, permitindo refinamentos via comandos interativos
+
+Para que: eu reduza o tempo de redação da resposta e assegure padronização, clareza regulatória e empatia no posicionamento final.
+
+Regras de Negócio (RN)
+RN09.1: A IA deve receber como contexto obrigatório:
+A classificação da triagem (Produto, Motivo e flag SARB 27).
+A minuta institucional homologada vinculada ao tema.
+O parecer/subsídio técnico devolvido pela área de negócio.
+
+RN09.2: Se a flag SARB 27 = Sim, o prompt da IA deve impor diretrizes de linguagem simples, eliminando jargões bancários e assegurando clareza sobre direitos e canais de contato.
+
+RN09.3: O editor de texto deve oferecer um painel lateral interativo ("Copiloto") com comandos prontos ("Tornar mais formal", "Simplificar vocabulário", "Resumir justificativa") e caixa de texto livre.`,
+    bdd: `Cenário: Geração automática de rascunho de resposta integrada
+  Dado que a área técnica devolveu o subsídio de uma demanda com minuta homologada cadastrada
+  Quando o ouvidor abrir a tela de elaboração da resposta e clicar em "Gerar Rascunho com IA"
+  Então o assistente deve preencher o editor com um texto coeso contendo a saudação, a fundamentação técnica e o fechamento padrão da Ouvidoria
+  E manter o status da resposta como "Rascunho" aguardando revisão humana.
+
+Cenário: Refinamento interativo pelo ouvidor no editor
+  Dado que a resposta gerada preliminarmente contém termos técnicos complexos para um cliente idoso
+  Quando o ouvidor acionar o comando "Ajustar tom para linguagem simples (SARB 27)"
+  Então a IA deve reescrever o texto no editor mantendo os fatos contratuais, mas adaptando a linguagem para termos diretos, claros e acessíveis.`
+  };
+
+  it('reconcileAiCfpsResult injeta AIE (5 PF), converte SE de refinamento em EE Média (4 PF) e evita ALI legado de Minutas (20.00 PF em RF-09)', () => {
+    const res = reconcileAiCfpsResult({
+      parsed: {
+        operationType: 'ADD',
+        entityName: 'Minutas de Respostas',
+        userRole: 'Agente de Ouvidoria',
+        userWant: 'sugerir rascunho com IA e refinar via comandos interativos',
+        userBenefit: 'reduzir tempo de redação',
+        boundarySummary: 'CRM + API LLM externa',
+        detectedFields: ['Produto', 'Motivo', 'Flag SARB 27', 'Minuta', 'Parecer Técnico', 'Texto Rascunho'],
+        functions: [
+          {
+            functionType: 'ALI',
+            name: 'ALI - Estrutura de Dados: Minutas de Respostas',
+            operationType: 'ADD',
+            primaryIntent: 'Manter respostas e rascunhos',
+            td: 7,
+            arTr: 1,
+            tdList: ['id_resposta', 'id_demanda', 'conteudo_rascunho', 'parecer_tecnico', 'flag_sarb_27', 'status_resposta', 'data_atualizacao'],
+            arTrList: ['Minutas de Respostas'],
+            rationale: 'ALI principal'
+          },
+          {
+            functionType: 'EE',
+            name: 'EE - Gerar Rascunho Inicial com IA',
+            operationType: 'ADD',
+            primaryIntent: 'Gerar rascunho inicial via LLM e gravar no rascunho',
+            td: 8,
+            arTr: 2,
+            tdList: ['id_demanda', 'produto', 'motivo', 'flag_sarb_27', 'minuta', 'parecer_tecnico', 'acionamento', 'retorno'],
+            arTrList: ['ALI Rascunho', 'Demandas'],
+            rationale: 'EE geração inicial'
+          },
+          {
+            functionType: 'SE', // Classificação invertida pela IA: refinamento como SE
+            name: 'SE - Exibir Rascunho Refinado com Alerta SARB 27',
+            operationType: 'ADD',
+            primaryIntent: 'Refinar texto via comando do copiloto para simplificar tom no editor',
+            td: 8,
+            arTr: 2,
+            tdList: ['conteudo_rascunho', 'diretriz_sarb_27', 'comando_copiloto', 'prompt_livre', 'status', 'flag', 'acionamento', 'retorno'],
+            arTrList: ['ALI Rascunho', 'Parâmetros'],
+            rationale: 'IA classificou incorretamente como SE'
+          }
+        ],
+        inmItems: [],
+        auditorNotes: []
+      },
+      latencyMs: 110,
+      provider: 'gemini',
+      providerLabel: 'Gemini',
+      model: 'gemini-3.5-flash-lite'
+    }, rf09Spec, { countingType: 'Desenvolvimento' });
+
+    assert.equal(res.summary.countSe, 0, 'Comandos interativos do Copiloto NÃO podem ser classificados como SE');
+    assert.equal(res.summary.countAli, 1);
+    assert.equal(res.summary.countAie, 1, 'Integração externa de IA Generativa DEVE gerar AIE (5 PF)');
+    assert.equal(res.summary.countEe, 2, 'Deve conter 2 EEs: Gerar Rascunho Inicial + Refinar via Comandos');
+    const aie = res.candidates.find(c => c.functionType === 'AIE');
+    assert.equal(aie.complexity, 'Baixa');
+    assert.equal(aie.finalPf, 5);
+    res.candidates.filter(c => c.functionType === 'EE').forEach(ee => {
+      assert.equal(ee.complexity, 'Média');
+      assert.equal(ee.finalPf, 4);
+    });
+    assert.equal(res.totalGlobalPf, 20);
+  });
+
+  it('reconcileAiCfpsResult remove ALI legado de Minutas se ALI Rascunho / Resposta Oficial já existir (total 20.00 PF)', () => {
+    const res = reconcileAiCfpsResult({
+      parsed: {
+        operationType: 'ADD',
+        entityName: 'Rascunho / Resposta Oficial',
+        userRole: 'Agente',
+        userWant: 'gerar e refinar resposta com IA',
+        userBenefit: 'agilidade',
+        boundarySummary: 'CRM + API LLM',
+        detectedFields: ['Prompt', 'Rascunho', 'Status'],
+        functions: [
+          { functionType: 'ALI', name: 'ALI - Rascunho / Resposta Oficial', operationType: 'ADD', td: 6, arTr: 1, tdList: ['id', 'demanda', 'rascunho', 'status', 'sarb27', 'data'], arTrList: ['Rascunho'] },
+          { functionType: 'ALI', name: 'ALI - Minutas Homologadas', operationType: 'ADD', td: 4, arTr: 1, tdList: ['id', 'tema', 'texto', 'ativo'], arTrList: ['Minutas'] },
+          { functionType: 'ALI', name: 'ALI - Demandas', operationType: 'ADD', td: 6, arTr: 1, tdList: ['id', 'produto', 'motivo', 'sarb27', 'status', 'resp'], arTrList: ['Demandas'] },
+          { functionType: 'ALI', name: 'ALI - Subsídio Técnico', operationType: 'ADD', td: 4, arTr: 1, tdList: ['id', 'demanda', 'parecer', 'data'], arTrList: ['Subsidio'] },
+          { functionType: 'AIE', name: 'AIE - API do Serviço de IA Generativa', operationType: 'ADD', td: 5, arTr: 1, tdList: ['prompt', 'contexto', 'resposta', 'modelo', 'tokens'], arTrList: ['API IA'] },
+          { functionType: 'EE', name: 'EE - Gerar Rascunho Inicial com IA', operationType: 'ADD', td: 8, arTr: 3, tdList: ['demanda', 'produto', 'motivo', 'sarb27', 'minuta', 'parecer', 'btn', 'msg'], arTrList: ['Rascunho', 'Minutas', 'AIE IA'] },
+          { functionType: 'EE', name: 'EE - Refinar Resposta via Comandos do Copiloto', operationType: 'ADD', td: 7, arTr: 2, tdList: ['rascunho', 'comando', 'prompt_livre', 'sarb27', 'status', 'btn', 'msg'], arTrList: ['Rascunho', 'AIE IA'] }
+        ],
+        inmItems: [],
+        auditorNotes: []
+      },
+      latencyMs: 90,
+      provider: 'gemini',
+      providerLabel: 'Gemini',
+      model: 'gemini-3.5-flash-lite'
+    }, rf09Spec, { countingType: 'Desenvolvimento' });
+
+    assert.equal(res.summary.countAli, 1);
+    assert.equal(res.candidates.find(c => c.functionType === 'ALI').name, 'ALI - Rascunho / Resposta Oficial');
+    assert.equal(res.totalGlobalPf, 20);
+  });
+
+  it('motor heurístico local calcula RF-09 com 4 componentes (ALI 7 + AIE 5 + 2 EEs Média 4+4) = 20.00 PF', () => {
+    const localRes = analyzeCfpsSpecification(rf09Spec, { countingType: 'Desenvolvimento', operationType: '' });
+    assert.equal(localRes.candidates.length, 4);
+    assert.equal(localRes.summary.countAli, 1);
+    assert.equal(localRes.summary.countAie, 1);
+    assert.equal(localRes.summary.countEe, 2);
+    assert.equal(localRes.summary.countSe, 0);
+    assert.equal(localRes.totalGlobalPf, 20);
+  });
+});
+
+
 
 
 

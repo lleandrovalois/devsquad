@@ -1611,9 +1611,13 @@ function detectExternalInterfaceInfo(fullText, cleanTitle = '') {
   }
 
   const hasOfficialExternalApi = /\bapi\s+(?:oficial|p[úu]blica|de\s+terceiros)\b/i.test(lowerText);
-  const isExternal = hasExplicitExternalKeyword || hasOfficialExternalApi || Boolean(capturedSource);
+  const genAiInfo = detectGenAiCopilotIntent(text);
+  if (!capturedSource && genAiInfo.isGenAiIntegration) {
+    capturedSource = 'API do Serviço de IA Generativa';
+  }
+  const isExternal = hasExplicitExternalKeyword || hasOfficialExternalApi || genAiInfo.isGenAiIntegration || Boolean(capturedSource);
 
-  return { isExternal, externalSourceName: capturedSource };
+  return { isExternal, externalSourceName: capturedSource, isGenAiService: genAiInfo.isGenAiIntegration };
 }
 
 /**
@@ -1758,12 +1762,60 @@ function detectSplitInterventionAndTransferIntent(text = '') {
 }
 
 /**
+ * Detecta integrações externas de IA Generativa / LLM e fluxos de Copiloto com geração inicial
+ * e refinamento interativo no editor (AIE externa + EEs distintas no lugar de SE).
+ */
+function detectGenAiCopilotIntent(text = '') {
+  const lower = (text || '').toLowerCase();
+  const isGenAiIntegration = /\b(?:intelig[êe]ncia\s+artificial|ia\s+generativa|assistente\s+de\s+ia|copiloto(?:\s+de\s+ia)?|\bllm\b|prompt\s+d[ao]\s+ia|gerar\s+rascunho\s+com\s+ia)\b/i.test(lower)
+    || /\b(?:gerar|sugerir|reescrever)\b[^.\n;]{0,35}\b(?:com|pela|via)\s+ia\b/i.test(lower);
+  const hasInitialDraftGen = /\b(?:gerar\s+rascunho|sugira\s+um\s+rascunho|rascunho\s+de\s+resposta|preencher\s+o\s+editor|rascunho\s+inicial)\b/i.test(lower);
+  const hasInteractiveRefinement = /\b(?:refinamento(?:s)?\s+(?:via\s+|por\s+)?comandos?|comandos?\s+(?:prontos|interativos|do\s+copiloto)|tornar\s+(?:mais\s+)?formal|simplificar\s+vocabul[áa]rio|resumir\s+justificativa|ajustar\s+tom|caixa\s+de\s+texto\s+livre|reescrever\s+o\s+texto\s+no\s+editor)\b/i.test(lower);
+  return {
+    isGenAiIntegration,
+    hasInitialDraftGen,
+    hasInteractiveRefinement,
+    hasDualCopilotEe: isGenAiIntegration && hasInitialDraftGen && hasInteractiveRefinement
+  };
+}
+
+/**
  * Constrói candidato padronizado para processos elementares atômicos e entidades de auditoria
  * sem duplicar lógica entre o motor heurístico local e o reconciliador pós-IA.
  */
 function buildAtomicSplitCandidate(kind, opts = {}) {
   const { td, arTr, countingType = 'Desenvolvimento', operationType = 'ADD', factor = 1 } = opts;
   const specs = {
+    genai_aie: {
+      functionType: 'AIE',
+      category: 'Dados',
+      name: 'AIE - API do Serviço de IA Generativa',
+      defaultTd: 5,
+      defaultAr: 1,
+      primaryIntent: 'Referenciar serviço/API externa de IA Generativa (LLM) com troca de prompts, contexto, resposta gerada e metadados.',
+      notes: (uTd, uAr) => `Arquivo de Interface Externa mantido fora da fronteira (${uTd} TDs [Prompt de Entrada, Diretrizes/Contexto, Resposta Gerada, Parâmetros, Metadados/Tokens]; ${uAr} TR).`,
+      rationale: (uTd, uAr, cx, pf) => `Reconhecido como AIE (${operationType}): consumo/referência de API externa de IA Generativa (LLM) fora da fronteira (${uTd} TDs, ${uAr} TR ➔ ${cx} / ${pf} PF).`
+    },
+    copilot_generate_ee: {
+      functionType: 'EE',
+      category: 'Transação',
+      name: 'EE - Gerar Rascunho Inicial com IA',
+      defaultTd: 7,
+      defaultAr: 3,
+      primaryIntent: 'Enviar contexto da demanda e minuta para a API de IA Generativa e gravar o rascunho inicial no ALI Rascunho / Resposta Oficial.',
+      notes: (uTd, uAr) => `Entrada Externa de geração inicial com IA (${uTd} TDs; ${uAr} ARs [ALI Rascunho/Resposta + Demanda/Minuta + AIE API IA Generativa]).`,
+      rationale: (uTd, uAr, cx, pf) => `Entrada Externa (EE • ${operationType}): gera e persiste rascunho inicial com apoio de IA (${uTd} TDs, ${uAr} ARs ➔ ${cx} / ${pf} PF).`
+    },
+    copilot_refine_ee: {
+      functionType: 'EE',
+      category: 'Transação',
+      name: 'EE - Refinar Resposta via Comandos do Copiloto',
+      defaultTd: 7,
+      defaultAr: 2,
+      primaryIntent: 'Receber comando interativo ou prompt livre do usuário no Copiloto para reescrever e atualizar o texto no ALI Rascunho / Resposta Oficial.',
+      notes: (uTd, uAr) => `Entrada Externa de refinamento interativo no Copiloto (${uTd} TDs [Texto Rascunho, Comando Copiloto, Prompt Livre, Flag SARB 27, Status, Acionamento, Retorno]; ${uAr} ARs [ALI Rascunho/Resposta + AIE API IA Generativa]).`,
+      rationale: (uTd, uAr, cx, pf) => `Entrada Externa (EE • ${operationType}): comandos interativos do editor atualizam o rascunho persistido (${uTd} TDs, ${uAr} ARs ➔ ${cx} / ${pf} PF).`
+    },
     audit_ali: {
       functionType: 'ALI',
       category: 'Dados',
@@ -2463,7 +2515,10 @@ function analyzeCfpsSpecification(spec, options = {}) {
   const aieAlreadyExistsInProject = isExternal && projectHasDataFunction(projectId, 'AIE', [externalSourceName, externalLabel, entityName]);
 
   if (isExternal && !isPurelyTechnical && (!aieAlreadyExistsInProject || resolvedOpType === 'CHG')) {
-    const aieFields = externalAieFields.length > 0 ? externalAieFields : detectedFields;
+    const genAiDefaultFields = ['Prompt de Entrada', 'Diretrizes / Contexto', 'Resposta Gerada', 'Parâmetros / Modelo', 'Metadados / Tokens'];
+    const aieFields = externalInfo.isGenAiService && externalAieFields.length === 0
+      ? genAiDefaultFields
+      : (externalAieFields.length > 0 ? externalAieFields : detectedFields);
     const aieTd = aieFields.length > 0 ? aieFields.length : dataTd;
     const aieTr = inferredDataTr;
     const complexity = calculateApfComplexity('AIE', aieTr, aieTd);
@@ -2536,6 +2591,7 @@ function analyzeCfpsSpecification(spec, options = {}) {
   const aliAlreadyExistsInProject = projectHasDataFunction(projectId, 'ALI', aliLabelCandidates);
 
   const splitInfo = detectSplitInterventionAndTransferIntent(fullText);
+  const copilotInfo = detectGenAiCopilotIntent(fullText);
   const hasFormalNotificationPre = detectFormalExternalNotificationSe(fullText, isAuthFlow);
   const shouldCreateAli = !isAuthFlow && !isPurelyTechnical && (
     (isDesenvolvimentoMode && (hasExplicitAliCreation || (!isUsageOrQueryOnly && (hasMaintainingTxPre || hasFormalNotificationPre || hasSlaPanelPre))))
@@ -2543,9 +2599,9 @@ function analyzeCfpsSpecification(spec, options = {}) {
   );
 
   if (shouldCreateAli) {
-    const rawMainAliLabel = (splitInfo.hasAtomicSplit && /\bdemandas?\b/i.test(lowerText))
-      ? 'Demandas de Ouvidoria'
-      : entityName;
+    const rawMainAliLabel = copilotInfo.isGenAiIntegration
+      ? 'Rascunho / Resposta Oficial'
+      : ((splitInfo.hasAtomicSplit && /\bdemandas?\b/i.test(lowerText)) ? 'Demandas de Ouvidoria' : entityName);
     const aliEntityLabel = (/\bcrm\b/i.test(lowerText) && !/\bcrm\b/i.test(rawMainAliLabel))
       ? `${rawMainAliLabel} (CRM)`
       : rawMainAliLabel;
@@ -2652,6 +2708,24 @@ function analyzeCfpsSpecification(spec, options = {}) {
           buildAtomicSplitCandidate('transfer', {
             td: Math.max(5, transactionTd),
             arTr: Math.max(2, txAr),
+            countingType: effectiveCountingType,
+            operationType: resolvedOpType,
+            factor: eeFactor
+          })
+        );
+      } else if (copilotInfo.hasDualCopilotEe) {
+        const eeFactor = getCandidateFactor('EE', resolvedOpType);
+        ifpugCandidates.push(
+          buildAtomicSplitCandidate('copilot_generate_ee', {
+            td: Math.max(7, transactionTd),
+            arTr: 3,
+            countingType: effectiveCountingType,
+            operationType: resolvedOpType,
+            factor: eeFactor
+          }),
+          buildAtomicSplitCandidate('copilot_refine_ee', {
+            td: Math.max(7, transactionTd),
+            arTr: 2,
             countingType: effectiveCountingType,
             operationType: resolvedOpType,
             factor: eeFactor
@@ -3333,6 +3407,7 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
   const hasDynamicSla = hasDynamicRuntimeSlaOrFormula(fullText);
   const needsCalendarSlaAr = requiresBusinessCalendarSlaAr(fullText);
   const splitInfo = detectSplitInterventionAndTransferIntent(fullText);
+  const copilotInfo = detectGenAiCopilotIntent(fullText);
   const ifpugCandidates = (parsed.functions || [])
     .filter(fn => {
       if (!fn || !validFnTypes.has((fn.functionType || '').toUpperCase())) return false;
@@ -3413,6 +3488,19 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
         dedupInventoryNotes.push(`Pós-processamento SE Parametrizada: AR elevado para ${arTr} (ALI transacional + Templates/Parâmetros de Notificação com tags dinâmicas).`);
       }
 
+      // Regra mandatória IFPUG (RF-09 / Copiloto): refinamento via comandos interativos altera/atualiza rascunho -> EE (nunca SE)
+      if (copilotInfo.hasInteractiveRefinement && fnType === 'SE' && /refin|reescrev|copiloto|tom|formal|simplific|rascunho|editor|sarb/i.test(`${fnName} ${fn.primaryIntent || ''}`)) {
+        fnType = 'EE';
+        fnName = 'EE - Refinar Resposta via Comandos do Copiloto';
+        td = Math.max(6, td);
+        if (arTr < 2) arTr = 2;
+        if (!effectiveArList.some(a => /ia|llm|generativa/i.test(a))) {
+          effectiveArList.push('AIE - API do Serviço de IA Generativa');
+        }
+        slaConversionNote = `Pós-processamento SE ➔ EE: comando interativo de refinamento do Copiloto processa parâmetros externos para alterar/atualizar o ALI de Rascunho (${td} TDs, ${arTr} ARs).`;
+        dedupInventoryNotes.push(slaConversionNote);
+      }
+
       // Garante >= 2 ARs nas EEs de atuação assistida com auditoria e transferência de responsável entre filas/agentes
       if (splitInfo.hasAtomicSplit && fnType === 'EE' && arTr < 2 && /atua[çc][ãa]o|andamento|assistid|transfer|reatribu|repasse|respons[áa]vel/i.test(`${fnName} ${fn.primaryIntent || ''}`)) {
         arTr = 2;
@@ -3420,6 +3508,15 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
           effectiveArList.push('Auditoria / Agentes Responsáveis');
         }
         dedupInventoryNotes.push(`Pós-processamento EE Atômica ("${fnName}"): AR elevado para ${arTr} (Demandas + Auditoria/Agentes).`);
+      }
+
+      // Garante >= 2 ARs nas EEs do Copiloto de IA Generativa (ALI Rascunho + AIE API IA Generativa)
+      if (copilotInfo.isGenAiIntegration && fnType === 'EE' && arTr < 2) {
+        arTr = 2;
+        if (!effectiveArList.some(a => /ia|llm|generativa/i.test(a))) {
+          effectiveArList.push('AIE - API do Serviço de IA Generativa');
+        }
+        dedupInventoryNotes.push(`Pós-processamento Copiloto IA ("${fnName}"): AR elevado para ${arTr} (ALI Rascunho/Resposta + AIE IA Generativa).`);
       }
 
       // Pós-processamento determinístico estrito: sobrepõe quaisquer valores errôneos de complexidade/PF vindos da IA
@@ -3577,6 +3674,65 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
       factor: getCountingTypeFactor(effectiveCountingType, customFactor, rootOpType, 'CE', fullText)
     }));
     dedupInventoryNotes.push('Consulta Externa autônoma: adicionada "CE - Busca Global Assistida de Demandas" prevista no requisito.');
+  }
+
+  // Reconciliação Copiloto de IA Generativa (RF-09 e similares):
+  // 1) Não contar ALIs de contexto/insumo pré-existente (Minutas, Demandas, Subsídio/Parecer) como novos ALIs quando houver ALI Rascunho / Resposta Oficial;
+  // 2) Garantir AIE - API do Serviço de IA Generativa (5 PF) se ausente do inventário;
+  // 3) Garantir as 2 EEs separadas: Gerar Rascunho Inicial com IA + Refinar Resposta via Comandos do Copiloto.
+  if (copilotInfo.isGenAiIntegration) {
+    if (isDevCountMode && !hasFeatureScope) {
+      const draftAlis = ifpugCandidates.filter(c => c.functionType === 'ALI' && /rascunho|resposta/i.test(c.name) && !/^ali\s*-\s*(?:estrutura de dados:\s*)?minutas/i.test(c.name));
+      const hasDraftAli = draftAlis.length > 0;
+      const isReadOnlyContextAli = (name = '') => /\b(?:minutas?|demandas?|subs[íi]dios?|parecer(?:es)?|triagem)\b/i.test(name);
+      for (let i = ifpugCandidates.length - 1; i >= 0; i--) {
+        const c = ifpugCandidates[i];
+        if (c.functionType === 'ALI') {
+          if (hasDraftAli && c !== draftAlis[0] && isReadOnlyContextAli(c.name)) {
+            ifpugCandidates.splice(i, 1);
+            dedupInventoryNotes.push(`Pós-processamento Copiloto IA (IFPUG CPM 4.3.1): "${c.name}" é insumo de leitura no Copiloto; contabilizada exclusivamente como AR/FTR sem duplicar ALI.`);
+          } else if (!hasDraftAli && /\bminutas?\b/i.test(c.name)) {
+            c.name = 'ALI - Estrutura de Dados: Rascunho / Resposta Oficial';
+          }
+        }
+      }
+    }
+    const hasGenAiAie = ifpugCandidates.some(c => c.functionType === 'AIE');
+    const aieExistsInProject = projectId && projectId !== 'all'
+      && projectHasDataFunction(projectId, 'AIE', ['API do Serviço de IA Generativa', 'IA Generativa', 'LLM']);
+    if (!hasGenAiAie && (!aieExistsInProject || rootOpType === 'CHG')) {
+      ifpugCandidates.push(buildAtomicSplitCandidate('genai_aie', {
+        td: 5,
+        arTr: 1,
+        countingType: effectiveCountingType,
+        operationType: rootOpType,
+        factor: getCountingTypeFactor(effectiveCountingType, customFactor, rootOpType, 'AIE', fullText)
+      }));
+      dedupInventoryNotes.push('Pós-processamento Fronteira Externa: incluída "AIE - API do Serviço de IA Generativa" (Baixa / 5 PF).');
+    }
+    if (copilotInfo.hasDualCopilotEe) {
+      const eeFactor = getCountingTypeFactor(effectiveCountingType, customFactor, rootOpType, 'EE', fullText);
+      const hasGenEe = ifpugCandidates.some(c => c.functionType === 'EE' && /gerar|inicial|rascunho/i.test(`${c.name} ${c.primaryIntent}`) && !/refin|comandos?\s+do\s+copiloto/i.test(c.name));
+      const hasRefEe = ifpugCandidates.some(c => c.functionType === 'EE' && /refin|reescrev|copiloto|tom|formal|simplific/i.test(`${c.name} ${c.primaryIntent}`));
+      if (!hasGenEe) {
+        ifpugCandidates.push(buildAtomicSplitCandidate('copilot_generate_ee', {
+          td: 7,
+          arTr: 3,
+          countingType: effectiveCountingType,
+          operationType: rootOpType,
+          factor: eeFactor
+        }));
+      }
+      if (!hasRefEe) {
+        ifpugCandidates.push(buildAtomicSplitCandidate('copilot_refine_ee', {
+          td: 7,
+          arTr: 2,
+          countingType: effectiveCountingType,
+          operationType: rootOpType,
+          factor: eeFactor
+        }));
+      }
+    }
   }
 
   // Garante reconhecimento de SE formal para disparo de e-mail / notificação externa (e AR >= 2 se parametrizada por template/tags)
