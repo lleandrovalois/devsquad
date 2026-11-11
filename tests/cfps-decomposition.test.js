@@ -547,6 +547,144 @@ Cenário: Indicação de prorrogação utilizada
   });
 });
 
+describe('Regra 7: Atomicidade de Entradas Externas (EE) — Separação Atuação Assistida vs Transferência (RF-08 -> 5 componentes / 25–26 PF)', () => {
+  const rf08Spec = {
+    code: 'RF-08',
+    title: 'Acesso Global Assistido e Transferência de Agente Responsável',
+    feature: 'CAIXA DE ENTRADA DO AGENTE & GESTÃO DA FILA',
+    userStory: `Como: Agente / Coordenador de Ouvidoria
+
+Quero: consultar e atuar de forma assistida em casos de outros colegas e poder reatribuir o agente responsável pela demanda
+
+Para que: o atendimento presencial/telefônico de clientes recorrentes não seja interrompido e seja viável cobrir férias, licenças e escalas.
+
+Regras de Negócio (RN)
+RN08.1: Todo ouvidor com perfil autorizado pode buscar demandas de outros analistas via busca global assistida.
+
+RN08.2: Qualquer interação realizada em demanda de outro agente deve gravar registro de auditoria (Quem atuou, data/hora e justificativa da ação).
+
+RN08.3: Coordenadores e os próprios agentes podem transferir a responsabilidade da demanda para outro ouvidor, movendo o caso imediatamente para a caixa de trabalho do novo responsável.`,
+    bdd: `Cenário: Atuação assistida em demanda de colega em férias
+  Dado que o Agente "A" precisa atender um cliente presencial cuja demanda pertence ao Agente "B"
+  Quando o Agente "A" localizar a demanda e registrar um andamento
+  Então o sistema deve permitir o registro
+  E gravar na linha do tempo da auditoria: "Andamento cadastrado por Agente A em cobertura/modo assistido".
+
+Cenário: Repasse de demanda entre ouvidores
+  Dado que um ouvidor precisa repassar seu caso para outro analista
+  Quando selecionar a opção "Transferir Responsável" e escolher o novo agente
+  Então a demanda deve desaparecer da Caixa de Entrada do ouvidor de origem
+  E passar a figurar imediatamente na Caixa de Entrada do novo agente responsável com notificação interna.`
+  };
+
+  it('reconcileAiCfpsResult separa EE fundida pela IA em duas EEs Média (4 PF), garante ALI Auditoria e CE Busca Global (25.00 PF)', () => {
+    const res = reconcileAiCfpsResult({
+      parsed: {
+        operationType: 'ADD',
+        entityName: 'Demandas de Ouvidoria',
+        userRole: 'Agente / Coordenador',
+        userWant: 'atuar de forma assistida e transferir responsável',
+        userBenefit: 'continuidade de atendimento',
+        boundarySummary: 'CRM interno',
+        detectedFields: ['Demanda', 'Agente Responsável', 'Quem atuou', 'Data/hora', 'Justificativa'],
+        functions: [
+          {
+            functionType: 'ALI',
+            name: 'ALI - Estrutura de Dados: Demandas de Ouvidoria',
+            operationType: 'ADD',
+            primaryIntent: 'Manter demandas de ouvidoria',
+            td: 5,
+            arTr: 1,
+            tdList: ['ID Demanda', 'Status', 'Agente Responsável', 'Cliente', 'Descrição'],
+            arTrList: ['Demandas'],
+            rationale: 'ALI principal'
+          },
+          {
+            functionType: 'EE', // Agrupamento indevido pela IA
+            name: 'EE - Registrar Atuação Assistida e Transferir Responsável',
+            operationType: 'ADD',
+            primaryIntent: 'Registrar andamento e transferir agente responsável com auditoria',
+            td: 8,
+            arTr: 2,
+            tdList: ['Demanda', 'Andamento', 'Novo Agente', 'Quem atuou', 'Data/hora', 'Justificativa', 'Acionamento', 'Retorno'],
+            arTrList: ['ALI - Demandas', 'ALI - Auditoria'],
+            rationale: 'Agrupamento indevido'
+          }
+        ],
+        inmItems: [],
+        auditorNotes: []
+      },
+      latencyMs: 90,
+      provider: 'gemini',
+      providerLabel: 'Gemini',
+      model: 'gemini-3.5-flash-lite'
+    }, rf08Spec, { countingType: 'Desenvolvimento' });
+
+    assert.equal(res.candidates.length, 5);
+    const alis = res.candidates.filter(c => c.functionType === 'ALI');
+    const ees = res.candidates.filter(c => c.functionType === 'EE');
+    const ces = res.candidates.filter(c => c.functionType === 'CE');
+    assert.equal(alis.length, 2, 'Deve conter ALI Demandas e ALI Auditoria/Histórico');
+    assert.equal(ees.length, 2, 'Deve decompor em 2 EEs separadas');
+    assert.equal(ces.length, 1, 'Deve incluir CE Busca Global Assistida');
+    ees.forEach(ee => {
+      assert.equal(ee.complexity, 'Média');
+      assert.equal(ee.finalPf, 4);
+    });
+    assert.ok(res.totalGlobalPf >= 25 && res.totalGlobalPf <= 26, `Esperado 25..26 PF, obtido ${res.totalGlobalPf}`);
+  });
+
+  it('reconcileAiCfpsResult promove EE Transferir Responsável de 1 AR (Baixa 3 PF) para 2 ARs (Média 4 PF)', () => {
+    const res = reconcileAiCfpsResult({
+      parsed: {
+        operationType: 'ADD',
+        entityName: 'Demandas',
+        userRole: 'Agente',
+        userWant: 'atuar assistido e transferir responsável',
+        userBenefit: 'continuidade',
+        boundarySummary: 'CRM',
+        detectedFields: ['Demanda', 'Agente', 'Justificativa'],
+        functions: [
+          { functionType: 'ALI', name: 'ALI - Demandas', operationType: 'ADD', td: 6, arTr: 1, tdList: ['id', 'status', 'agente', 'cliente', 'desc', 'data'], arTrList: ['Demandas'] },
+          { functionType: 'ALI', name: 'ALI - Auditoria de Atendimento', operationType: 'ADD', td: 5, arTr: 1, tdList: ['id', 'demanda', 'executor', 'data', 'justificativa'], arTrList: ['Auditoria'] },
+          { functionType: 'EE', name: 'EE - Registrar Atuação Assistida com Log de Auditoria', operationType: 'ADD', td: 6, arTr: 2, tdList: ['demanda', 'andamento', 'executor', 'justificativa', 'btn', 'msg'], arTrList: ['ALI - Demandas', 'ALI - Auditoria'] },
+          { functionType: 'EE', name: 'EE - Transferir Agente Responsável', operationType: 'ADD', td: 5, arTr: 1, tdList: ['demanda', 'novo_agente', 'justificativa', 'btn', 'msg'], arTrList: ['ALI - Demandas'] },
+          { functionType: 'CE', name: 'CE - Busca Global Assistida de Demandas', operationType: 'ADD', td: 5, arTr: 1, tdList: ['filtro', 'agente', 'status', 'btn', 'msg'], arTrList: ['ALI - Demandas'] }
+        ],
+        inmItems: [],
+        auditorNotes: []
+      },
+      latencyMs: 70,
+      provider: 'gemini',
+      providerLabel: 'Gemini',
+      model: 'gemini-3.5-flash-lite'
+    }, rf08Spec, { countingType: 'Desenvolvimento' });
+
+    const transferEe = res.candidates.find(c => c.functionType === 'EE' && /transfer/i.test(c.name));
+    assert.ok(transferEe);
+    assert.equal(transferEe.arTr, 2);
+    assert.equal(transferEe.complexity, 'Média');
+    assert.equal(transferEe.finalPf, 4);
+    assert.equal(res.totalGlobalPf, 25);
+  });
+
+  it('motor heurístico local calcula RF-08 com 5 componentes (2 ALIs + 2 EEs Média + 1 CE) totalizando 25.00 PF', () => {
+    const localRes = analyzeCfpsSpecification(rf08Spec, { countingType: 'Desenvolvimento', operationType: '' });
+    assert.equal(localRes.candidates.length, 5);
+    assert.equal(localRes.summary.countAli, 2);
+    assert.equal(localRes.summary.countEe, 2);
+    assert.equal(localRes.summary.countCe, 1);
+    const ees = localRes.candidates.filter(c => c.functionType === 'EE');
+    ees.forEach(ee => {
+      assert.equal(ee.arTr, 2);
+      assert.equal(ee.complexity, 'Média');
+      assert.equal(ee.finalPf, 4);
+    });
+    assert.equal(localRes.totalGlobalPf, 25);
+  });
+});
+
+
 
 
 

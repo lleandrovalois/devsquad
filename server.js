@@ -1734,6 +1734,101 @@ function requiresBusinessCalendarSlaAr(text = '') {
 }
 
 /**
+ * Detecta requisitos compostos com duas intenções primárias distintas de Entrada Externa (EE):
+ * 1) Registro de andamento/atuação assistida (com histórico/auditoria); e
+ * 2) Transferência/reatribuição de agente/analista responsável pela custódia da demanda.
+ * Pelo IFPUG CPM 4.3.1 (atomicidade), não podem ser fundidos em uma única EE.
+ */
+function detectSplitInterventionAndTransferIntent(text = '') {
+  const lower = (text || '').toLowerCase();
+  const hasIntervention = /\b(?:registrar|cadastr(?:ar|ado)|incluir|lan[çc]ar|atuar)\b[^.\n;]{0,60}\b(?:atua[çc][ãa]o(?:\s+assistida)?|andamento(?:\s+assistido)?|interven[çc][ãa]o|parecer|subs[íi]dio|interage|intera[çc][ãa]o)\b/i.test(lower)
+    || /\b(?:atua[çc][ãa]o\s+assistida|modo\s+assistido|registrar\s+um\s+andamento)\b/i.test(lower);
+  const hasTransfer = /\b(?:transferir|repasse|repassar|reatribuir|alterar|mudar)\b[^.\n;]{0,60}\b(?:respons[áa]vel|agente|ouvidor|analista|cust[óo]dia|titularidade)\b/i.test(lower)
+    || /\b(?:transfer[êe]ncia\s+de\s+(?:agente|respons[áa]vel)|transferir\s+a\s+responsabilidade)\b/i.test(lower);
+  const hasAuditEntityPhrase = /\b(?:gravar|grava|registrar|mant[ée]m)\b[^.\n;]{0,60}\b(?:registro\s+de\s+auditoria|linha\s+do\s+tempo\s+da\s+auditoria|hist[óo]rico\s+de\s+(?:atendimento|auditoria))\b/i.test(lower);
+  const hasDedicatedAuditLogAli = hasAuditEntityPhrase && /\b(?:quem\s+atuou|justificativa\s+da\s+a[çc][ãa]o|data\s*\/?\s*hora)\b/i.test(lower);
+  const hasGlobalSearchCe = /\b(?:busca\s+global(?:\s+assistida)?|pesquisa\s+global|buscar\s+demandas\s+de\s+outros)\b/i.test(lower);
+  return {
+    hasIntervention,
+    hasTransfer,
+    hasAtomicSplit: hasIntervention && hasTransfer,
+    hasDedicatedAuditLogAli,
+    hasGlobalSearchCe
+  };
+}
+
+/**
+ * Constrói candidato padronizado para processos elementares atômicos e entidades de auditoria
+ * sem duplicar lógica entre o motor heurístico local e o reconciliador pós-IA.
+ */
+function buildAtomicSplitCandidate(kind, opts = {}) {
+  const { td, arTr, countingType = 'Desenvolvimento', operationType = 'ADD', factor = 1 } = opts;
+  const specs = {
+    audit_ali: {
+      functionType: 'ALI',
+      category: 'Dados',
+      name: 'ALI - Auditoria / Histórico de Atendimento',
+      defaultTd: 4,
+      defaultAr: 1,
+      primaryIntent: 'Armazenar e manter registros imutáveis de auditoria e linha do tempo de atendimento assistido.',
+      notes: (uTd, uAr) => `Arquivo Lógico Interno de Auditoria (${uTd} TDs [Quem atuou, Data/Hora, Justificativa, Demanda]; ${uAr} TR).`,
+      rationale: (uTd, uAr, cx, pf) => `Reconhecido como ALI (${operationType}): entidade autônoma de histórico/auditoria com atributos próprios (${uTd} TDs, ${uAr} TR ➔ ${cx} / ${pf} PF).`
+    },
+    intervention: {
+      functionType: 'EE',
+      category: 'Transação',
+      name: 'EE - Registrar Atuação Assistida com Log de Auditoria',
+      defaultTd: 6,
+      defaultAr: 2,
+      primaryIntent: 'Registrar andamento/atuação assistida em demanda de terceiros mantendo linha do tempo e trilha de auditoria.',
+      notes: (uTd, uAr) => `Entrada Externa atômica de atuação assistida (${uTd} TDs; ${uAr} ARs [ALI Demandas + ALI Auditoria / Histórico de Atendimento]).`,
+      rationale: (uTd, uAr, cx, pf) => `Entrada Externa (EE • ${operationType}): intenção primária própria de registrar atuação/andamento com auditoria (${uTd} TDs, ${uAr} ARs ➔ ${cx} / ${pf} PF).`
+    },
+    transfer: {
+      functionType: 'EE',
+      category: 'Transação',
+      name: 'EE - Transferir Agente Responsável',
+      defaultTd: 5,
+      defaultAr: 2,
+      primaryIntent: 'Reatribuir custódia/titularidade da demanda para outro agente responsável, atualizando filas e trilha de auditoria.',
+      notes: (uTd, uAr) => `Entrada Externa atômica de transferência de custódia (${uTd} TDs; ${uAr} ARs [ALI Demandas + Agentes / ALI Auditoria]).`,
+      rationale: (uTd, uAr, cx, pf) => `Entrada Externa (EE • ${operationType}): intenção primária autônoma de transferir responsável pela demanda (${uTd} TDs, ${uAr} ARs ➔ ${cx} / ${pf} PF).`
+    },
+    global_search_ce: {
+      functionType: 'CE',
+      category: 'Transação',
+      name: 'CE - Busca Global Assistida de Demandas',
+      defaultTd: 5,
+      defaultAr: 1,
+      primaryIntent: 'Recuperar e exibir demandas de outros analistas via busca global para atuação assistida sem alterar dados.',
+      notes: (uTd, uAr) => `Consulta Externa autônoma de busca global assistida (${uTd} TDs; ${uAr} AR [ALI Demandas]).`,
+      rationale: (uTd, uAr, cx, pf) => `Consulta Externa (CE • ${operationType}): pesquisa global interativa independente para localizar demandas de terceiros (${uTd} TDs, ${uAr} AR ➔ ${cx} / ${pf} PF).`
+    }
+  };
+  const cfg = specs[kind];
+  const finalTd = Math.max(cfg.defaultTd, Number(td) || cfg.defaultTd);
+  const finalAr = Math.max(cfg.defaultAr, Number(arTr) || cfg.defaultAr);
+  const { complexity, rawPf, finalPf } = evaluateApfMetrics(cfg.functionType, finalAr, finalTd, factor);
+  return {
+    id: `cand_atomic_${kind}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    functionType: cfg.functionType,
+    name: cfg.name,
+    category: cfg.category,
+    operationType,
+    primaryIntent: cfg.primaryIntent,
+    td: finalTd,
+    arTr: finalAr,
+    complexity,
+    rawPf,
+    countingType,
+    factor,
+    finalPf,
+    notes: cfg.notes(finalTd, finalAr),
+    rationale: cfg.rationale(finalTd, finalAr, complexity, rawPf)
+  };
+}
+
+/**
  * Detecta disparo formal de e-mail ou notificação externa com dados/layout/corpo próprio
  * para fora da fronteira (SE - Saída Externa), diferenciando de toasts/avisos inline de tela.
  */
@@ -2440,6 +2535,7 @@ function analyzeCfpsSpecification(spec, options = {}) {
   if (/\bmanifesta[çc]/i.test(lowerText)) aliLabelCandidates.push('manifestações');
   const aliAlreadyExistsInProject = projectHasDataFunction(projectId, 'ALI', aliLabelCandidates);
 
+  const splitInfo = detectSplitInterventionAndTransferIntent(fullText);
   const hasFormalNotificationPre = detectFormalExternalNotificationSe(fullText, isAuthFlow);
   const shouldCreateAli = !isAuthFlow && !isPurelyTechnical && (
     (isDesenvolvimentoMode && (hasExplicitAliCreation || (!isUsageOrQueryOnly && (hasMaintainingTxPre || hasFormalNotificationPre || hasSlaPanelPre))))
@@ -2447,9 +2543,12 @@ function analyzeCfpsSpecification(spec, options = {}) {
   );
 
   if (shouldCreateAli) {
-    const aliEntityLabel = (/\bcrm\b/i.test(lowerText) && !/\bcrm\b/i.test(entityName))
-      ? `${entityName} (CRM)`
+    const rawMainAliLabel = (splitInfo.hasAtomicSplit && /\bdemandas?\b/i.test(lowerText))
+      ? 'Demandas de Ouvidoria'
       : entityName;
+    const aliEntityLabel = (/\bcrm\b/i.test(lowerText) && !/\bcrm\b/i.test(rawMainAliLabel))
+      ? `${rawMainAliLabel} (CRM)`
+      : rawMainAliLabel;
     const aliTd = dataTd;
     const aliTr = inferredDataTr;
     const complexity = calculateApfComplexity('ALI', aliTr, aliTd);
@@ -2473,6 +2572,15 @@ function analyzeCfpsSpecification(spec, options = {}) {
       notes: `Arquivo Lógico Interno criado/mantido dentro da fronteira da aplicação (${aliTd} TDs [${detectedFields.join(', ')}], ${aliTr} TR(s) — sem +2 TDs de controle).`,
       rationale: `Reconhecido como ALI (${resolvedOpType}): requisito responsável pela estrutura/persistência da entidade no banco/CRM com ${aliTd} TD(s) de negócio e ${aliTr} TR(s) (${aliTr > 1 ? 'Mestre + Detalhe subordinado' : 'Entidade simples'}).`
     });
+    if (isDesenvolvimentoMode && splitInfo.hasAtomicSplit && splitInfo.hasDedicatedAuditLogAli) {
+      ifpugCandidates.push(buildAtomicSplitCandidate('audit_ali', {
+        td: 4,
+        arTr: 1,
+        countingType: effectiveCountingType,
+        operationType: resolvedOpType,
+        factor: getCandidateFactor('ALI', resolvedOpType)
+      }));
+    }
   }
 
   // Se o requisito for estritamente uma especificação estrutural de Função de Dados (ALI), não gera transações fantasmas (EE/CE/SE)
@@ -2531,96 +2639,116 @@ function analyzeCfpsSpecification(spec, options = {}) {
       // Detecta se o processo principal é estritamente uma exclusão ou inativação lógica (evitando duplicar EE de atualização + EE de inativação)
       const isPrimaryInactivationOrDeletion = /(?:inativa[çc][ãa]o\s+l[óo]gica|submete\s+a\s+inativa[çc][ãa]o|^excluir\s+|^remover\s+|^inativar\s+)/i.test(`${cleanTitle}\n${lowerText}`);
 
-      // EE (Entrada Externa) - Inclusão / Registro / Submissão / Ingestão / Integração (CFP)
-      const textWithoutFieldAddition = textWithoutWriteNegations
-        .replace(/(?:incluir|adicionar|inserir)\s+(?:novo\s+|novos\s+)?(?:campo|campos|atributo|atributos|coluna|colunas)/gi, ' ')
-        .replace(/registrar\s+a\s+compet[êe]ncia/gi, ' ');
-      const hasInclusion = !isPrimaryAnalyticalOutput && !isPrimaryInactivationOrDeletion && (isFullCrud || /\b(?:incluir|cadastrar|cadastra|criar\s+novo|criad[ao]\s+no\s+(?:crm|banco|sistema)|adicionar|registrar|registra|inserir|salvar|upload|importar|importad[ao]|carregar|carregando|carga\s+de\s+convers[ãa]o|ingest[ãa]o|ingerir|capturar|capturad[ao]s?|integrar|integrad[ao]s?|persistid[ao]s?|autenticar|login|logar|enviar|submeter)\b/i.test(textWithoutFieldAddition));
-      if (hasInclusion) {
-        const eeAddTd = transactionTd;
-        const eeAddAr = txAr;
-        const complexity = calculateApfComplexity('EE', eeAddAr, eeAddTd);
-        const rawPf = calculateApfRawPf('EE', complexity);
-        const candFactor = getCandidateFactor('EE', resolvedOpType);
-        const finalPf = calculateApfFinalPf(rawPf, candFactor);
-        ifpugCandidates.push({
-          id: `cand_ee_add_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          functionType: 'EE',
-          name: `EE - Incluir/Processar ${entityName}`,
-          category: 'Transação',
-          operationType: resolvedOpType,
-          primaryIntent: 'Processar dados de entrada através da fronteira e manter ALI ou validar comportamento do sistema.',
-          td: eeAddTd,
-          arTr: eeAddAr,
-          complexity,
-          rawPf,
-          countingType,
-          factor: candFactor,
-          finalPf,
-          notes: `Processo elementar de entrada (${eeAddTd} TDs = ${businessTdCount} atributo(s) + 1 acionamento + 1 mensagem; ${eeArSummary}).`,
-          rationale: `Entrada Externa (EE • ${resolvedOpType}): ${eeAddTd} TDs (${businessTdCount} negócio + 2 controle) e ${eeArSummary}.`
-        });
-      }
+      if (splitInfo.hasAtomicSplit) {
+        const eeFactor = getCandidateFactor('EE', resolvedOpType);
+        ifpugCandidates.push(
+          buildAtomicSplitCandidate('intervention', {
+            td: Math.max(6, transactionTd),
+            arTr: Math.max(2, txAr),
+            countingType: effectiveCountingType,
+            operationType: resolvedOpType,
+            factor: eeFactor
+          }),
+          buildAtomicSplitCandidate('transfer', {
+            td: Math.max(5, transactionTd),
+            arTr: Math.max(2, txAr),
+            countingType: effectiveCountingType,
+            operationType: resolvedOpType,
+            factor: eeFactor
+          })
+        );
+      } else {
+        // EE (Entrada Externa) - Inclusão / Registro / Submissão / Ingestão / Integração (CFP)
+        const textWithoutFieldAddition = textWithoutWriteNegations
+          .replace(/(?:incluir|adicionar|inserir)\s+(?:novo\s+|novos\s+)?(?:campo|campos|atributo|atributos|coluna|colunas)/gi, ' ')
+          .replace(/registrar\s+a\s+compet[êe]ncia/gi, ' ');
+        const hasInclusion = !isPrimaryAnalyticalOutput && !isPrimaryInactivationOrDeletion && (isFullCrud || /\b(?:incluir|cadastrar|cadastra|criar\s+novo|criad[ao]\s+no\s+(?:crm|banco|sistema)|adicionar|registrar|registra|inserir|salvar|upload|importar|importad[ao]|carregar|carregando|carga\s+de\s+convers[ãa]o|ingest[ãa]o|ingerir|capturar|capturad[ao]s?|integrar|integrad[ao]s?|persistid[ao]s?|autenticar|login|logar|enviar|submeter)\b/i.test(textWithoutFieldAddition));
+        if (hasInclusion) {
+          const eeAddTd = transactionTd;
+          const eeAddAr = txAr;
+          const complexity = calculateApfComplexity('EE', eeAddAr, eeAddTd);
+          const rawPf = calculateApfRawPf('EE', complexity);
+          const candFactor = getCandidateFactor('EE', resolvedOpType);
+          const finalPf = calculateApfFinalPf(rawPf, candFactor);
+          ifpugCandidates.push({
+            id: `cand_ee_add_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            functionType: 'EE',
+            name: `EE - Incluir/Processar ${entityName}`,
+            category: 'Transação',
+            operationType: resolvedOpType,
+            primaryIntent: 'Processar dados de entrada através da fronteira e manter ALI ou validar comportamento do sistema.',
+            td: eeAddTd,
+            arTr: eeAddAr,
+            complexity,
+            rawPf,
+            countingType,
+            factor: candFactor,
+            finalPf,
+            notes: `Processo elementar de entrada (${eeAddTd} TDs = ${businessTdCount} atributo(s) + 1 acionamento + 1 mensagem; ${eeArSummary}).`,
+            rationale: `Entrada Externa (EE • ${resolvedOpType}): ${eeAddTd} TDs (${businessTdCount} negócio + 2 controle) e ${eeArSummary}.`
+          });
+        }
 
-      // EE (Entrada Externa) - Alteração / Atualização / Aprovação
-      // Remove efeitos colaterais de log de auditoria e descritores de operação de melhoria (CHG) de processo existente para evitar gerar uma 2ª EE duplicada
-      const textWithoutAuditAndChgMeta = textWithoutWriteNegations
-        .replace(/(?:registra(?:r)?|atualiza(?:r)?|grava(?:r)?)\s+(?:a\s+|o\s+)?(?:hist[óo]rico|log|trilha)\s+de\s+auditoria/gi, ' ')
-        .replace(/(?:alterar|modificar|atualizar|evoluir|refatorar)\s+(?:o\s+|a\s+)?(?:fluxo|processo|funcionalidade|regra|rotina|tela|m[óo]dulo)(?:\s+existente)?|altera[çc][ãa]o\s+d[aeo]\s+(?:processo|fluxo|l[óo]gica|funcionalidade)/gi, ' ');
-      const hasUpdate = !isPrimaryAnalyticalOutput && !isPrimaryInactivationOrDeletion && (isFullCrud || /\b(?:alterar|atualizar|atualiza|editar|modificar|progresso|revisar|mudar\s+status|concluir|aprovar|rejeitar|homologar)\b/i.test(textWithoutAuditAndChgMeta));
-      if (hasUpdate) {
-        const eeUpdTd = transactionTd;
-        const eeUpdAr = txAr;
-        const complexity = calculateApfComplexity('EE', eeUpdAr, eeUpdTd);
-        const rawPf = calculateApfRawPf('EE', complexity);
-        const candFactor = getCandidateFactor('EE', resolvedOpType);
-        const finalPf = calculateApfFinalPf(rawPf, candFactor);
-        ifpugCandidates.push({
-          id: `cand_ee_upd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          functionType: 'EE',
-          name: `EE - Atualizar/Editar ${entityName}`,
-          category: 'Transação',
-          operationType: resolvedOpType,
-          primaryIntent: 'Processar dados recebidos de fora da fronteira para modificar registros em ALI referenciado.',
-          td: eeUpdTd,
-          arTr: eeUpdAr,
-          complexity,
-          rawPf,
-          countingType,
-          factor: candFactor,
-          finalPf,
-          notes: `Processo de manutenção/atualização (${eeUpdTd} TDs = ${businessTdCount} atributo(s) + 1 acionamento + 1 mensagem; ${eeUpdAr} AR).`,
-          rationale: `Entrada Externa (EE • ${resolvedOpType}): Modifica estado no ALI referenciado (${eeUpdTd} TDs, ${eeUpdAr} AR).`
-        });
-      }
+        // EE (Entrada Externa) - Alteração / Atualização / Aprovação
+        // Remove efeitos colaterais de log de auditoria e descritores de operação de melhoria (CHG) de processo existente para evitar gerar uma 2ª EE duplicada
+        const textWithoutAuditAndChgMeta = textWithoutWriteNegations
+          .replace(/(?:registra(?:r)?|atualiza(?:r)?|grava(?:r)?)\s+(?:a\s+|o\s+)?(?:hist[óo]rico|log|trilha)\s+de\s+auditoria/gi, ' ')
+          .replace(/(?:alterar|modificar|atualizar|evoluir|refatorar)\s+(?:o\s+|a\s+)?(?:fluxo|processo|funcionalidade|regra|rotina|tela|m[óo]dulo)(?:\s+existente)?|altera[çc][ãa]o\s+d[aeo]\s+(?:processo|fluxo|l[óo]gica|funcionalidade)/gi, ' ');
+        const hasUpdate = !isPrimaryAnalyticalOutput && !isPrimaryInactivationOrDeletion && (isFullCrud || /\b(?:alterar|atualizar|atualiza|editar|modificar|progresso|revisar|mudar\s+status|concluir|aprovar|rejeitar|homologar)\b/i.test(textWithoutAuditAndChgMeta));
+        if (hasUpdate) {
+          const eeUpdTd = transactionTd;
+          const eeUpdAr = txAr;
+          const complexity = calculateApfComplexity('EE', eeUpdAr, eeUpdTd);
+          const rawPf = calculateApfRawPf('EE', complexity);
+          const candFactor = getCandidateFactor('EE', resolvedOpType);
+          const finalPf = calculateApfFinalPf(rawPf, candFactor);
+          ifpugCandidates.push({
+            id: `cand_ee_upd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            functionType: 'EE',
+            name: `EE - Atualizar/Editar ${entityName}`,
+            category: 'Transação',
+            operationType: resolvedOpType,
+            primaryIntent: 'Processar dados recebidos de fora da fronteira para modificar registros em ALI referenciado.',
+            td: eeUpdTd,
+            arTr: eeUpdAr,
+            complexity,
+            rawPf,
+            countingType,
+            factor: candFactor,
+            finalPf,
+            notes: `Processo de manutenção/atualização (${eeUpdTd} TDs = ${businessTdCount} atributo(s) + 1 acionamento + 1 mensagem; ${eeUpdAr} AR).`,
+            rationale: `Entrada Externa (EE • ${resolvedOpType}): Modifica estado no ALI referenciado (${eeUpdTd} TDs, ${eeUpdAr} AR).`
+          });
+        }
 
-      // EE (Entrada Externa) - Exclusão / Inativação
-      const hasDelete = !isPrimaryAnalyticalOutput && (isFullCrud || isPrimaryInactivationOrDeletion || /\b(?:excluir|remover|deletar|inativar|desativar|cancelar\s+registro|apagar)\b/i.test(lowerText));
-      if (hasDelete) {
-        // Se for CRUD completo junto com Inclusão/Alteração, exclusão simples tem 3 TDs e 1 AR; se for requisito dedicado de exclusão/inativação, usa os TDs e ARs reais do requisito
-        const eeDelTd = (hasInclusion || hasUpdate) ? 3 : transactionTd;
-        const eeDelAr = (hasInclusion || hasUpdate) ? 1 : txAr;
-        const complexity = calculateApfComplexity('EE', eeDelAr, eeDelTd);
-        const rawPf = calculateApfRawPf('EE', complexity);
-        const candFactor = getCandidateFactor('EE', resolvedOpType);
-        const finalPf = calculateApfFinalPf(rawPf, candFactor);
-        ifpugCandidates.push({
-          id: `cand_ee_del_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          functionType: 'EE',
-          name: `EE - Excluir/Inativar ${entityName}`,
-          category: 'Transação',
-          operationType: resolvedOpType,
-          primaryIntent: 'Processar comando de exclusão ou inativação lógica em ALI referenciado.',
-          td: eeDelTd,
-          arTr: eeDelAr,
-          complexity,
-          rawPf,
-          countingType,
-          factor: candFactor,
-          finalPf,
-          notes: `Processo elementar de exclusão/inativação (${eeDelTd} TDs = ${businessTdCount} negócio + 2 controle; ${eeDelAr} AR(s)).`,
-          rationale: `Entrada Externa (EE • ${resolvedOpType}): Exclusão/inativação no ALI referenciado (${eeDelTd} TDs, ${eeDelAr} AR).`
-        });
+        // EE (Entrada Externa) - Exclusão / Inativação
+        const hasDelete = !isPrimaryAnalyticalOutput && (isFullCrud || isPrimaryInactivationOrDeletion || /\b(?:excluir|remover|deletar|inativar|desativar|cancelar\s+registro|apagar)\b/i.test(lowerText));
+        if (hasDelete) {
+          // Se for CRUD completo junto com Inclusão/Alteração, exclusão simples tem 3 TDs e 1 AR; se for requisito dedicado de exclusão/inativação, usa os TDs e ARs reais do requisito
+          const eeDelTd = (hasInclusion || hasUpdate) ? 3 : transactionTd;
+          const eeDelAr = (hasInclusion || hasUpdate) ? 1 : txAr;
+          const complexity = calculateApfComplexity('EE', eeDelAr, eeDelTd);
+          const rawPf = calculateApfRawPf('EE', complexity);
+          const candFactor = getCandidateFactor('EE', resolvedOpType);
+          const finalPf = calculateApfFinalPf(rawPf, candFactor);
+          ifpugCandidates.push({
+            id: `cand_ee_del_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            functionType: 'EE',
+            name: `EE - Excluir/Inativar ${entityName}`,
+            category: 'Transação',
+            operationType: resolvedOpType,
+            primaryIntent: 'Processar comando de exclusão ou inativação lógica em ALI referenciado.',
+            td: eeDelTd,
+            arTr: eeDelAr,
+            complexity,
+            rawPf,
+            countingType,
+            factor: candFactor,
+            finalPf,
+            notes: `Processo elementar de exclusão/inativação (${eeDelTd} TDs = ${businessTdCount} negócio + 2 controle; ${eeDelAr} AR(s)).`,
+            rationale: `Entrada Externa (EE • ${resolvedOpType}): Exclusão/inativação no ALI referenciado (${eeDelTd} TDs, ${eeDelAr} AR).`
+          });
+        }
       }
 
       // Regra 3 (Rigor na Inferência Transacional: CE vs. SE e Supressão de CE Fantasma em Fluxos de Ação Única):
@@ -2707,31 +2835,41 @@ function analyzeCfpsSpecification(spec, options = {}) {
         });
       }
 
-      if (!hasExplicitCalculation && (hasExplicitMultiRecordReadView || hasStandaloneQueryIntent)) {
-        // Gera exclusivamente CE (Consulta Externa) para recuperação direta de dados sem cálculo derivado
-        const ceTd = transactionTd;
-        const ceAr = txAr;
-        const complexity = calculateApfComplexity('CE', ceAr, ceTd);
-        const rawPf = calculateApfRawPf('CE', complexity);
-        const candFactor = getCandidateFactor('CE', resolvedOpType);
-        const finalPf = calculateApfFinalPf(rawPf, candFactor);
-        ifpugCandidates.push({
-          id: `cand_ce_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          functionType: 'CE',
-          name: `CE - Consultar/Listar ${entityName}`,
-          category: 'Transação',
-          operationType: resolvedOpType,
-          primaryIntent: 'Recuperar e apresentar dados diretamente de AR(s) sem fórmulas matemáticas ou criação de dados derivados.',
-          td: ceTd,
-          arTr: ceAr,
-          complexity,
-          rawPf,
-          countingType,
-          factor: candFactor,
-          finalPf,
-          notes: `Consulta Externa direta (${ceTd} TDs = ${businessTdCount} atributo(s) [${detectedFields.join(', ')}] + 1 acionamento/filtro + 1 mensagem; ${arDetailText}).`,
-          rationale: `Consulta Externa (CE • ${resolvedOpType}): ${ceTd} TDs (${businessTdCount} negócio + 2 controle) e ${arDetailText}. Recuperação direta de dados sem cálculo derivado.`
-        });
+      if (!hasExplicitCalculation && (hasExplicitMultiRecordReadView || hasStandaloneQueryIntent || splitInfo.hasGlobalSearchCe)) {
+        // Gera exclusivamente CE (Consulta Externa) para recuperação direta de dados ou busca global autônoma sem cálculo derivado
+        if (splitInfo.hasGlobalSearchCe) {
+          ifpugCandidates.push(buildAtomicSplitCandidate('global_search_ce', {
+            td: 5,
+            arTr: 1,
+            countingType: effectiveCountingType,
+            operationType: resolvedOpType,
+            factor: getCandidateFactor('CE', resolvedOpType)
+          }));
+        } else {
+          const ceTd = transactionTd;
+          const ceAr = txAr;
+          const complexity = calculateApfComplexity('CE', ceAr, ceTd);
+          const rawPf = calculateApfRawPf('CE', complexity);
+          const candFactor = getCandidateFactor('CE', resolvedOpType);
+          const finalPf = calculateApfFinalPf(rawPf, candFactor);
+          ifpugCandidates.push({
+            id: `cand_ce_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            functionType: 'CE',
+            name: `CE - Consultar/Listar ${entityName}`,
+            category: 'Transação',
+            operationType: resolvedOpType,
+            primaryIntent: 'Recuperar e apresentar dados diretamente de AR(s) sem fórmulas matemáticas ou criação de dados derivados.',
+            td: ceTd,
+            arTr: ceAr,
+            complexity,
+            rawPf,
+            countingType,
+            factor: candFactor,
+            finalPf,
+            notes: `Consulta Externa direta (${ceTd} TDs = ${businessTdCount} atributo(s) [${detectedFields.join(', ')}] + 1 acionamento/filtro + 1 mensagem; ${arDetailText}).`,
+            rationale: `Consulta Externa (CE • ${resolvedOpType}): ${ceTd} TDs (${businessTdCount} negócio + 2 controle) e ${arDetailText}. Recuperação direta de dados sem cálculo derivado.`
+          });
+        }
       }
     }
   }
@@ -3194,6 +3332,7 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
   const isDevCountMode = /^desenvolvimento$/i.test((effectiveCountingType || '').trim());
   const hasDynamicSla = hasDynamicRuntimeSlaOrFormula(fullText);
   const needsCalendarSlaAr = requiresBusinessCalendarSlaAr(fullText);
+  const splitInfo = detectSplitInterventionAndTransferIntent(fullText);
   const ifpugCandidates = (parsed.functions || [])
     .filter(fn => {
       if (!fn || !validFnTypes.has((fn.functionType || '').toUpperCase())) return false;
@@ -3272,6 +3411,15 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
           effectiveArList.push('Templates de E-mail / Parâmetros de Notificação');
         }
         dedupInventoryNotes.push(`Pós-processamento SE Parametrizada: AR elevado para ${arTr} (ALI transacional + Templates/Parâmetros de Notificação com tags dinâmicas).`);
+      }
+
+      // Garante >= 2 ARs nas EEs de atuação assistida com auditoria e transferência de responsável entre filas/agentes
+      if (splitInfo.hasAtomicSplit && fnType === 'EE' && arTr < 2 && /atua[çc][ãa]o|andamento|assistid|transfer|reatribu|repasse|respons[áa]vel/i.test(`${fnName} ${fn.primaryIntent || ''}`)) {
+        arTr = 2;
+        if (!effectiveArList.some(a => /auditoria|hist[óo]rico|agente|ouvidor/i.test(a))) {
+          effectiveArList.push('Auditoria / Agentes Responsáveis');
+        }
+        dedupInventoryNotes.push(`Pós-processamento EE Atômica ("${fnName}"): AR elevado para ${arTr} (Demandas + Auditoria/Agentes).`);
       }
 
       // Pós-processamento determinístico estrito: sobrepõe quaisquer valores errôneos de complexidade/PF vindos da IA
@@ -3362,6 +3510,73 @@ function reconcileAiCfpsResult(aiRun, spec, options = {}) {
       rationale: `Regra Desenvolvimento Novo (IFPUG CPM 4.3.1): incluído o ALI "${entityLabel}" criado/mantido pelas transações identificadas neste escopo (${aliTd} TDs, 1 TR).`
     });
     dedupInventoryNotes.push(`Desenvolvimento Novo: ALI "${entityLabel}" incluído por ser mantido diretamente pelas transações da contagem.`);
+  }
+
+  // Atomicidade IFPUG (RF-08 e similares): garante ALI de Auditoria em Desenvolvimento Novo, 2 EEs distintas (Atuação Assistida + Transferir Responsável) e CE de Busca Global
+  if (isDevCountMode && !isStrictAuthOnly && splitInfo.hasAtomicSplit && splitInfo.hasDedicatedAuditLogAli) {
+    if (ifpugCandidates.every(c => c.functionType !== 'ALI' || !/auditoria|hist[óo]rico/i.test(c.name))) {
+      ifpugCandidates.push(buildAtomicSplitCandidate('audit_ali', {
+        td: 4,
+        arTr: 1,
+        countingType: effectiveCountingType,
+        operationType: 'ADD',
+        factor: getCountingTypeFactor(effectiveCountingType, customFactor, 'ADD', 'ALI', fullText)
+      }));
+      dedupInventoryNotes.push('Desenvolvimento Novo: ALI "Auditoria / Histórico de Atendimento" incluído como entidade lógica distinta com atributos próprios.');
+    }
+  }
+  if (splitInfo.hasAtomicSplit) {
+    const eeFactor = getCountingTypeFactor(effectiveCountingType, customFactor, rootOpType, 'EE', fullText);
+    const eeCandidates = ifpugCandidates.filter(c => c.functionType === 'EE');
+    if (eeCandidates.length === 1) {
+      const onlyEe = eeCandidates[0];
+      const looksLikeTransferOnly = /transfer|reatribu|repasse/i.test(`${onlyEe.name} ${onlyEe.primaryIntent}`)
+        && !/atua[çc][ãa]o|andamento|hist[óo]rico|auditoria/i.test(`${onlyEe.name} ${onlyEe.primaryIntent}`);
+      if (looksLikeTransferOnly) {
+        ifpugCandidates.push(buildAtomicSplitCandidate('intervention', {
+          td: 6,
+          arTr: 2,
+          countingType: effectiveCountingType,
+          operationType: onlyEe.operationType || rootOpType,
+          factor: eeFactor
+        }));
+      } else {
+        // Se a IA fundiu atuação assistida e transferência numa única EE, normaliza para Atuação Assistida e separa Transferir Responsável em 2ª EE
+        if (/transfer|reatribu|repasse/i.test(`${onlyEe.name} ${onlyEe.primaryIntent}`)) {
+          onlyEe.name = 'EE - Registrar Atuação Assistida com Log de Auditoria';
+          const normalized = evaluateApfMetrics('EE', Math.max(2, onlyEe.arTr), Math.max(6, onlyEe.td), eeFactor);
+          onlyEe.td = Math.max(6, onlyEe.td);
+          onlyEe.arTr = Math.max(2, onlyEe.arTr);
+          onlyEe.complexity = normalized.complexity;
+          onlyEe.rawPf = normalized.rawPf;
+          onlyEe.finalPf = normalized.finalPf;
+        }
+        ifpugCandidates.push(buildAtomicSplitCandidate('transfer', {
+          td: 5,
+          arTr: 2,
+          countingType: effectiveCountingType,
+          operationType: onlyEe.operationType || rootOpType,
+          factor: eeFactor
+        }));
+      }
+      dedupInventoryNotes.push('Atomicidade IFPUG CPM 4.3.1: "Registrar Atuação Assistida" e "Transferir Agente Responsável" possuem intenções primárias distintas e foram separadas em 2 EEs autônomas.');
+    } else if (eeCandidates.length === 0) {
+      ifpugCandidates.push(
+        buildAtomicSplitCandidate('intervention', { td: 6, arTr: 2, countingType: effectiveCountingType, operationType: rootOpType, factor: eeFactor }),
+        buildAtomicSplitCandidate('transfer', { td: 5, arTr: 2, countingType: effectiveCountingType, operationType: rootOpType, factor: eeFactor })
+      );
+      dedupInventoryNotes.push('Atomicidade IFPUG CPM 4.3.1: sintetizadas as 2 EEs atômicas obrigatórias (Atuação Assistida e Transferência de Responsável).');
+    }
+  }
+  if (splitInfo.hasGlobalSearchCe && ifpugCandidates.every(c => c.functionType !== 'CE')) {
+    ifpugCandidates.push(buildAtomicSplitCandidate('global_search_ce', {
+      td: 5,
+      arTr: 1,
+      countingType: effectiveCountingType,
+      operationType: rootOpType,
+      factor: getCountingTypeFactor(effectiveCountingType, customFactor, rootOpType, 'CE', fullText)
+    }));
+    dedupInventoryNotes.push('Consulta Externa autônoma: adicionada "CE - Busca Global Assistida de Demandas" prevista no requisito.');
   }
 
   // Garante reconhecimento de SE formal para disparo de e-mail / notificação externa (e AR >= 2 se parametrizada por template/tags)
