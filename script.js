@@ -513,7 +513,7 @@ class ALMStore {
           name: u.name,
           role: u.devRole || u.role || 'dev',
           seniority: u.seniority,
-          avatarBg: u.avatarBg || '#6366f1'
+          avatarBg: u.avatarBg || '#1861a5'
         };
       }
     }
@@ -547,7 +547,7 @@ class ALMStore {
       seniority: memberData.seniority || 'Pleno',
       skills: parsedSkills,
       capacity: parseInt(memberData.capacity, 10) || 40,
-      avatarBg: memberData.avatarBg || (spec && spec.color ? spec.color : '#6366f1')
+      avatarBg: memberData.avatarBg || (spec && spec.color ? spec.color : '#1861a5')
     };
     this.state.teamMembers.push(newMember);
     this.saveState();
@@ -562,7 +562,7 @@ class ALMStore {
       if (memberData.role !== undefined) {
         member.role = memberData.role;
         const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(memberData.role) : null;
-        member.avatarBg = memberData.avatarBg || (spec && spec.color ? spec.color : '#6366f1');
+        member.avatarBg = memberData.avatarBg || (spec && spec.color ? spec.color : '#1861a5');
       }
       if (memberData.seniority !== undefined) member.seniority = memberData.seniority;
       if (memberData.skills !== undefined) {
@@ -3120,7 +3120,7 @@ function setReqCodeMode(manual) {
       codeInput.readOnly = true;
       codeInput.style.background = 'rgba(255, 255, 255, 0.04)';
       codeInput.style.cursor = 'not-allowed';
-      codeInput.style.color = '#a5b4fc';
+      codeInput.style.color = 'var(--accent-primary, #4accc2)';
     }
     if (lockIcon) lockIcon.textContent = '🔒';
     if (lockLabel) lockLabel.textContent = 'Auto';
@@ -3643,7 +3643,7 @@ window.selfAssignTask = function(taskId) {
       seniority: currentUser.seniority || 'Pleno',
       skills: currentUser.skills || [],
       capacity: 40,
-      avatarBg: currentUser.avatarBg || '#6366f1'
+      avatarBg: currentUser.avatarBg || '#1861a5'
     });
     assigneeId = member.id;
   }
@@ -3916,7 +3916,7 @@ window.renderTaskRequirementTab = function() {
   const linkedTasks = (store.state.tasks || []).filter(t => (t.reqId === req.id || t.req_id === req.id || t.reqId === req.code || t.req_id === req.code));
 
   contentEl.innerHTML = `
-    <div class="task-req-tab-card glass-panel" style="padding: 1.25rem; border: 1px solid rgba(99, 102, 241, 0.3); background: rgba(15, 23, 42, 0.65); border-radius: var(--radius-lg);">
+    <div class="task-req-tab-card glass-panel" style="padding: 1.25rem; border: 1px solid rgba(74, 204, 194, 0.32); background: rgba(20, 28, 41, 0.65); border-radius: var(--radius-lg);">
       <!-- Cabeçalho -->
       <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 0.85rem;">
         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
@@ -3930,10 +3930,10 @@ window.renderTaskRequirementTab = function() {
 
       <!-- História de Usuário -->
       <div style="margin-bottom: 1.25rem;">
-        <div style="font-size: 0.78rem; text-transform: uppercase; font-weight: 700; color: #a78bfa; margin-bottom: 0.4rem; letter-spacing: 0.5px;">
+        <div style="font-size: 0.78rem; text-transform: uppercase; font-weight: 700; color: var(--brand-teal-bright, #4accc2); margin-bottom: 0.4rem; letter-spacing: 0.5px;">
           👤 História de Usuário
         </div>
-        <div class="user-story-quote" style="font-size: 0.9rem; line-height: 1.5; padding: 0.85rem 1rem; margin: 0; background: rgba(139, 92, 246, 0.08); border-left: 4px solid #8b5cf6; border-radius: 0 var(--radius-sm) var(--radius-sm) 0;">
+        <div class="user-story-quote" style="font-size: 0.9rem; line-height: 1.5; padding: 0.85rem 1rem; margin: 0; background: rgba(24, 97, 165, 0.1); border-left: 4px solid #3fb8b3; border-radius: 0 var(--radius-sm) var(--radius-sm) 0;">
           ${escapeHtml(req.userStory || 'História de usuário não cadastrada.')}
         </div>
       </div>
@@ -3946,7 +3946,7 @@ window.renderTaskRequirementTab = function() {
           </div>
           <span style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">Cenário: Dado / Quando / Então</span>
         </div>
-        <div class="bdd-container" style="margin: 0; padding: 1rem; background: #050811; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: var(--radius-md);">
+        <div class="bdd-container" style="margin: 0; padding: 1rem; background: #0c121c; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: var(--radius-md);">
           <div class="bdd-content font-mono" style="font-size: 0.85rem; line-height: 1.6; white-space: pre-wrap; color: #bae6fd;">${escapeHtml(req.bdd || 'Critérios de aceite não documentados.')}</div>
         </div>
       </div>
@@ -3961,7 +3961,7 @@ window.renderTaskRequirementTab = function() {
             const isCurrent = t.id === editTaskId;
             const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(t.role) : { tagClass: 'role-back', icon: '💻', shortLabel: 'Dev' };
             return `
-              <span class="task-role-tag ${spec.tagClass}" style="padding: 4px 8px; font-size: 0.78rem; ${isCurrent ? 'outline: 2px solid #818cf8; background: rgba(99, 102, 241, 0.35);' : ''}">
+              <span class="task-role-tag ${spec.tagClass}" style="padding: 4px 8px; font-size: 0.78rem; ${isCurrent ? 'outline: 2px solid var(--accent-primary, #4accc2); background: rgba(24, 97, 165, 0.28);' : ''}">
                 ${spec.icon} ${spec.shortLabel || spec.label} <strong>#${t.id.slice(-5)}</strong>: ${escapeHtml(t.title)} ${isCurrent ? '<em>(Atual)</em>' : ''}
               </span>
             `;
@@ -4035,7 +4035,7 @@ async function loadTaskAuditTimeline(taskId) {
 
       html += `
         <div class="audit-timeline-item">
-          <div class="audit-timeline-badge" style="background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #c7d2fe;">
+          <div class="audit-timeline-badge" style="background: rgba(24, 97, 165, 0.22); border: 1px solid rgba(74, 204, 194, 0.4); color: var(--accent-primary, #4accc2);">
             ${icon}
           </div>
           <div class="audit-timeline-card">
@@ -4251,8 +4251,8 @@ window.openTaskModalForEdit = function(taskId) {
   }
   if (badgeAdminHours) {
     badgeAdminHours.textContent = isAdmin ? '👑 Admin (Editável)' : '🔒 Apenas Admin';
-    badgeAdminHours.style.background = isAdmin ? 'rgba(99, 102, 241, 0.25)' : 'rgba(148, 163, 184, 0.15)';
-    badgeAdminHours.style.color = isAdmin ? '#818cf8' : '#94a3b8';
+    badgeAdminHours.style.background = isAdmin ? 'rgba(24, 97, 165, 0.25)' : 'rgba(148, 163, 184, 0.15)';
+    badgeAdminHours.style.color = isAdmin ? 'var(--accent-primary, #4accc2)' : '#94a3b8';
   }
   if (hintAdminHours) {
     hintAdminHours.textContent = isAdmin 
@@ -4762,12 +4762,12 @@ function renderGovernance() {
       tr.innerHTML = `
         <td>
           <div style="display: flex; align-items: center; gap: 0.65rem;">
-            <div style="width: 32px; height: 32px; border-radius: 50%; background: ${u.avatarBg || '#6366f1'}; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem;">
+            <div style="width: 32px; height: 32px; border-radius: 50%; background: ${u.avatarBg || '#1861a5'}; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem;">
               ${getInitials(u.name)}
             </div>
             <div>
               <strong>${u.name}</strong>
-              ${isYou ? ' <span style="font-size: 0.72rem; color: var(--accent-primary); font-weight: 700; background: rgba(99, 102, 241, 0.15); padding: 1px 6px; border-radius: 4px;">Você</span>' : ''}
+              ${isYou ? ' <span style="font-size: 0.72rem; color: var(--accent-primary); font-weight: 700; background: rgba(24, 97, 165, 0.2); padding: 1px 6px; border-radius: 4px;">Você</span>' : ''}
             </div>
           </div>
         </td>
@@ -5363,8 +5363,8 @@ function renderPerfSvgChart(cycles, seriesData) {
 
   // Séries a renderizar
   const seriesConfig = [
-    { key: 'total', label: 'Total Geral', color: '#818cf8', gradId: 'grad-total', values: seriesData.total, visible: window.perfSeries.total, strokeWidth: 3 },
-    { key: 'high', label: 'Alta Complexidade', color: '#f43f5e', gradId: 'grad-high', values: seriesData.high, visible: window.perfSeries.high, strokeWidth: 3.5 },
+    { key: 'total', label: 'Total Geral', color: '#4accc2', gradId: 'grad-total', values: seriesData.total, visible: window.perfSeries.total, strokeWidth: 3 },
+    { key: 'high', label: 'Alta Complexidade', color: '#fe6c47', gradId: 'grad-high', values: seriesData.high, visible: window.perfSeries.high, strokeWidth: 3.5 },
     { key: 'medium', label: 'Média Complexidade', color: '#f59e0b', gradId: 'grad-med', values: seriesData.medium, visible: window.perfSeries.medium, strokeWidth: 3 },
     { key: 'low', label: 'Baixa Complexidade', color: '#10b981', gradId: 'grad-low', values: seriesData.low, visible: window.perfSeries.low, strokeWidth: 2.5 }
   ];
@@ -5413,8 +5413,8 @@ function renderPerfSvgChart(cycles, seriesData) {
     <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="grad-high" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#f43f5e" stop-opacity="0.32" />
-          <stop offset="100%" stop-color="#f43f5e" stop-opacity="0.0" />
+          <stop offset="0%" stop-color="#fe6c47" stop-opacity="0.32" />
+          <stop offset="100%" stop-color="#fe6c47" stop-opacity="0.0" />
         </linearGradient>
         <linearGradient id="grad-med" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.25" />
@@ -5425,8 +5425,8 @@ function renderPerfSvgChart(cycles, seriesData) {
           <stop offset="100%" stop-color="#10b981" stop-opacity="0.0" />
         </linearGradient>
         <linearGradient id="grad-total" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#818cf8" stop-opacity="0.18" />
-          <stop offset="100%" stop-color="#818cf8" stop-opacity="0.0" />
+          <stop offset="0%" stop-color="#4accc2" stop-opacity="0.22" />
+          <stop offset="100%" stop-color="#4accc2" stop-opacity="0.0" />
         </linearGradient>
       </defs>
 
@@ -8112,7 +8112,7 @@ function getSpecialtyInfo(roleKey) {
         icon: '🌐', 
         tagClass: 'role-fullstack', 
         borderClass: 'task-fullstack', 
-        color: 'var(--fullstack-accent, #818cf8)' 
+        color: 'var(--fullstack-accent, #3898ec)' 
       };
     case 'dba':
     case 'database':
@@ -8173,7 +8173,7 @@ function getSpecialtyInfo(roleKey) {
           icon: c.icon || '💻', 
           tagClass: 'role-back', 
           borderClass: 'task-back', 
-          color: 'var(--accent-primary, #6366f1)' 
+          color: 'var(--accent-primary, #4accc2)' 
         };
       }
       return { 
@@ -8183,7 +8183,7 @@ function getSpecialtyInfo(roleKey) {
         icon: '💻', 
         tagClass: 'role-back', 
         borderClass: 'task-back', 
-        color: 'var(--accent-primary, #6366f1)' 
+        color: 'var(--accent-primary, #4accc2)' 
       };
   }
 }
@@ -9886,7 +9886,7 @@ window.updateSimulatorChecklist = function() {
         ${simulatedCriteriaState[c.id] ? '✓' : ''}
       </div>
       <div class="career-check-meta">
-        <strong>${c.title} <span style="font-size: 0.72rem; color: #818cf8; font-weight: normal; margin-left: 0.35rem;">(Peso ${c.weight}x)</span></strong>
+        <strong>${c.title} <span style="font-size: 0.72rem; color: var(--accent-primary, #4accc2); font-weight: normal; margin-left: 0.35rem;">(Peso ${c.weight}x)</span></strong>
         <small>${c.desc}</small>
       </div>
     </div>
@@ -10004,7 +10004,7 @@ function calculateSimulatorScore(criteria) {
 
   let statusText = 'Em Evolução';
   let opinionText = '';
-  let color = '#6366f1';
+  let color = '#1861a5';
 
   if (score >= 80) {
     statusText = '🟢 Elegível para Promoção!';
@@ -10131,7 +10131,7 @@ window.renderCareerNav = function() {
         <span>${track.icon || '💻'}</span>
         <span>${track.roleName}</span>
         <span class="career-tab-badge">${badgeText}</span>
-        ${track.isCustom ? `<span style="font-size:0.62rem; background:rgba(99,102,241,0.25); color:#a5b4fc; padding:2px 6px; border-radius:4px; margin-left:4px;" title="Estrutura de carreira customizada">Custom</span>` : ''}
+        ${track.isCustom ? `<span style="font-size:0.62rem; background:rgba(24,97,165,0.25); color:var(--accent-primary, #4accc2); padding:2px 6px; border-radius:4px; margin-left:4px;" title="Estrutura de carreira customizada">Custom</span>` : ''}
         ${track.isCustom && isAdmin ? `
           <span class="btn-delete-track" onclick="deleteCareerTrack('${track.id}', event)" title="Excluir carreira personalizada" style="color: #f43f5e; margin-left: 6px; font-size: 0.75rem; padding: 0 4px; border-radius: 3px;" onmouseover="this.style.background='rgba(244,63,94,0.2)'" onmouseout="this.style.background='transparent'">✕</span>
         ` : ''}
@@ -10810,8 +10810,8 @@ window.openTemplateModalForCreate = function() {
 
   // Valores padrão de fábrica
   document.getElementById('template-name').value = "";
-  document.getElementById('template-primary-color').value = "#0284c7";
-  document.getElementById('template-color-picker').value = "#0284c7";
+  document.getElementById('template-primary-color').value = "#1861a5";
+  document.getElementById('template-color-picker').value = "#1861a5";
   document.getElementById('template-description').value = "";
   document.getElementById('template-is-default').checked = false;
 
@@ -11794,7 +11794,7 @@ function renderApfInmTable(items, tbody) {
           <strong style="font-size: 0.95rem; color: #38bdf8; font-family: 'Outfit', sans-serif;">${it.quantity}</strong>
         </td>
         <td style="padding: 12px 14px; text-align: center;">
-          <span style="color: #818cf8; font-weight: 700; font-size: 0.88rem;">${parseFloat(it.unitWeight).toFixed(2)}</span>
+          <span style="color: var(--accent-primary, #4accc2); font-weight: 700; font-size: 0.88rem;">${parseFloat(it.unitWeight).toFixed(2)}</span>
           <small style="color: var(--text-muted); font-size: 0.72rem; display: block;">PF/un</small>
         </td>
         <td style="padding: 12px 14px; text-align: right;">
@@ -11851,7 +11851,7 @@ function renderApfInmCards(items, container) {
           </div>
           <div class="inm-card-metric-item">
             <small>Peso Unit.</small>
-            <strong style="color: #818cf8;">${parseFloat(it.unitWeight).toFixed(2)} PF</strong>
+            <strong style="color: var(--accent-primary, #4accc2);">${parseFloat(it.unitWeight).toFixed(2)} PF</strong>
           </div>
           <div class="inm-card-metric-item">
             <small>Total FPN</small>
@@ -12175,7 +12175,7 @@ function renderApfTableView(items, tbody) {
         </td>
         <td>
           <div style="font-size: 0.82rem; color: var(--text-secondary);">${escapeHtml(it.projectName || 'Geral')}</div>
-          ${it.feature ? `<div style="font-size: 0.72rem; color: #818cf8; font-weight: 600;">🧩 ${escapeHtml(it.feature)}</div>` : ''}
+          ${it.feature ? `<div style="font-size: 0.72rem; color: var(--accent-primary, #4accc2); font-weight: 600;">🧩 ${escapeHtml(it.feature)}</div>` : ''}
         </td>
         <td style="text-align: center;">
           <span class="apf-type-tag ${typeClass}" title="${it.category || ''}">${it.functionType}</span>
@@ -12189,7 +12189,7 @@ function renderApfTableView(items, tbody) {
         <td style="text-align: center;">
           <span class="apf-badge-comp-sm ${compClass}">${it.complexity}</span>
         </td>
-        <td style="text-align: center; font-weight: 700; color: #818cf8; font-size: 0.92rem;">
+        <td style="text-align: center; font-weight: 700; color: var(--accent-primary, #4accc2); font-size: 0.92rem;">
           ${it.rawPf} PF
         </td>
         <td style="text-align: center;">
@@ -12248,7 +12248,7 @@ function renderApfCardsView(items, container) {
 
         <div style="font-size: 0.76rem; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
           <span>📁 ${escapeHtml(it.projectName || 'Geral')}</span>
-          ${it.feature ? `<span style="color: #818cf8; font-weight: 600;">• 🧩 ${escapeHtml(it.feature)}</span>` : ''}
+          ${it.feature ? `<span style="color: var(--accent-primary, #4accc2); font-weight: 600;">• 🧩 ${escapeHtml(it.feature)}</span>` : ''}
         </div>
 
         <div class="apf-card-metrics-grid">
@@ -12262,7 +12262,7 @@ function renderApfCardsView(items, container) {
           </div>
           <div class="apf-card-metric-item">
             <small>PF Bruto</small>
-            <strong style="color: #818cf8;">${it.rawPf} PF</strong>
+            <strong style="color: var(--accent-primary, #4accc2);">${it.rawPf} PF</strong>
           </div>
         </div>
 
@@ -14014,9 +14014,9 @@ async function runApfAutoAnalysis(forceRefresh = false) {
           natureBadge.style.color = '#34d399';
           natureBadge.style.border = '1px solid rgba(52, 211, 153, 0.4)';
         } else {
-          natureBadge.style.background = 'rgba(99, 102, 241, 0.15)';
-          natureBadge.style.color = '#818cf8';
-          natureBadge.style.border = '1px solid rgba(99, 102, 241, 0.4)';
+          natureBadge.style.background = 'rgba(24, 97, 165, 0.2)';
+          natureBadge.style.color = '#4accc2';
+          natureBadge.style.border = '1px solid rgba(74, 204, 194, 0.4)';
         }
       }
 

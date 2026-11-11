@@ -11,6 +11,7 @@ COPY index.html ./
 COPY style.css ./
 COPY script.js ./
 COPY vendor ./vendor
+COPY assets ./assets
 COPY migrations ./migrations
 
 # Variáveis de ambiente de produção

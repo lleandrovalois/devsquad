@@ -4,34 +4,34 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Flow - Plataforma Integrada de Gestão de Requisitos, Equipe de Desenvolvimento (Front-end e Back-end), Demandas Multi-Projetos e Qualidade/Testes.">
+  <meta name="theme-color" content="#141C29">
   <title>Flow • Gestão de Requisitos, Equipe e Testes</title>
+  <link rel="icon" type="image/png" href="assets/flow-favicon.png?v=1.2.0">
+  <link rel="apple-touch-icon" href="assets/flow-mark-dark.png?v=1.2.0">
   
   <!-- Fontes Google Modernas: Plus Jakarta Sans, Outfit e Fira Code -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   
-  <link rel="stylesheet" href="style.css?v=1.1.0">
+  <link rel="stylesheet" href="style.css?v=1.2.0">
 </head>
 <body>
   <!-- ===================================================================
        TELA DE AUTENTICAÇÃO: LOGIN & CADASTRO (FULLSCREEN OVERLAY)
        =================================================================== -->
   <div class="auth-screen-wrapper" id="auth-screen">
-    <!-- Efeitos de Luz de Fundo (Backdrop Glow Orbs) -->
+    <!-- Efeitos de Luz de Fundo (Backdrop Glow Orbs — Paleta Flow) -->
     <div class="auth-glow-orb orb-primary"></div>
     <div class="auth-glow-orb orb-secondary"></div>
     <div class="auth-glow-orb orb-accent"></div>
 
     <div class="auth-card glass-panel">
-      <!-- Cabeçalho com Logo -->
+      <!-- Cabeçalho com Logo Oficial Flow -->
       <div class="auth-header">
-        <div class="auth-brand">
-          <div class="auth-logo-icon">🚀</div>
-          <div>
-            <h1 class="auth-logo-title">Flow <span class="auth-badge-pro">PRO</span></h1>
-            <p class="auth-logo-subtitle">Gestão de Requisitos, Equipe e Qualidade</p>
-          </div>
+        <div class="auth-logo-showcase">
+          <img src="assets/flow-logo-banner.png?v=1.2.0" alt="Flow — Gestão, Requisitos & Métricas" class="auth-logo-banner-img">
+          <span class="auth-badge-pro auth-badge-corner">PRO</span>
         </div>
       </div>
 
@@ -92,10 +92,12 @@
     <aside class="alm-sidebar" id="alm-sidebar">
       <div class="sidebar-header">
         <div class="brand-logo">
-          <div class="logo-icon-box">🚀</div>
+          <div class="logo-icon-box">
+            <img src="assets/flow-mark-dark.png?v=1.2.0" alt="Flow" class="sidebar-logo-img">
+          </div>
           <div class="logo-meta">
             <span class="logo-title">Flow <span class="logo-badge">PRO</span></span>
-            <span class="logo-sub">Gestão de Desenvolvimento</span>
+            <span class="logo-sub">Gestão, Requisitos &amp; Métricas</span>
           </div>
         </div>
         <button id="sidebar-toggle-btn" class="sidebar-toggle" aria-label="Recolher Menu">◀</button>
@@ -151,17 +153,17 @@
         <button class="nav-item" data-view="performance" id="nav-performance">
           <span class="nav-icon">📈</span>
           <span class="nav-text">Desempenho & Promoção</span>
-          <span class="nav-counter" id="counter-nav-performance" style="background: rgba(99, 102, 241, 0.25); color: #818cf8; font-size: 0.68rem; padding: 2px 6px;">Admin</span>
+          <span class="nav-counter" id="counter-nav-performance" style="background: rgba(24, 97, 165, 0.25); color: var(--accent-primary, #4accc2); font-size: 0.68rem; padding: 2px 6px;">Admin</span>
         </button>
         <button class="nav-item" data-view="goals" id="nav-goals" style="display: none;">
           <span class="nav-icon">🎯</span>
           <span class="nav-text">Gestão de Metas</span>
-          <span class="nav-counter" id="counter-nav-goals" style="background: rgba(99, 102, 241, 0.25); color: #818cf8; font-size: 0.68rem; padding: 2px 6px;">Admin</span>
+          <span class="nav-counter" id="counter-nav-goals" style="background: rgba(24, 97, 165, 0.25); color: var(--accent-primary, #4accc2); font-size: 0.68rem; padding: 2px 6px;">Admin</span>
         </button>
         <button class="nav-item" data-view="audit" id="nav-audit" style="display: none;">
           <span class="nav-icon">📜</span>
           <span class="nav-text">Trilha de Auditoria</span>
-          <span class="nav-counter" id="counter-nav-audit" style="background: rgba(99, 102, 241, 0.25); color: #818cf8; font-size: 0.68rem; padding: 2px 6px;">Admin</span>
+          <span class="nav-counter" id="counter-nav-audit" style="background: rgba(24, 97, 165, 0.25); color: var(--accent-primary, #4accc2); font-size: 0.68rem; padding: 2px 6px;">Admin</span>
         </button>
         <button class="nav-item" data-view="career" id="nav-career">
           <span class="nav-icon">🧭</span>
@@ -345,7 +347,7 @@
           <!-- Banner Informativo: Proposta da Ferramenta & Trilhas de Promoção -->
           <div class="career-promo-banner glass-panel" id="dashboard-career-banner">
             <div style="display: flex; align-items: center; gap: 1rem;">
-              <div style="width: 48px; height: 48px; border-radius: var(--radius-md); background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); display: flex; align-items: center; justify-content: center; font-size: 1.6rem;">🧭</div>
+              <div style="width: 48px; height: 48px; border-radius: var(--radius-md); background: rgba(24, 97, 165, 0.22); border: 1px solid rgba(74, 204, 194, 0.4); display: flex; align-items: center; justify-content: center; font-size: 1.6rem;">🧭</div>
               <div>
                 <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                   <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text-main);">Proposta Flow & Trilhas de Promoção</h3>
@@ -620,7 +622,7 @@
               </select>
             </div>
             <div class="filter-group" style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
-              <span style="display: flex; align-items: center; gap: 3px;"><span class="legend-dot" style="background: #818cf8;"></span> <span class="legend-text" style="font-size: 0.72rem;">Full-Stack</span></span>
+              <span style="display: flex; align-items: center; gap: 3px;"><span class="legend-dot" style="background: var(--fullstack-accent, #3898ec);"></span> <span class="legend-text" style="font-size: 0.72rem;">Full-Stack</span></span>
               <span style="display: flex; align-items: center; gap: 3px;"><span class="legend-dot bg-cyan"></span> <span class="legend-text" style="font-size: 0.72rem;">Front-end</span></span>
               <span style="display: flex; align-items: center; gap: 3px;"><span class="legend-dot bg-emerald"></span> <span class="legend-text" style="font-size: 0.72rem;">Back-end</span></span>
               <span style="display: flex; align-items: center; gap: 3px;"><span class="legend-dot" style="background: #f472b6;"></span> <span class="legend-text" style="font-size: 0.72rem;">DBA</span></span>
@@ -1056,7 +1058,7 @@
             <div>
               <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.25rem;">
                 <h1 class="view-title" style="margin-bottom: 0;">Desempenho Individual & Promoções</h1>
-                <span class="badge-role-current" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; border-color: rgba(99, 102, 241, 0.35);">👑 Exclusivo Admin</span>
+                <span class="badge-role-current" style="background: rgba(24, 97, 165, 0.2); color: var(--accent-primary, #4accc2); border-color: rgba(74, 204, 194, 0.35);">👑 Exclusivo Admin</span>
               </div>
               <p class="view-subtitle">Acompanhe a curva de evolução técnica por complexidade de demandas e gerencie a prontidão para promoções do time.</p>
             </div>
@@ -1085,7 +1087,7 @@
           </div>
 
           <!-- Banner Informativo do Desenvolvedor Selecionado -->
-          <div class="glass-panel perf-dev-hero" id="perf-dev-hero" style="margin-top: 1rem; padding: 1.25rem 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; border-left: 4px solid #6366f1;">
+          <div class="glass-panel perf-dev-hero" id="perf-dev-hero" style="margin-top: 1rem; padding: 1.25rem 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; border-left: 4px solid #3fb8b3;">
             <div style="display: flex; align-items: center; gap: 1rem;">
               <div class="dev-avatar-lg" id="perf-hero-avatar" style="width: 56px; height: 56px; border-radius: 50%; font-size: 1.5rem; font-weight: 700; color: #fff; background: #3b82f6; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm);">L</div>
               <div>
@@ -1112,10 +1114,10 @@
           <!-- Cards de Indicadores de Desempenho do Dev -->
           <div class="kpi-grid mt-4">
             <div class="kpi-card glass-panel">
-              <div class="kpi-icon-box" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">🏆</div>
+              <div class="kpi-icon-box" style="background: rgba(24, 97, 165, 0.2); color: var(--brand-blue-bright, #3898ec);">🏆</div>
               <div class="kpi-content">
                 <span class="kpi-label">Tarefas Realizadas</span>
-                <span class="kpi-number" id="perf-kpi-total-tasks" style="color: #818cf8;">0</span>
+                <span class="kpi-number" id="perf-kpi-total-tasks" style="color: var(--brand-blue-bright, #3898ec);">0</span>
                 <small id="perf-kpi-total-sub" class="text-muted" style="font-size: 0.72rem;">0/sprint em média</small>
               </div>
             </div>
@@ -1160,7 +1162,7 @@
               <!-- Legendas Interativas com Switches -->
               <div class="perf-chart-legend" id="perf-chart-legend" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                 <button type="button" class="perf-legend-chip active" data-series="high" id="legend-high">
-                  <span class="legend-color-dot" style="background: #f43f5e;"></span>
+                  <span class="legend-color-dot" style="background: #fe6c47;"></span>
                   <span>Alta Complexidade</span>
                   <strong class="legend-counter" id="legend-count-high">0</strong>
                 </button>
@@ -1175,7 +1177,7 @@
                   <strong class="legend-counter" id="legend-count-low">0</strong>
                 </button>
                 <button type="button" class="perf-legend-chip active" data-series="total" id="legend-total">
-                  <span class="legend-color-dot" style="background: #818cf8;"></span>
+                  <span class="legend-color-dot" style="background: #4accc2;"></span>
                   <span>Total Geral</span>
                   <strong class="legend-counter" id="legend-count-total">0</strong>
                 </button>
@@ -1203,7 +1205,7 @@
                 <span>💡</span>
                 <span><strong>Dica de Análise:</strong> O crescimento da linha vermelha (Alta Complexidade) com redução da verde (Baixa) indica ganho de autonomia e domínio arquitetural.</span>
               </div>
-              <div id="perf-chart-summary-tag" style="font-weight: 600; color: #818cf8;">
+              <div id="perf-chart-summary-tag" style="font-weight: 600; color: var(--accent-primary, #4accc2);">
                 Taxa de Alta Complexidade: 0%
               </div>
             </div>
@@ -1229,7 +1231,7 @@
                   <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase;">Nível Atual</span>
                   <span id="diag-current-seniority" style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">Júnior</span>
                 </div>
-                <div style="font-size: 1.4rem; color: #6366f1;">➔</div>
+                <div style="font-size: 1.4rem; color: var(--accent-primary, #4accc2);">➔</div>
                 <div style="text-align: center;">
                   <span style="font-size: 0.72rem; color: var(--text-muted); display: block; text-transform: uppercase;">Nível Recomendado</span>
                   <span id="diag-target-seniority" style="font-size: 1.05rem; font-weight: 700; color: #34d399;">Pleno</span>
@@ -1243,13 +1245,13 @@
                   <strong id="diag-score-text" style="color: #34d399;">88% (Apto)</strong>
                 </div>
                 <div class="progress-track" style="height: 10px; border-radius: 999px; background: rgba(255,255,255,0.08);">
-                  <div class="progress-fill" id="diag-score-progress" style="width: 88%; background: linear-gradient(90deg, #6366f1, #10b981); height: 100%; border-radius: 999px;"></div>
+                  <div class="progress-fill" id="diag-score-progress" style="width: 88%; background: linear-gradient(90deg, #1861a5, #4accc2, #10b981); height: 100%; border-radius: 999px;"></div>
                 </div>
               </div>
 
               <!-- Parecer Técnico Executivo -->
-              <div class="perf-opinion-box" id="diag-opinion-box" style="padding: 1rem; border-radius: var(--radius-sm); background: rgba(99, 102, 241, 0.1); border-left: 3px solid #818cf8; margin-bottom: 1.25rem;">
-                <div style="font-size: 0.75rem; font-weight: 700; color: #818cf8; text-transform: uppercase; margin-bottom: 0.25rem;">📋 Parecer Analítico do Sistema</div>
+              <div class="perf-opinion-box" id="diag-opinion-box" style="padding: 1rem; border-radius: var(--radius-sm); background: rgba(24, 97, 165, 0.12); border-left: 3px solid #4accc2; margin-bottom: 1.25rem;">
+                <div style="font-size: 0.75rem; font-weight: 700; color: var(--accent-primary, #4accc2); text-transform: uppercase; margin-bottom: 0.25rem;">📋 Parecer Analítico do Sistema</div>
                 <p id="diag-opinion-text" style="margin: 0; font-size: 0.85rem; color: var(--text-main); line-height: 1.45;">
                   O desenvolvedor demonstra consistência superior à média na entrega de tarefas de Média e Alta complexidade. Baixa taxa de bloqueios e autonomia técnica comprovada indicam plena aptidão para o próximo nível.
                 </p>
@@ -1379,7 +1381,7 @@
           <!-- Cards de Métricas e Resumo das Metas -->
           <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 1.5rem;">
             <div class="metric-card glass-panel">
-              <div class="metric-icon" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">🎯</div>
+              <div class="metric-icon" style="background: rgba(24, 97, 165, 0.2); color: var(--accent-primary, #4accc2);">🎯</div>
               <div class="metric-info">
                 <div class="metric-label">Metas Cadastradas</div>
                 <div class="metric-value" id="goals-stat-total">0</div>
@@ -1409,7 +1411,7 @@
           </div>
 
           <!-- Banner Informativo de Integração com o Módulo de Promoção -->
-          <div class="glass-panel" style="padding: 1rem 1.25rem; border-radius: var(--radius-md); margin-bottom: 1.5rem; background: rgba(99, 102, 241, 0.08); border-left: 4px solid #6366f1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+          <div class="glass-panel" style="padding: 1rem 1.25rem; border-radius: var(--radius-md); margin-bottom: 1.5rem; background: rgba(24, 97, 165, 0.1); border-left: 4px solid #3fb8b3; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
             <div style="display: flex; align-items: center; gap: 0.75rem;">
               <span style="font-size: 1.5rem;">💡</span>
               <div style="font-size: 0.84rem; color: var(--text-secondary); line-height: 1.45;">
@@ -1479,7 +1481,7 @@
           <!-- Cards de Resumo da Auditoria -->
           <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 1.5rem;">
             <div class="metric-card glass-panel">
-              <div class="metric-icon" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">📜</div>
+              <div class="metric-icon" style="background: rgba(24, 97, 165, 0.2); color: var(--accent-primary, #4accc2);">📜</div>
               <div class="metric-info">
                 <div class="metric-label">Total de Eventos</div>
                 <div class="metric-value" id="audit-stat-total">0</div>
@@ -1700,7 +1702,7 @@
                 <h2 class="career-section-title">🎯 Simulador Interativo de Prontidão de Promoção</h2>
                 <p class="career-section-desc">Simule sua conformidade com os critérios do Flow PRO ou preencha automaticamente com os dados reais da sua conta.</p>
               </div>
-              <button class="btn btn-secondary btn-sm" id="btn-sync-my-metrics" onclick="syncMyDevMetricsToSimulator()" style="border-color: rgba(99, 102, 241, 0.4); background: rgba(99, 102, 241, 0.15); color: #c7d2fe;">
+              <button class="btn btn-secondary btn-sm" id="btn-sync-my-metrics" onclick="syncMyDevMetricsToSimulator()" style="border-color: rgba(74, 204, 194, 0.4); background: rgba(24, 97, 165, 0.2); color: var(--accent-primary, #4accc2);">
                 <span>⚡ Carregar Minhas Entregas do Sistema</span>
               </button>
             </div>
@@ -1750,7 +1752,7 @@
                 
                 <div class="career-gauge-wrap">
                   <div style="position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 8px solid var(--border-subtle);"></div>
-                  <div id="sim-gauge-circle" style="position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 8px solid #6366f1; border-top-color: transparent; border-right-color: transparent; transform: rotate(45deg); transition: all 0.5s ease;"></div>
+                  <div id="sim-gauge-circle" style="position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 8px solid #3fb8b3; border-top-color: transparent; border-right-color: transparent; transform: rotate(45deg); transition: all 0.5s ease;"></div>
                   <div style="display: flex; flex-direction: column; align-items: center;">
                     <span class="career-gauge-val" id="sim-score-number">0%</span>
                     <span class="career-gauge-sub" id="sim-score-status">Em Evolução</span>
@@ -1831,8 +1833,8 @@
               <span>🚀 Passo a Passo: Como Conquistar Sua Promoção no Flow</span>
             </h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
-              <div style="background: var(--bg-subpanel); padding: 1.15rem; border-radius: var(--radius-md); border-left: 3px solid #6366f1;">
-                <span style="font-size: 0.75rem; font-weight: 800; color: #818cf8; text-transform: uppercase;">Passo 1</span>
+              <div style="background: var(--bg-subpanel); padding: 1.15rem; border-radius: var(--radius-md); border-left: 3px solid #1861a5;">
+                <span style="font-size: 0.75rem; font-weight: 800; color: var(--brand-blue-bright, #3898ec); text-transform: uppercase;">Passo 1</span>
                 <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); margin: 0.35rem 0 0.25rem;">Assuma Desafios no Kanban</h4>
                 <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 0; line-height: 1.5;">Puxe demandas de complexidade progressiva e garanta que todas as tarefas concluídas estejam documentadas.</p>
               </div>
@@ -1906,7 +1908,7 @@
             <div>
               <div style="display: flex; align-items: center; gap: 8px;">
                 <h1 class="view-title">Análise de Pontos de Função (APF)</h1>
-                <span class="badge-subtle" style="background: rgba(99, 102, 241, 0.18); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.35); font-weight: 700; font-size: 0.76rem; padding: 3px 8px; border-radius: 6px;">IFPUG CPM 4.3.1</span>
+                <span class="badge-subtle" style="background: rgba(24, 97, 165, 0.18); color: var(--accent-primary, #4accc2); border: 1px solid rgba(74, 204, 194, 0.35); font-weight: 700; font-size: 0.76rem; padding: 3px 8px; border-radius: 6px;">IFPUG CPM 4.3.1</span>
               </div>
               <p class="view-subtitle">Mensuração de tamanho funcional por Processos Elementares (EE, SE, CE) e Grupos de Dados (ALI, AIE) com cálculo automático de complexidade e deflatores de contagem.</p>
             </div>
@@ -1923,7 +1925,7 @@
               <button class="btn btn-secondary" id="btn-open-apf-inm-modal" style="background: linear-gradient(135deg, rgba(16,185,129,0.18), rgba(6,182,212,0.22)); border: 1px solid rgba(16,185,129,0.4); color: #34d399; font-weight: 700;" title="Registrar intervenção técnica não mensurável pelo IFPUG tradicional (Code Tables, Menus, Layouts, Parâmetros, etc.)">
                 <span>⚙️ + Item Não-Mensurável (FPN)</span>
               </button>
-              <button class="btn btn-secondary" id="btn-open-apf-auto-modal" style="background: linear-gradient(135deg, rgba(99,102,241,0.22), rgba(168,85,247,0.28)); border: 1px solid rgba(168,85,247,0.45); color: #c084fc; font-weight: 700;" title="Auditar e mensurar Pontos de Função (IFPUG CPM 4.3.1 + Padrão SISP) para Requisitos, Features ou Histórias BDD livres">
+              <button class="btn btn-secondary" id="btn-open-apf-auto-modal" style="background: linear-gradient(135deg, rgba(24,97,165,0.22), rgba(254,108,71,0.2)); border: 1px solid rgba(254,108,71,0.45); color: #ff8a6b; font-weight: 700;" title="Auditar e mensurar Pontos de Função (IFPUG CPM 4.3.1 + Padrão SISP) para Requisitos, Features ou Histórias BDD livres">
                 <span>⚡ Auditor CFPS & Medição Inteligente</span>
               </button>
               <button class="btn btn-primary btn-glow" id="btn-open-apf-modal" title="Cadastrar nova função de dados ou processo elementar com cálculo automático de PF">
@@ -1968,40 +1970,40 @@
             </div>
 
             <!-- KPI 2: PF Líquido (IFPUG) -->
-            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); position: relative; overflow: hidden; border-top: 3px solid #6366f1;">
+            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); position: relative; overflow: hidden; border-top: 3px solid #1861a5;">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
                 <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">PF Líquido (IFPUG)</span>
                 <span style="font-size: 1.2rem;">🎯</span>
               </div>
               <div style="display: flex; align-items: baseline; gap: 6px;">
-                <strong id="apf-kpi-total-final" style="font-size: 1.75rem; font-weight: 800; color: #818cf8; font-family: 'Outfit', sans-serif;">0.00</strong>
-                <span style="font-size: 0.85rem; color: #818cf8; font-weight: 600;">PF</span>
+                <strong id="apf-kpi-total-final" style="font-size: 1.75rem; font-weight: 800; color: var(--brand-blue-bright, #3898ec); font-family: 'Outfit', sans-serif;">0.00</strong>
+                <span style="font-size: 0.85rem; color: var(--brand-blue-bright, #3898ec); font-weight: 600;">PF</span>
               </div>
               <span id="apf-kpi-avg-factor" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">Fator de contagem médio: 100%</span>
             </div>
 
             <!-- KPI 3: PF Não-Mensuráveis (FPN) -->
-            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); position: relative; overflow: hidden; border-top: 3px solid #06b6d4;">
+            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); position: relative; overflow: hidden; border-top: 3px solid #3fb8b3;">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
                 <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">Não-Mensuráveis (FPN)</span>
                 <span style="font-size: 1.2rem;">⚙️</span>
               </div>
               <div style="display: flex; align-items: baseline; gap: 6px;">
-                <strong id="apf-kpi-total-inm" style="font-size: 1.75rem; font-weight: 800; color: #38bdf8; font-family: 'Outfit', sans-serif;">0.00</strong>
-                <span style="font-size: 0.85rem; color: #38bdf8; font-weight: 600;">PF</span>
+                <strong id="apf-kpi-total-inm" style="font-size: 1.75rem; font-weight: 800; color: #4accc2; font-family: 'Outfit', sans-serif;">0.00</strong>
+                <span style="font-size: 0.85rem; color: #4accc2; font-weight: 600;">PF</span>
               </div>
               <span id="apf-kpi-inm-count" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">0 Intervenções técnicas</span>
             </div>
 
             <!-- KPI 4: PF Bruto (IFPUG) -->
-            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); position: relative; overflow: hidden; border-top: 3px solid #8b5cf6;">
+            <div class="metric-card glass-panel" style="padding: 1rem; border-radius: var(--radius-md); position: relative; overflow: hidden; border-top: 3px solid #fe6c47;">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
                 <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">PF Bruto (IFPUG)</span>
                 <span style="font-size: 1.2rem;">📐</span>
               </div>
               <div style="display: flex; align-items: baseline; gap: 6px;">
-                <strong id="apf-kpi-total-raw" style="font-size: 1.75rem; font-weight: 800; color: #c084fc; font-family: 'Outfit', sans-serif;">0</strong>
-                <span style="font-size: 0.85rem; color: #c084fc; font-weight: 600;">PF</span>
+                <strong id="apf-kpi-total-raw" style="font-size: 1.75rem; font-weight: 800; color: #fe6c47; font-family: 'Outfit', sans-serif;">0</strong>
+                <span style="font-size: 0.85rem; color: #fe6c47; font-weight: 600;">PF</span>
               </div>
               <span id="apf-kpi-total-items" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">0 Funções cadastradas</span>
             </div>
@@ -2039,7 +2041,7 @@
             <div class="segmented-control" id="apf-subnav-tabs" role="tablist">
               <button type="button" class="segment-btn active" data-apf-tab="ifpug" id="tab-btn-apf-ifpug">
                 <span>📐 Funções IFPUG (CPM 4.3.1)</span>
-                <span class="badge-pill-xs" id="badge-tab-ifpug-count" style="margin-left: 6px; background: rgba(99, 102, 241, 0.25); color: #818cf8; padding: 1px 7px; border-radius: 10px; font-size: 0.72rem; font-weight: 700;">0</span>
+                <span class="badge-pill-xs" id="badge-tab-ifpug-count" style="margin-left: 6px; background: rgba(24, 97, 165, 0.25); color: var(--accent-primary, #4accc2); padding: 1px 7px; border-radius: 10px; font-size: 0.72rem; font-weight: 700;">0</span>
               </button>
               <button type="button" class="segment-btn" data-apf-tab="inm" id="tab-btn-apf-inm">
                 <span>⚙️ Não-Mensuráveis (FPN)</span>
@@ -2293,32 +2295,32 @@
                   <tbody>
                     <tr style="border-bottom: 1px solid var(--border-subtle);">
                       <td style="padding: 12px 14px;">
-                        <strong style="color: #818cf8;">Funções de Dados (ALI / AIE)</strong>
+                        <strong style="color: var(--brand-blue-bright, #3898ec);">Funções de Dados (ALI / AIE)</strong>
                         <small style="display: block; color: var(--text-muted); font-size: 0.74rem;">Arquivos Lógicos Internos e de Interface Externa</small>
                       </td>
                       <td style="padding: 12px 14px; text-align: center;" id="summary-data-count">0</td>
                       <td style="padding: 12px 14px; text-align: center;"><span class="badge-subtle">IFPUG CPM 4.3.1</span></td>
                       <td style="padding: 12px 14px; text-align: right; font-weight: 700;" id="summary-data-raw">0 PF</td>
-                      <td style="padding: 12px 14px; text-align: right; font-weight: 700; color: #818cf8;" id="summary-data-final">0.00 PF</td>
+                      <td style="padding: 12px 14px; text-align: right; font-weight: 700; color: var(--brand-blue-bright, #3898ec);" id="summary-data-final">0.00 PF</td>
                     </tr>
                     <tr style="border-bottom: 1px solid var(--border-subtle);">
                       <td style="padding: 12px 14px;">
-                        <strong style="color: #38bdf8;">Processos Elementares (EE / SE / CE)</strong>
+                        <strong style="color: #4accc2;">Processos Elementares (EE / SE / CE)</strong>
                         <small style="display: block; color: var(--text-muted); font-size: 0.74rem;">Entradas, Saídas e Consultas Externas</small>
                       </td>
                       <td style="padding: 12px 14px; text-align: center;" id="summary-trans-count">0</td>
                       <td style="padding: 12px 14px; text-align: center;"><span class="badge-subtle">IFPUG CPM 4.3.1</span></td>
                       <td style="padding: 12px 14px; text-align: right; font-weight: 700;" id="summary-trans-raw">0 PF</td>
-                      <td style="padding: 12px 14px; text-align: right; font-weight: 700; color: #38bdf8;" id="summary-trans-final">0.00 PF</td>
+                      <td style="padding: 12px 14px; text-align: right; font-weight: 700; color: #4accc2;" id="summary-trans-final">0.00 PF</td>
                     </tr>
-                    <tr style="border-bottom: 1px solid var(--border-subtle); background: rgba(99, 102, 241, 0.05);">
+                    <tr style="border-bottom: 1px solid var(--border-subtle); background: rgba(24, 97, 165, 0.06);">
                       <td style="padding: 12px 14px;">
                         <strong style="color: var(--text-main);">Subtotal IFPUG Tradicional</strong>
                       </td>
                       <td style="padding: 12px 14px; text-align: center; font-weight: 700;" id="summary-ifpug-total-items">0</td>
                       <td style="padding: 12px 14px; text-align: center;"><span class="badge-subtle" id="summary-ifpug-avg-factor">Fator: 100%</span></td>
                       <td style="padding: 12px 14px; text-align: right; font-weight: 700;" id="summary-ifpug-total-raw">0 PF</td>
-                      <td style="padding: 12px 14px; text-align: right; font-weight: 800; color: #818cf8;" id="summary-ifpug-total-final">0.00 PF</td>
+                      <td style="padding: 12px 14px; text-align: right; font-weight: 800; color: var(--accent-primary, #4accc2);" id="summary-ifpug-total-final">0.00 PF</td>
                     </tr>
                     <tr style="border-bottom: 1px solid var(--border-subtle);">
                       <td style="padding: 12px 14px;">
@@ -2455,7 +2457,7 @@
             <div class="form-group">
               <div class="form-label-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
                 <label for="task-requirement" style="margin-bottom: 0;">Requisito Vinculado</label>
-                <button type="button" class="btn-expand-req-spec" id="btn-toggle-req-spec-preview" onclick="toggleTaskReqPreview()" title="Visualizar especificações completas deste requisito" style="background: none; border: none; font-size: 0.72rem; color: #818cf8; cursor: pointer; display: none; align-items: center; gap: 4px; font-weight: 600; padding: 0 4px;">
+                <button type="button" class="btn-expand-req-spec" id="btn-toggle-req-spec-preview" onclick="toggleTaskReqPreview()" title="Visualizar especificações completas deste requisito" style="background: none; border: none; font-size: 0.72rem; color: var(--accent-primary, #4accc2); cursor: pointer; display: none; align-items: center; gap: 4px; font-weight: 600; padding: 0 4px;">
                   <span id="btn-req-spec-icon">📖</span> <span id="btn-req-spec-text">Ver Especificação</span>
                 </button>
               </div>
@@ -2463,7 +2465,7 @@
                 <select id="task-requirement" class="custom-select" style="flex: 1;">
                   <!-- Preenchido via script -->
                 </select>
-                <button type="button" class="btn-icon-expand-req" id="btn-quick-expand-req" onclick="toggleTaskReqPreview()" title="Expandir/recolher especificação do requisito" style="display: none; padding: 0 0.65rem; border-radius: var(--radius-sm); background: rgba(99, 102, 241, 0.12); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); cursor: pointer; font-size: 0.85rem; align-items: center; justify-content: center;">
+                <button type="button" class="btn-icon-expand-req" id="btn-quick-expand-req" onclick="toggleTaskReqPreview()" title="Expandir/recolher especificação do requisito" style="display: none; padding: 0 0.65rem; border-radius: var(--radius-sm); background: rgba(24, 97, 165, 0.14); color: var(--accent-primary, #4accc2); border: 1px solid rgba(74, 204, 194, 0.35); cursor: pointer; font-size: 0.85rem; align-items: center; justify-content: center;">
                   👁️
                 </button>
               </div>
@@ -2471,8 +2473,8 @@
           </div>
 
           <!-- Painel / Drawer Inline Expansível da Especificação do Requisito -->
-          <div id="task-req-preview-panel" class="req-spec-preview-drawer glass-subpanel" style="display: none; margin-bottom: 1.25rem; border: 1px solid rgba(99, 102, 241, 0.35); border-radius: var(--radius-md); padding: 1rem; background: rgba(99, 102, 241, 0.04);">
-            <div class="req-spec-preview-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; border-bottom: 1px solid rgba(99, 102, 241, 0.15); padding-bottom: 0.65rem; margin-bottom: 0.75rem;">
+          <div id="task-req-preview-panel" class="req-spec-preview-drawer glass-subpanel" style="display: none; margin-bottom: 1.25rem; border: 1px solid rgba(74, 204, 194, 0.35); border-radius: var(--radius-md); padding: 1rem; background: rgba(20, 28, 41, 0.55);">
+            <div class="req-spec-preview-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; border-bottom: 1px solid rgba(74, 204, 194, 0.18); padding-bottom: 0.65rem; margin-bottom: 0.75rem;">
               <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <span class="req-code-badge" id="preview-req-code" style="font-weight: 800;">RF-01</span>
                 <h4 class="preview-req-title" id="preview-req-title" style="margin: 0; font-size: 0.95rem; color: var(--text-main); font-weight: 700;">Título do Requisito</h4>
@@ -2484,18 +2486,18 @@
             </div>
 
             <!-- História de Usuário -->
-            <div class="user-story-quote" style="margin-bottom: 0.75rem; padding: 0.65rem 0.85rem; font-size: 0.84rem; border-left-color: #8b5cf6;">
-              <strong style="color: #a78bfa;">História de Usuário:</strong>
+            <div class="user-story-quote" style="margin-bottom: 0.75rem; padding: 0.65rem 0.85rem; font-size: 0.84rem; border-left-color: #3fb8b3;">
+              <strong style="color: #4accc2;">História de Usuário:</strong>
               <span id="preview-req-user-story" style="color: var(--text-secondary); margin-left: 4px;">...</span>
             </div>
 
             <!-- Critérios de Aceite BDD -->
-            <div class="bdd-container" style="margin-bottom: 0; padding: 0.75rem; background: #070b14;">
+            <div class="bdd-container" style="margin-bottom: 0; padding: 0.75rem; background: #0c121c;">
               <div class="bdd-title" style="font-size: 0.72rem; display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
                 <span style="color: #cbd5e1; font-weight: 700;">Critérios de Aceite (Cenário: Dado / Quando / Então):</span>
-                <span style="font-size: 0.65rem; color: #818cf8; text-transform: uppercase; font-family: var(--font-sans); letter-spacing: 0.5px;">BDD / Gherkin</span>
+                <span style="font-size: 0.65rem; color: #4accc2; text-transform: uppercase; font-family: var(--font-sans); letter-spacing: 0.5px;">BDD / Gherkin</span>
               </div>
-              <div class="bdd-content font-mono" id="preview-req-bdd" style="font-size: 0.8rem; line-height: 1.55; white-space: pre-wrap; color: #a5b4fc;">...</div>
+              <div class="bdd-content font-mono" id="preview-req-bdd" style="font-size: 0.8rem; line-height: 1.55; white-space: pre-wrap; color: #7dd3fc;">...</div>
             </div>
           </div>
           <div class="form-row">
@@ -2542,7 +2544,7 @@
             <div class="form-group" id="group-task-hours-spent">
               <label for="task-hours-spent" style="display: flex; align-items: center; justify-content: space-between;">
                 <span>Horas Apontadas (h)</span>
-                <span id="badge-admin-hours" style="font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; background: rgba(99, 102, 241, 0.2); color: #818cf8; font-weight: 600;">👑 Admin</span>
+                <span id="badge-admin-hours" style="font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; background: rgba(24, 97, 165, 0.22); color: var(--accent-primary, #4accc2); font-weight: 600;">👑 Admin</span>
               </label>
               <input type="number" id="task-hours-spent" min="0" max="999" step="0.5" value="0" placeholder="0">
               <small id="task-hours-spent-hint" class="text-muted" style="font-size: 0.72rem; margin-top: 3px; display: block;"></small>
@@ -2698,7 +2700,7 @@
               </button>
             </div>
             <div class="input-with-badge" style="position: relative;">
-              <input type="text" id="req-code" required placeholder="Ex: RF-01" class="custom-input font-mono" readonly style="background: rgba(255, 255, 255, 0.04); font-weight: 700; color: #a5b4fc; padding-right: 3.8rem;">
+              <input type="text" id="req-code" required placeholder="Ex: RF-01" class="custom-input font-mono" readonly style="background: rgba(255, 255, 255, 0.04); font-weight: 700; color: var(--accent-primary, #4accc2); padding-right: 3.8rem;">
               <span id="req-code-status-pill" class="badge-code-auto" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); pointer-events: none;">Auto</span>
             </div>
           </div>
@@ -2854,31 +2856,31 @@
         </div>
 
         <!-- Painel de Ajuste Administrativo de Horas (Apenas Admin) -->
-        <div id="timesheet-admin-adjust-panel" style="display: none; margin-bottom: 1.25rem; padding: 0.85rem 1rem; border-radius: 8px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.3);">
+        <div id="timesheet-admin-adjust-panel" style="display: none; margin-bottom: 1.25rem; padding: 0.85rem 1rem; border-radius: 8px; background: rgba(24, 97, 165, 0.1); border: 1px solid rgba(74, 204, 194, 0.32);">
           <div style="display: flex; align-items: center; justify-content: space-between;">
             <div style="display: flex; align-items: center; gap: 0.45rem;">
               <span style="font-size: 1.05rem;">👑</span>
               <div>
-                <strong style="color: #a5b4fc; font-size: 0.86rem; display: block;">Ajuste de Horas pelo Administrador</strong>
+                <strong style="color: var(--accent-primary, #4accc2); font-size: 0.86rem; display: block;">Ajuste de Horas pelo Administrador</strong>
                 <span style="font-size: 0.74rem; color: var(--text-muted);">Defina diretamente o total acumulado de horas apontadas</span>
               </div>
             </div>
-            <button type="button" class="btn btn-secondary btn-sm" id="btn-toggle-timesheet-mode" style="font-size: 0.74rem; padding: 0.25rem 0.65rem; border-color: rgba(99, 102, 241, 0.4); color: #c7d2fe;">
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-toggle-timesheet-mode" style="font-size: 0.74rem; padding: 0.25rem 0.65rem; border-color: rgba(74, 204, 194, 0.4); color: var(--accent-primary, #4accc2);">
               ✏️ Alterar Total
             </button>
           </div>
-          <div id="timesheet-admin-fields" style="display: none; margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px dashed rgba(99, 102, 241, 0.25);">
+          <div id="timesheet-admin-fields" style="display: none; margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px dashed rgba(74, 204, 194, 0.28);">
             <div class="form-row" style="margin-bottom: 0.75rem;">
               <div class="form-group">
-                <label for="timesheet-admin-total-hours" style="font-size: 0.8rem; color: #c7d2fe;">Novo Total de Horas Apontadas (h) *</label>
+                <label for="timesheet-admin-total-hours" style="font-size: 0.8rem; color: var(--accent-primary, #4accc2);">Novo Total de Horas Apontadas (h) *</label>
                 <input type="number" id="timesheet-admin-total-hours" min="0" max="999" step="0.5" placeholder="Ex: 35">
               </div>
               <div class="form-group">
-                <label for="timesheet-admin-reason" style="font-size: 0.8rem; color: #c7d2fe;">Motivo do Ajuste</label>
+                <label for="timesheet-admin-reason" style="font-size: 0.8rem; color: #93c5fd;">Motivo do Ajuste</label>
                 <input type="text" id="timesheet-admin-reason" placeholder="Ex: Correção de horas lançadas a mais">
               </div>
             </div>
-            <button type="button" class="btn btn-primary btn-sm" id="btn-save-admin-hours-override" style="width: 100%; background: linear-gradient(135deg, #6366f1, #4f46e5); font-weight: 600;">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-save-admin-hours-override" style="width: 100%; font-weight: 600;">
               ✓ Salvar Novo Total de Horas Apontadas
             </button>
           </div>
@@ -3423,8 +3425,8 @@
             <div class="form-group flex-1">
               <label for="template-primary-color">Cor Primária do Documento *</label>
               <div style="display: flex; gap: 8px; align-items: center;">
-                <input type="color" id="template-color-picker" value="#0284c7" style="width: 44px; height: 38px; border-radius: 6px; border: 1px solid var(--border-medium); cursor: pointer; padding: 2px; background: transparent;">
-                <input type="text" id="template-primary-color" class="custom-input" value="#0284c7" placeholder="#0284c7" maxlength="7" style="font-family: monospace; text-transform: uppercase;">
+                <input type="color" id="template-color-picker" value="#1861a5" style="width: 44px; height: 38px; border-radius: 6px; border: 1px solid var(--border-medium); cursor: pointer; padding: 2px; background: transparent;">
+                <input type="text" id="template-primary-color" class="custom-input" value="#1861a5" placeholder="#1861A5" maxlength="7" style="font-family: monospace; text-transform: uppercase;">
               </div>
             </div>
           </div>
@@ -3445,12 +3447,12 @@
           <!-- Paleta de Cores Recomendadas (Presets Rápidos) -->
           <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 600;">Paletas Rápidas:</span>
-            <button type="button" class="btn-color-swatch" data-color="#0284c7" style="background: #0284c7;" title="Azul Cerúleo (Flow)"></button>
-            <button type="button" class="btn-color-swatch" data-color="#1e3a8a" style="background: #1e3a8a;" title="Azul Marinho Real (Enterprise)"></button>
+            <button type="button" class="btn-color-swatch" data-color="#1861a5" style="background: #1861a5;" title="Azul Oceano (Flow Oficial)"></button>
+            <button type="button" class="btn-color-swatch" data-color="#2ba8b5" style="background: #2ba8b5;" title="Turquesa Aqua (Flow)"></button>
+            <button type="button" class="btn-color-swatch" data-color="#e6512c" style="background: #e6512c;" title="Coral Flow (Destaque)"></button>
+            <button type="button" class="btn-color-swatch" data-color="#0284c7" style="background: #0284c7;" title="Azul Cerúleo"></button>
             <button type="button" class="btn-color-swatch" data-color="#059669" style="background: #059669;" title="Verde Esmeralda (Ágil)"></button>
-            <button type="button" class="btn-color-swatch" data-color="#6366f1" style="background: #6366f1;" title="Índigo Tech (Inovação)"></button>
-            <button type="button" class="btn-color-swatch" data-color="#7c3aed" style="background: #7c3aed;" title="Roxo Profundo (Executivo)"></button>
-            <button type="button" class="btn-color-swatch" data-color="#0f172a" style="background: #0f172a;" title="Ardósia Escura (Minimalista)"></button>
+            <button type="button" class="btn-color-swatch" data-color="#141c29" style="background: #141c29;" title="Navy Flow Escuro (Minimalista)"></button>
             <button type="button" class="btn-color-swatch" data-color="#b91c1c" style="background: #b91c1c;" title="Bordô Corporativo (Formal)"></button>
           </div>
         </div>
@@ -3601,7 +3603,7 @@
             <!-- Miniatura do Documento em Escala -->
             <div id="mini-doc-preview" class="mini-doc-sheet" style="background: #ffffff; color: #0f172a; border-radius: 4px; padding: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.25); font-size: 9px; line-height: 1.3; overflow: hidden; border: 1px solid #e2e8f0;">
               <!-- Mini Header -->
-              <div id="mini-header-bar" style="background: #0284c7; color: #ffffff; padding: 6px 8px; border-radius: 3px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <div id="mini-header-bar" style="background: #1861a5; color: #ffffff; padding: 6px 8px; border-radius: 3px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
                 <div id="mini-header-logo-box" style="width: 20px; height: 20px; border-radius: 2px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
                   <span id="mini-logo-placeholder" style="font-size: 11px;">🏢</span>
                   <img id="mini-logo-img" src="" alt="Logo" style="display: none; max-width: 100%; max-height: 100%; object-fit: contain;">
@@ -3628,11 +3630,11 @@
                   <span style="display: block;">QA</span>
                   <strong style="font-size: 8px;">6</strong>
                 </div>
-                <div style="background: #f0f9ff; padding: 3px; border-radius: 2px; font-size: 6.5px; color: #0284c7;">
+                <div style="background: #f0f9ff; padding: 3px; border-radius: 2px; font-size: 6.5px; color: #1861a5;">
                   <span style="display: block;">BDD</span>
                   <strong style="font-size: 8px;">6</strong>
                 </div>
-                <div style="background: #faf5ff; padding: 3px; border-radius: 2px; font-size: 6.5px; color: #9333ea;">
+                <div style="background: #fff7ed; padding: 3px; border-radius: 2px; font-size: 6.5px; color: #e6512c;">
                   <span style="display: block;">%</span>
                   <strong style="font-size: 8px;">100%</strong>
                 </div>
@@ -3645,14 +3647,14 @@
 
               <!-- Mini Table -->
               <div style="border: 1px solid #e2e8f0; border-radius: 2px; overflow: hidden; margin-bottom: 6px;">
-                <div id="mini-table-header" style="background: #0284c7; color: #fff; font-size: 6.5px; font-weight: 700; padding: 3px 4px; display: flex; justify-content: space-between;">
+                <div id="mini-table-header" style="background: #1861a5; color: #fff; font-size: 6.5px; font-weight: 700; padding: 3px 4px; display: flex; justify-content: space-between;">
                   <span>Requisito & Specs</span>
                   <span>Validação QA</span>
                 </div>
                 <div style="padding: 4px; font-size: 7px; background: #fff; border-bottom: 1px solid #f1f5f9;">
                   <strong>RF-01 Autenticação MFA</strong>
                   <div id="mini-userstory-row" style="color: #64748b; font-size: 6.5px;"><em>User Story:</em> Como cliente quero...</div>
-                  <div id="mini-bdd-row" style="color: #0284c7; font-size: 6px; font-family: monospace;">Dado que... Quando... Então...</div>
+                  <div id="mini-bdd-row" style="color: #1861a5; font-size: 6px; font-family: monospace;">Dado que... Quando... Então...</div>
                   <div id="mini-qa-row" style="color: #059669; font-weight: 700; font-size: 6.5px; margin-top: 1px;">✓ Homologado QA</div>
                 </div>
               </div>
@@ -4049,7 +4051,7 @@
 
             <div class="form-group flex-1">
               <label for="apf-inm-weight-input">Peso Tabelado Unitário (PF) *</label>
-              <input type="number" id="apf-inm-weight-input" class="custom-input" min="0" step="0.05" value="0.80" required style="font-weight: 700; color: #818cf8;">
+              <input type="number" id="apf-inm-weight-input" class="custom-input" min="0" step="0.05" value="0.80" required style="font-weight: 700; color: var(--accent-primary, #4accc2);">
               <small style="display: block; margin-top: 4px; color: var(--text-muted); font-size: 0.74rem;">Preenchido conforme tabela SISP/contratual</small>
             </div>
 
@@ -4080,8 +4082,8 @@
               <span style="font-size: 1.4rem; color: var(--text-muted); font-weight: 300;">&times;</span>
               <div class="inm-formula-term">
                 <small style="display: block; font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Peso Unitário</small>
-                <strong id="inm-hud-weight" style="font-size: 1.5rem; color: #818cf8; font-family: 'Outfit', sans-serif;">0.80</strong>
-                <span style="font-size: 0.85rem; color: #818cf8;">PF</span>
+                <strong id="inm-hud-weight" style="font-size: 1.5rem; color: var(--accent-primary, #4accc2); font-family: 'Outfit', sans-serif;">0.80</strong>
+                <span style="font-size: 0.85rem; color: var(--accent-primary, #4accc2);">PF</span>
               </div>
               <span style="font-size: 1.4rem; color: var(--text-muted); font-weight: 300;">=</span>
               <div class="inm-formula-term inm-term-result" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); padding: 4px 14px; border-radius: 8px;">
@@ -4383,10 +4385,10 @@
               </select>
             </div>
             <div class="form-group" style="flex: 0 0 auto; display: flex; flex-direction: row; gap: 6px; align-items: flex-end;">
-              <button type="button" class="btn btn-primary btn-glow" id="btn-run-apf-auto-analysis" style="background: linear-gradient(135deg, #6366f1, #a855f7); border: none; height: 38px; font-weight: 700;">
+              <button type="button" class="btn btn-primary btn-glow" id="btn-run-apf-auto-analysis" style="background: linear-gradient(135deg, #1861a5 0%, #1d8a9e 58%, #e05a38 100%); border: none; height: 38px; font-weight: 700;">
                 <span>🔍 Auditar e Mensurar (CFPS)</span>
               </button>
-              <button type="button" class="btn btn-secondary" id="btn-run-apf-auto-reaudit" style="height: 38px; border-color: rgba(168,85,247,0.4); color: #c084fc; font-weight: 600;" title="Ignorar cache determinístico e solicitar nova leitura ao Agente de IA">
+              <button type="button" class="btn btn-secondary" id="btn-run-apf-auto-reaudit" style="height: 38px; border-color: rgba(254,108,71,0.45); color: #ff8a6b; font-weight: 600;" title="Ignorar cache determinístico e solicitar nova leitura ao Agente de IA">
                 <span>🔄 Reauditar</span>
               </button>
             </div>
@@ -4394,7 +4396,7 @@
         </div>
 
         <!-- Painel de Contexto Identificado (resumo, fronteira e natureza da demanda) -->
-        <div id="apf-auto-context-card" class="glass-subpanel" style="display: none; padding: 1.15rem; border-radius: var(--radius-md); border-left: 4px solid #818cf8; background: rgba(99,102,241,0.06);">
+        <div id="apf-auto-context-card" class="glass-subpanel" style="display: none; padding: 1.15rem; border-radius: var(--radius-md); border-left: 4px solid #3fb8b3; background: rgba(24, 97, 165, 0.08);">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
             <div>
               <strong id="apf-auto-context-title" style="font-size: 1rem; color: var(--text-main);"></strong>
@@ -4593,6 +4595,6 @@
 
   <!-- Script Principal da Aplicação -->
   <script src="ifpug-rules.js?v=1.1.0"></script>
-  <script src="script.js?v=1.1.0"></script>
+  <script src="script.js?v=1.2.0"></script>
 </body>
 </html>
