@@ -2821,6 +2821,520 @@ window.confirmDeleteProject = function(projectId, projectName) {
 };
 
 // --- RENDERIZAR ABA: REQUISITOS (CRUD) ---
+/**
+ * Divide uma história de usuário e suas eventuais Regras de Negócio (RN)
+ * em blocos estruturados para leitura harmoniosa.
+ */
+function parseRequirementNarrative(rawStory) {
+  const text = String(rawStory || '').replace(/\r\n/g, '\n').trim();
+  if (!text) {
+    return { como: '', quero: '', paraQue: '', fallbackText: '', rules: [] };
+  }
+
+  let storyPart = text;
+  let rulesPart = '';
+
+  const rnHeadingMatch = text.match(/(?:^|\s+)(Regras?\s+de\s+Neg[óo]cio(?:\s*\(RN\))?\s*:?)/i);
+  if (rnHeadingMatch && typeof rnHeadingMatch.index === 'number') {
+    const splitAt = rnHeadingMatch.index + (rnHeadingMatch[0].startsWith(' ') ? 1 : 0);
+    storyPart = text.slice(0, splitAt).trim();
+    rulesPart = text.slice(splitAt + rnHeadingMatch[1].length).trim();
+  } else {
+    const firstRnMatch = text.match(/(?:^|\s+)(RN\s*\d+(?:[.\-]\d+)*\s*[:\-])/i);
+    if (firstRnMatch && typeof firstRnMatch.index === 'number' && firstRnMatch.index > 20) {
+      const splitAt = firstRnMatch.index + (firstRnMatch[0].startsWith(' ') ? 1 : 0);
+      storyPart = text.slice(0, splitAt).trim();
+      rulesPart = text.slice(splitAt).trim();
+    }
+  }
+
+  let como = '';
+  let quero = '';
+  let paraQue = '';
+  let fallbackText = storyPart;
+
+  const comoMatch = storyPart.match(/(?:^|\s)Como\s*:?\s+([\s\S]*?)(?=(?:\s+Quero\s*:?\s+)|(?:\s+Para\s+que\s*:?\s+)|$)/i);
+  const queroMatch = storyPart.match(/(?:^|\s)Quero\s*:?\s+([\s\S]*?)(?=(?:\s+Para\s+que\s*:?\s+)|$)/i);
+  const paraQueMatch = storyPart.match(/(?:^|\s)Para\s+que\s*:?\s+([\s\S]*)$/i);
+
+  if (comoMatch || queroMatch || paraQueMatch) {
+    como = comoMatch ? comoMatch[1].trim().replace(/^[,\-:\s]+|[;\s]+$/g, '') : '';
+    quero = queroMatch ? queroMatch[1].trim().replace(/^[,\-:\s]+|[;\s]+$/g, '') : '';
+    paraQue = paraQueMatch ? paraQueMatch[1].trim().replace(/^[,\-:\s]+$/g, '') : '';
+    fallbackText = (como || quero || paraQue) ? '' : storyPart;
+  }
+
+  const rules = [];
+  if (rulesPart) {
+    const rawChunks = rulesPart
+      .split(/(?=(?:^|\s)RN\s*\d+(?:[.\-]\d+)*\s*[:\-])|(?=(?:^|\n)\s*\d+[\.\)]\s+)/i)
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    rawChunks.forEach((chunk, idx) => {
+      const rnCodeMatch = chunk.match(/^(RN\s*\d+(?:[.\-]\d+)*)\s*[:\-]?\s*([\s\S]*)$/i);
+      if (rnCodeMatch) {
+        rules.push({
+          code: rnCodeMatch[1].replace(/\s+/g, '').toUpperCase(),
+          text: rnCodeMatch[2].trim()
+        });
+      } else {
+        const numMatch = chunk.match(/^(\d+)[\.\)]\s*([\s\S]*)$/);
+        if (numMatch) {
+          rules.push({ code: `RN ${numMatch[1]}`, text: numMatch[2].trim() });
+        } else if (chunk.length > 2) {
+          rules.push({ code: `RN ${idx + 1}`, text: chunk });
+        }
+      }
+    });
+  }
+
+  return { como, quero, paraQue, fallbackText, rules };
+}
+
+/**
+ * Renderiza HTML estruturado de História de Usuário e Regras de Negócio.
+ */
+function renderRequirementNarrativeHtml(rawStory, options = {}) {
+  const { compact = false, reqId = null, maxRules = 3 } = options;
+  const parsed = parseRequirementNarrative(rawStory);
+
+  if (!parsed.como && !parsed.quero && !parsed.paraQue && !parsed.fallbackText && parsed.rules.length === 0) {
+    return `
+      <div class="req-section-block">
+        <span class="req-section-label">📖 História de Usuário</span>
+        <div class="req-story-fallback" style="color: var(--text-muted); font-style: italic;">História de usuário não preenchida.</div>
+      </div>
+    `;
+  }
+
+  let storyHtml = '';
+  if (parsed.como || parsed.quero || parsed.paraQue) {
+    storyHtml = `
+      <div class="req-story-grid">
+        ${parsed.como ? `
+          <div class="req-story-card story-como">
+            <span class="req-story-tag">👤 Como</span>
+            <div class="req-story-text">${escapeHtml(parsed.como)}</div>
+          </div>
+        ` : ''}
+        ${parsed.quero ? `
+          <div class="req-story-card story-quero">
+            <span class="req-story-tag">🎯 Quero</span>
+            <div class="req-story-text">${escapeHtml(parsed.quero)}</div>
+          </div>
+        ` : ''}
+        ${parsed.paraQue ? `
+          <div class="req-story-card story-paraque">
+            <span class="req-story-tag">✨ Para que</span>
+            <div class="req-story-text">${escapeHtml(parsed.paraQue)}</div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  } else if (parsed.fallbackText) {
+    storyHtml = `<div class="req-story-fallback">${escapeHtml(parsed.fallbackText)}</div>`;
+  }
+
+  let rulesHtml = '';
+  if (parsed.rules.length > 0) {
+    const visibleRules = compact ? parsed.rules.slice(0, maxRules) : parsed.rules;
+    const hiddenCount = parsed.rules.length - visibleRules.length;
+    rulesHtml = `
+      <div class="req-rn-block">
+        <span class="req-section-label">📐 Regras de Negócio (${parsed.rules.length})</span>
+        <div class="req-rn-list">
+          ${visibleRules.map(r => `
+            <div class="req-rn-item">
+              <span class="req-rn-code">${escapeHtml(r.code)}</span>
+              <div class="req-rn-body">${escapeHtml(r.text)}</div>
+            </div>
+          `).join('')}
+        </div>
+        ${hiddenCount > 0 && reqId ? `
+          <button type="button" class="bdd-more-banner" onclick="openRequirementViewer('${reqId}')">
+            📖 Ver mais ${hiddenCount} regra(s) de negócio no Modo Leitura
+          </button>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="req-section-block">
+      <span class="req-section-label">📖 História de Usuário</span>
+      ${storyHtml}
+      ${rulesHtml}
+    </div>
+  `;
+}
+
+/**
+ * Classifica uma palavra-chave Gherkin em PT/EN e extrai tipo de destaque visual.
+ */
+function classifyGherkinKeyword(kw) {
+  const norm = String(kw || '').trim().toLowerCase();
+  if (/^(dado|given)/.test(norm)) return 'kw-given';
+  if (/^(quando|when)/.test(norm)) return 'kw-when';
+  if (/^(ent[ãa]o|then)/.test(norm)) return 'kw-then';
+  return 'kw-and';
+}
+
+/**
+ * Faz parsing estruturado de Cenários BDD (Cenário / Dado / Quando / Então / E).
+ */
+function parseRequirementBddScenarios(rawBdd) {
+  const raw = String(rawBdd || '').replace(/\r\n/g, '\n').trim();
+  if (!raw) return [];
+
+  // Normaliza cenários/steps colados em linha única preservando palavras em caixa baixa no meio de frases
+  const text = raw
+    .replace(/([^\n])\s+(?=(?:Cen[áa]rio(?:\s+Esquema)?|Esquema\s+do\s+Cen[áa]rio|Scenario(?:\s+Outline)?|Contexto|Background)\s*:)/gi, '$1\n')
+    .replace(/([^\n])\s+(?=(?:Dado\s+que|Dado|Quando|Ent[ãa]o|Given|When|Then)\s+)/g, '$1\n');
+
+  const scenarioBlocks = text
+    .split(/(?=(?:^|\n)\s*(?:Cen[áa]rio(?:\s+Esquema)?|Esquema\s+do\s+Cen[áa]rio|Scenario(?:\s+Outline)?|Contexto|Background)\s*:)/i)
+    .map(b => b.trim())
+    .filter(Boolean);
+
+  const kwRegex = /^\s*(Dado\s+que|Dado|Quando|Ent[ãa]o|Mas|E|Given|When|Then|And|But)\b\s*:?\s*(.*)$/i;
+
+  return scenarioBlocks.map((block, idx) => {
+    const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+    let title = `Cenário ${String(idx + 1).padStart(2, '0')}`;
+    let stepLines = lines;
+
+    const headerMatch = lines[0]?.match(/^(?:Cen[áa]rio(?:\s+Esquema)?|Esquema\s+do\s+Cen[áa]rio|Scenario(?:\s+Outline)?|Contexto|Background)\s*:\s*(.*)$/i);
+    if (headerMatch) {
+      title = headerMatch[1].trim() || title;
+      stepLines = lines.slice(1);
+    }
+
+    const steps = [];
+    stepLines.forEach(line => {
+      const m = line.match(kwRegex);
+      if (m) {
+        steps.push({
+          keyword: m[1].trim(),
+          kwClass: classifyGherkinKeyword(m[1]),
+          text: m[2].trim()
+        });
+      } else if (steps.length > 0) {
+        steps[steps.length - 1].text = `${steps[steps.length - 1].text} ${line}`.trim();
+      } else {
+        steps.push({ keyword: '•', kwClass: 'kw-given', text: line });
+      }
+    });
+
+    return { title, steps, rawBlock: block };
+  });
+}
+
+/**
+ * Renderiza cenários BDD como cards semânticos de fácil leitura.
+ */
+function renderRequirementBddHtml(rawBdd, options = {}) {
+  const { compact = false, reqId = null, maxScenarios = 2 } = options;
+  const scenarios = parseRequirementBddScenarios(rawBdd);
+
+  if (scenarios.length === 0) {
+    return `
+      <div class="req-section-block">
+        <span class="req-section-label">🧪 Critérios de Aceite (BDD / Gherkin)</span>
+        <div class="bdd-container" style="color: var(--text-muted); font-style: italic; font-size: 0.84rem;">
+          Critérios de aceite não documentados.
+        </div>
+      </div>
+    `;
+  }
+
+  const visibleScenarios = compact ? scenarios.slice(0, maxScenarios) : scenarios;
+  const hiddenCount = scenarios.length - visibleScenarios.length;
+
+  return `
+    <div class="req-section-block">
+      <span class="req-section-label">🧪 Critérios de Aceite — BDD / Gherkin (${scenarios.length} ${scenarios.length === 1 ? 'cenário' : 'cenários'})</span>
+      <div class="bdd-scenarios-grid">
+        ${visibleScenarios.map((sc, idx) => `
+          <div class="bdd-scenario-card">
+            <div class="bdd-scenario-header">
+              <span class="bdd-scenario-index">Cenário ${String(idx + 1).padStart(2, '0')}</span>
+              <span class="bdd-scenario-title">${escapeHtml(sc.title)}</span>
+            </div>
+            <div class="bdd-steps-list">
+              ${sc.steps.length > 0 ? sc.steps.map(st => `
+                <div class="bdd-step-row">
+                  <span class="bdd-kw ${st.kwClass}">${escapeHtml(st.keyword)}</span>
+                  <span class="bdd-step-text">${escapeHtml(st.text)}</span>
+                </div>
+              `).join('') : `<div class="bdd-step-text" style="color: var(--text-muted);">${escapeHtml(sc.rawBlock)}</div>`}
+            </div>
+          </div>
+        `).join('')}
+        ${hiddenCount > 0 && reqId ? `
+          <button type="button" class="bdd-more-banner" onclick="openRequirementViewer('${reqId}')">
+            📖 Exibir todos os ${scenarios.length} cenários BDD no Leitor Harmonioso
+          </button>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Gera representação limpa em Markdown do Requisito para cópia rápida.
+ */
+function buildRequirementMarkdown(req) {
+  const project = store.getProjectById(req.projectId);
+  const parsed = parseRequirementNarrative(req.userStory);
+  const scenarios = parseRequirementBddScenarios(req.bdd);
+  const lines = [
+    `# [${req.code || 'REQ'}] ${req.title || ''}`,
+    '',
+    `- **Projeto:** ${project ? project.name : 'Geral'}`,
+    `- **Tipo:** ${req.type === 'non-functional' ? 'Não-Funcional (RNF)' : 'Funcional (RF)'}`,
+    `- **Prioridade (MoSCoW):** ${req.moscow || 'Must'}`,
+    req.feature ? `- **Feature / Módulo:** ${req.feature}` : null,
+    '',
+    '## História de Usuário',
+    ''
+  ].filter(v => v !== null);
+
+  if (parsed.como || parsed.quero || parsed.paraQue) {
+    if (parsed.como) lines.push(`- **Como:** ${parsed.como}`);
+    if (parsed.quero) lines.push(`- **Quero:** ${parsed.quero}`);
+    if (parsed.paraQue) lines.push(`- **Para que:** ${parsed.paraQue}`);
+  } else if (parsed.fallbackText) {
+    lines.push(parsed.fallbackText);
+  }
+
+  if (parsed.rules.length > 0) {
+    lines.push('', '## Regras de Negócio', '');
+    parsed.rules.forEach(r => lines.push(`- **${r.code}:** ${r.text}`));
+  }
+
+  if (scenarios.length > 0) {
+    lines.push('', '## Critérios de Aceite (BDD)', '');
+    scenarios.forEach((sc, idx) => {
+      lines.push(`### Cenário ${idx + 1}: ${sc.title}`);
+      sc.steps.forEach(st => lines.push(`- **${st.keyword}** ${st.text}`));
+      lines.push('');
+    });
+  }
+
+  return lines.join('\n').trim();
+}
+
+window.currentReqViewerState = { reqId: null, filteredIds: [] };
+
+window.openRequirementViewer = function(reqId) {
+  const filteredReqs = store.getRequirements();
+  if (!filteredReqs || filteredReqs.length === 0) {
+    showToast('Nenhum requisito disponível nos filtros atuais para exibir no Modo Leitura.');
+    return;
+  }
+
+  const targetReq = (reqId ? store.getRequirementById(reqId) : null) || filteredReqs[0];
+  if (!targetReq) return;
+
+  const filteredIds = filteredReqs.map(r => r.id);
+  if (!filteredIds.includes(targetReq.id)) {
+    filteredIds.unshift(targetReq.id);
+  }
+
+  window.currentReqViewerState = { reqId: targetReq.id, filteredIds };
+  renderRequirementViewerContent(targetReq);
+  openModal('modal-requirement-viewer');
+};
+
+window.navigateRequirementViewer = function(delta) {
+  const { reqId, filteredIds } = window.currentReqViewerState || {};
+  if (!Array.isArray(filteredIds) || filteredIds.length <= 1) return;
+  const curIdx = filteredIds.indexOf(reqId);
+  const nextIdx = (curIdx + delta + filteredIds.length) % filteredIds.length;
+  const nextReq = store.getRequirementById(filteredIds[nextIdx]);
+  if (!nextReq) return;
+  window.currentReqViewerState.reqId = nextReq.id;
+  renderRequirementViewerContent(nextReq);
+  const scrollArea = document.querySelector('#modal-requirement-viewer .req-viewer-scroll-body');
+  if (scrollArea) scrollArea.scrollTop = 0;
+};
+
+window.copyRequirementMarkdown = async function(reqId) {
+  const req = store.getRequirementById(reqId);
+  if (!req) return;
+  const md = buildRequirementMarkdown(req);
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(md);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = md;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    showToast(`Especificação [${req.code}] copiada em Markdown!`);
+  } catch (e) {
+    showToast('Não foi possível copiar automaticamente.', 'error');
+  }
+};
+
+function renderRequirementViewerContent(req) {
+  const project = store.getProjectById(req.projectId);
+  const linkedTasks = (store.state.tasks || []).filter(t => t.reqId === req.id);
+  const linkedTests = (store.state.testCases || []).filter(tc => tc.reqId === req.id);
+  const linkedApfs = (store.state.apfItems || []).filter(a => a.reqId === req.id);
+  const totalReqPf = linkedApfs.reduce((s, a) => s + (parseFloat(a.finalPf) || 0), 0);
+
+  const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const currentRole = currentUser ? currentUser.role : 'dev';
+  const perms = RolePermissions[currentRole] || RolePermissions.dev;
+
+  const moscowLabels = {
+    Must: 'Obrigatório (Must Have)',
+    Should: 'Importante (Should Have)',
+    Could: 'Desejável (Could Have)',
+    "Won't": 'Não Prioritário'
+  };
+  const moscowClass = req.moscow === 'Must' ? 'moscow-must' : (req.moscow === 'Should' ? 'moscow-should' : 'moscow-could');
+
+  document.getElementById('viewer-req-code').textContent = req.code || 'REQ';
+  document.getElementById('viewer-req-type').textContent = req.type === 'non-functional' ? 'Não-Funcional (RNF)' : 'Funcional (RF)';
+  const moscowEl = document.getElementById('viewer-req-moscow');
+  moscowEl.className = `moscow-badge ${moscowClass}`;
+  moscowEl.textContent = moscowLabels[req.moscow] || req.moscow;
+  document.getElementById('viewer-req-project').textContent = project ? `📁 ${project.name}` : '📁 Geral';
+
+  const featureEl = document.getElementById('viewer-req-feature');
+  if (req.feature) {
+    featureEl.style.display = 'inline-flex';
+    featureEl.textContent = `🧩 ${req.feature}`;
+  } else {
+    featureEl.style.display = 'none';
+  }
+
+  document.getElementById('viewer-req-title').textContent = req.title || '';
+  document.getElementById('viewer-req-date').textContent = req.createdAt ? `🕒 Especificado em ${formatDateTimeBR(req.createdAt)}` : '';
+
+  const { filteredIds } = window.currentReqViewerState || { filteredIds: [req.id] };
+  const idx = filteredIds.indexOf(req.id);
+  document.getElementById('viewer-req-position').textContent = `${idx >= 0 ? idx + 1 : 1} / ${filteredIds.length || 1}`;
+  const prevBtn = document.getElementById('btn-viewer-prev');
+  const nextBtn = document.getElementById('btn-viewer-next');
+  if (prevBtn) prevBtn.disabled = filteredIds.length <= 1;
+  if (nextBtn) nextBtn.disabled = filteredIds.length <= 1;
+
+  const actionsEl = document.getElementById('viewer-req-actions');
+  actionsEl.innerHTML = `
+    <button type="button" class="btn btn-secondary btn-sm" onclick="copyRequirementMarkdown('${req.id}')" title="Copiar especificação estruturada em Markdown">
+      📋 Copiar MD
+    </button>
+    ${perms.canCreateTask ? `
+      <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('modal-requirement-viewer'); openTaskModalForCreate('${req.id}');">
+        ➕ Criar Tarefa
+      </button>
+    ` : ''}
+    ${perms.canManageApf ? `
+      <button type="button" class="btn btn-secondary btn-sm" style="border-color: rgba(254, 108, 71, 0.45); color: #ff9a7f;" onclick="closeModal('modal-requirement-viewer'); openApfAutoModal('${req.id}');">
+        ⚡ Auditar APF
+      </button>
+    ` : ''}
+    ${perms.canEditReq ? `
+      <button type="button" class="btn btn-primary btn-sm" onclick="closeModal('modal-requirement-viewer'); openReqModalForEdit('${req.id}');">
+        ✏️ Editar
+      </button>
+    ` : ''}
+  `;
+
+  document.getElementById('viewer-req-main-content').innerHTML = `
+    ${renderRequirementNarrativeHtml(req.userStory, { compact: false })}
+    ${renderRequirementBddHtml(req.bdd, { compact: false })}
+  `;
+
+  const doneTasksCount = linkedTasks.filter(t => t.status === 'done').length;
+  const tasksPct = linkedTasks.length > 0 ? Math.round((doneTasksCount / linkedTasks.length) * 100) : 0;
+  const passTestsCount = linkedTests.filter(tc => tc.status === 'pass').length;
+
+  document.getElementById('viewer-req-aside-content').innerHTML = `
+    <div class="req-viewer-side-card">
+      <div class="req-viewer-side-header">
+        <span>📐 Métricas & APF</span>
+        <span class="badge-apf-counter">${linkedApfs.length} ${linkedApfs.length === 1 ? 'função' : 'funções'}</span>
+      </div>
+      <div style="display: flex; align-items: baseline; justify-content: space-between;">
+        <span style="font-size: 0.78rem; color: var(--text-muted);">Tamanho Funcional Líquido</span>
+        <strong style="font-family: var(--font-heading); font-size: 1.35rem; color: var(--accent-primary);">${totalReqPf.toFixed(1)} PF</strong>
+      </div>
+      ${linkedApfs.length > 0 ? `
+        <div class="req-viewer-apf-list">
+          ${linkedApfs.map(a => `
+            <div class="req-viewer-apf-row">
+              <div style="min-width: 0; flex: 1;">
+                <strong style="display: block; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(a.name || '')}">${escapeHtml(a.name || a.code || 'Função APF')}</strong>
+                <small style="color: var(--text-muted);">${escapeHtml(a.functionType || '')} · ${escapeHtml(a.complexity || '')}</small>
+              </div>
+              <strong style="color: var(--accent-primary); white-space: nowrap;">${(parseFloat(a.finalPf) || 0).toFixed(1)} PF</strong>
+            </div>
+          `).join('')}
+        </div>
+      ` : `
+        <div style="font-size: 0.78rem; color: var(--text-muted); font-style: italic;">
+          Nenhuma função APF apurada para este requisito ainda.
+        </div>
+      `}
+    </div>
+
+    <div class="req-viewer-side-card">
+      <div class="req-viewer-side-header">
+        <span>🔗 Demandas Vinculadas</span>
+        <span class="badge-subtle">${doneTasksCount}/${linkedTasks.length}</span>
+      </div>
+      ${linkedTasks.length > 0 ? `
+        <div class="req-viewer-progress-track" title="${tasksPct}% concluídas">
+          <div class="req-viewer-progress-fill" style="width: ${tasksPct}%;"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 0.45rem;">
+          ${linkedTasks.map(t => {
+            const spec = (typeof getSpecialtyInfo === 'function') ? getSpecialtyInfo(t.role) : { tagClass: 'role-back', icon: '💻', shortLabel: 'Dev' };
+            return `
+              <button type="button" class="req-viewer-apf-row" style="cursor: pointer; text-align: left; width: 100%;" onclick="closeModal('modal-requirement-viewer'); openTaskModalForEdit('${t.id}');">
+                <span class="task-role-tag ${spec.tagClass}" style="font-size: 0.68rem; padding: 2px 6px;">${spec.icon} ${spec.shortLabel || spec.label}</span>
+                <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main);">#${t.id.slice(-4)} ${escapeHtml(t.title)}</span>
+              </button>
+            `;
+          }).join('')}
+        </div>
+      ` : `
+        <div style="font-size: 0.78rem; color: var(--text-muted); font-style: italic;">Nenhuma demanda criada para este requisito.</div>
+      `}
+    </div>
+
+    <div class="req-viewer-side-card">
+      <div class="req-viewer-side-header">
+        <span>🧪 Qualidade & QA</span>
+        <span class="badge-subtle">${passTestsCount}/${linkedTests.length} aprovados</span>
+      </div>
+      ${linkedTests.length > 0 ? `
+        <div class="req-viewer-apf-list">
+          ${linkedTests.map(tc => {
+            const icon = tc.status === 'pass' ? '✅' : (tc.status === 'fail' ? '❌' : '⏳');
+            return `
+              <div class="req-viewer-apf-row">
+                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main);">${icon} ${escapeHtml(tc.title || tc.id)}</span>
+                <small style="color: var(--text-muted); white-space: nowrap;">${escapeHtml(tc.type || 'QA')}</small>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : `
+        <div style="font-size: 0.78rem; color: var(--text-muted); font-style: italic;">Nenhum caso de teste vinculado ainda.</div>
+      `}
+    </div>
+  `;
+}
+
 function renderRequirements() {
   const container = document.getElementById('requirements-container');
   if (!container) return;
@@ -2866,12 +3380,12 @@ function renderRequirements() {
       const totalReqPf = linkedApfs.reduce((s, a) => s + (a.finalPf || 0), 0);
       const moscowClass = req.moscow === 'Must' ? 'moscow-must' : (req.moscow === 'Should' ? 'moscow-should' : 'moscow-could');
 
-      let reqActionsHtml = '';
+      let reqActionsHtml = `<button class="card-btn-action btn-view-req btn-xs" onclick="openRequirementViewer('${req.id}')" title="Abrir no Leitor Harmonioso">📖 Ler</button>`;
       if (perms.canCreateTask) {
         reqActionsHtml += `<button class="btn-add-task-xs" onclick="openTaskModalForCreate('${req.id}')" title="Criar Demanda vinculada a este Requisito">➕ Tarefa</button>`;
       }
       if (perms.canManageApf) {
-        reqActionsHtml += `<button class="card-btn-action btn-xs" style="color: #c084fc; border-color: rgba(168,85,247,0.35);" onclick="openApfAutoModal('${req.id}')" title="Gerar Pontos de Função automaticamente para este Requisito">⚡ APF</button>`;
+        reqActionsHtml += `<button class="card-btn-action btn-xs" style="color: #ff9a7f; border-color: rgba(254,108,71,0.4);" onclick="openApfAutoModal('${req.id}')" title="Gerar Pontos de Função automaticamente para este Requisito">⚡ APF</button>`;
       }
       if (perms.canEditReq) {
         reqActionsHtml += `<button class="card-btn-action btn-xs" onclick="openReqModalForEdit('${req.id}')" title="Editar Requisito">✏️ Editar</button>`;
@@ -2879,21 +3393,18 @@ function renderRequirements() {
       if (perms.canDeleteReq) {
         reqActionsHtml += `<button class="card-btn-action btn-del btn-xs" onclick="confirmDeleteRequirement('${req.id}', '${req.code}', '${escapeHtml(req.title)}')" title="Excluir Requisito">🗑️ Excluir</button>`;
       }
-      if (!reqActionsHtml) {
-        reqActionsHtml = `<span style="font-size: 0.72rem; color: var(--text-muted);">🔒 Leitura</span>`;
-      }
 
       rowsHtml += `
         <tr id="req-row-${req.id}">
           <td>
             <div style="display: flex; flex-direction: column; gap: 2px;">
-              <span class="req-code-badge">${escapeHtml(req.code)}</span>
+              <span class="req-code-badge" onclick="openRequirementViewer('${req.id}')" style="cursor: pointer;">${escapeHtml(req.code)}</span>
               <span class="badge-subtle" style="font-size: 0.68rem; align-self: flex-start;">${req.type === 'non-functional' ? 'RNF' : 'RF'}</span>
             </div>
           </td>
           <td>
             <div class="cell-title-group">
-              <strong class="cell-main-title" ${perms.canEditReq ? `onclick="openReqModalForEdit('${req.id}')" style="cursor: pointer;"` : ''}>${escapeHtml(req.title)}</strong>
+              <strong class="cell-main-title" onclick="openRequirementViewer('${req.id}')" style="cursor: pointer;" title="Abrir no Leitor Harmonioso">${escapeHtml(req.title)}</strong>
               <div class="cell-sub-meta">
                 <span class="badge-subtle" style="font-size: 0.7rem;">${project ? escapeHtml(project.name) : 'Geral'}</span>
                 ${req.feature ? `<span class="badge-feature-pill" title="Feature / Módulo de Negócio">🧩 ${escapeHtml(req.feature)}</span>` : ''}
@@ -2909,7 +3420,7 @@ function renderRequirements() {
             <div class="mini-metrics-chips">
               <span class="metric-mini-tag" title="Demandas Vinculadas">🔗 <strong>${linkedTasks.length}</strong> demandas</span>
               <span class="metric-mini-tag" title="Casos de Teste QA">🧪 <strong>${linkedTests.length}</strong> testes</span>
-              ${linkedApfs.length > 0 ? `<span class="metric-mini-tag" style="color: #c084fc; border-color: rgba(168,85,247,0.35);" title="${linkedApfs.length} Funções APF vinculadas">📐 <strong>${totalReqPf.toFixed(1)}</strong> PF</span>` : ''}
+              ${linkedApfs.length > 0 ? `<span class="metric-mini-tag badge-apf-counter" title="${linkedApfs.length} Funções APF vinculadas">📐 <strong>${totalReqPf.toFixed(1)}</strong> PF</span>` : ''}
             </div>
             ${linkedTasks.length > 0 ? `
               <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">
@@ -2935,7 +3446,7 @@ function renderRequirements() {
             <th>Nome / Título</th>
             <th style="width: 160px;">Status</th>
             <th style="width: 250px;">Métricas / Progresso</th>
-            <th style="width: 180px; text-align: right;">Ações</th>
+            <th style="width: 210px; text-align: right;">Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -2945,7 +3456,7 @@ function renderRequirements() {
     `;
     container.appendChild(tableWrap);
   } else {
-    // Modo Cards (Grelha original)
+    // Modo Cards (Visualização estruturada em duas faixas + História / RNs / Cenários BDD)
     requirements.forEach(req => {
       const project = store.getProjectById(req.projectId);
       const linkedTasks = store.state.tasks.filter(t => t.reqId === req.id);
@@ -2954,12 +3465,12 @@ function renderRequirements() {
       const totalReqPf = linkedApfs.reduce((s, a) => s + (a.finalPf || 0), 0);
       const moscowClass = req.moscow === 'Must' ? 'moscow-must' : (req.moscow === 'Should' ? 'moscow-should' : 'moscow-could');
 
-      let reqActionsHtml = '';
+      let reqActionsHtml = `<button class="card-btn-action btn-view-req" onclick="openRequirementViewer('${req.id}')" title="Abrir Leitor Harmonioso">📖 Visualizar</button>`;
       if (perms.canCreateTask) {
-        reqActionsHtml += `<button class="card-btn-action btn-add-task" onclick="openTaskModalForCreate('${req.id}')" title="Criar Demanda vinculada a este Requisito">➕ Criar Tarefa</button>`;
+        reqActionsHtml += `<button class="card-btn-action btn-add-task" onclick="openTaskModalForCreate('${req.id}')" title="Criar Demanda vinculada a este Requisito">➕ Tarefa</button>`;
       }
       if (perms.canManageApf) {
-        reqActionsHtml += `<button class="card-btn-action" style="color: #c084fc; border-color: rgba(168,85,247,0.35);" onclick="openApfAutoModal('${req.id}')" title="Gerar Pontos de Função automaticamente para este Requisito">⚡ Gerar APF</button>`;
+        reqActionsHtml += `<button class="card-btn-action" style="color: #ff9a7f; border-color: rgba(254,108,71,0.4);" onclick="openApfAutoModal('${req.id}')" title="Gerar Pontos de Função automaticamente para este Requisito">⚡ Gerar APF</button>`;
       }
       if (perms.canEditReq) {
         reqActionsHtml += `<button class="card-btn-action" onclick="openReqModalForEdit('${req.id}')" title="Editar Requisito">✏️ Editar</button>`;
@@ -2973,28 +3484,28 @@ function renderRequirements() {
       card.id = `req-card-${req.id}`;
       card.setAttribute('data-req-id', req.id);
       card.innerHTML = `
-        <div class="req-header-row">
-          <span class="req-code-badge">${req.code}</span>
-          <h3 class="req-title">${escapeHtml(req.title)}</h3>
-          <span class="moscow-badge ${moscowClass}">${moscowLabels[req.moscow] || req.moscow}</span>
-          <span class="badge-subtle">${project ? escapeHtml(project.name) : 'Geral'}</span>
-          ${req.feature ? `<span class="badge-feature" title="Feature / Módulo de Negócio">🧩 ${escapeHtml(req.feature)}</span>` : ''}
-          ${linkedApfs.length > 0 ? `<span class="badge-subtle badge-apf-counter" title="${linkedApfs.length} Funções APF vinculadas">📐 ${linkedApfs.length} APF (${totalReqPf.toFixed(1)} PF)</span>` : ''}
-          ${req.createdAt ? `<span class="badge-subtle req-date-badge" style="font-size: 0.72rem; color: var(--text-muted);" title="Data de Criação: ${formatDateTimeBR(req.createdAt)}">🕒 ${formatDateTimeBR(req.createdAt)}</span>` : ''}
-          
-          <div class="card-header-actions" style="margin-left: auto;">
-            ${reqActionsHtml ? reqActionsHtml : '<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">🔒 Somente leitura</span>'}
+        <div class="req-header-wrap">
+          <div class="req-header-top">
+            <div class="req-title-cluster">
+              <span class="req-code-badge" onclick="openRequirementViewer('${req.id}')" style="cursor: pointer;">${escapeHtml(req.code)}</span>
+              <h3 class="req-title req-title-clickable" onclick="openRequirementViewer('${req.id}')" title="Clique para abrir no Leitor Harmonioso">${escapeHtml(req.title)}</h3>
+            </div>
+            <div class="card-header-actions">
+              ${reqActionsHtml}
+            </div>
+          </div>
+          <div class="req-header-meta">
+            <span class="badge-subtle" style="font-size: 0.7rem; font-weight: 700;">${req.type === 'non-functional' ? 'RNF' : 'RF'}</span>
+            <span class="moscow-badge ${moscowClass}">${moscowLabels[req.moscow] || req.moscow}</span>
+            <span class="badge-subtle">${project ? escapeHtml(project.name) : 'Geral'}</span>
+            ${req.feature ? `<span class="badge-feature" title="Feature / Módulo de Negócio">🧩 ${escapeHtml(req.feature)}</span>` : ''}
+            ${linkedApfs.length > 0 ? `<span class="badge-subtle badge-apf-counter" title="${linkedApfs.length} Funções APF vinculadas">📐 ${linkedApfs.length} APF (${totalReqPf.toFixed(1)} PF)</span>` : ''}
+            ${req.createdAt ? `<span class="badge-subtle req-date-badge" style="font-size: 0.72rem; color: var(--text-muted);" title="Data de Criação: ${formatDateTimeBR(req.createdAt)}">🕒 ${formatDateTimeBR(req.createdAt)}</span>` : ''}
           </div>
         </div>
 
-        <div class="user-story-quote">
-          <strong>História de Usuário:</strong> ${escapeHtml(req.userStory || 'Não preenchida.')}
-        </div>
-
-        <div class="bdd-container">
-          <div class="bdd-title">Critérios de Aceite (Cenário: Dado / Quando / Então):</div>
-          <div class="bdd-content">${escapeHtml(req.bdd || 'Critérios não documentados.')}</div>
-        </div>
+        ${renderRequirementNarrativeHtml(req.userStory, { compact: true, reqId: req.id, maxRules: 3 })}
+        ${renderRequirementBddHtml(req.bdd, { compact: true, reqId: req.id, maxScenarios: 2 })}
 
         <div class="req-footer-row">
           <div class="req-linked-tasks-block">
@@ -3928,27 +4439,9 @@ window.renderTaskRequirementTab = function() {
         </div>
       </div>
 
-      <!-- História de Usuário -->
-      <div style="margin-bottom: 1.25rem;">
-        <div style="font-size: 0.78rem; text-transform: uppercase; font-weight: 700; color: var(--brand-teal-bright, #4accc2); margin-bottom: 0.4rem; letter-spacing: 0.5px;">
-          👤 História de Usuário
-        </div>
-        <div class="user-story-quote" style="font-size: 0.9rem; line-height: 1.5; padding: 0.85rem 1rem; margin: 0; background: rgba(24, 97, 165, 0.1); border-left: 4px solid #3fb8b3; border-radius: 0 var(--radius-sm) var(--radius-sm) 0;">
-          ${escapeHtml(req.userStory || 'História de usuário não cadastrada.')}
-        </div>
-      </div>
-
-      <!-- Critérios de Aceite BDD -->
-      <div style="margin-bottom: 1.25rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-          <div style="font-size: 0.78rem; text-transform: uppercase; font-weight: 700; color: #38bdf8; letter-spacing: 0.5px;">
-            🧪 Critérios de Aceite (BDD / Gherkin)
-          </div>
-          <span style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">Cenário: Dado / Quando / Então</span>
-        </div>
-        <div class="bdd-container" style="margin: 0; padding: 1rem; background: #0c121c; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: var(--radius-md);">
-          <div class="bdd-content font-mono" style="font-size: 0.85rem; line-height: 1.6; white-space: pre-wrap; color: #bae6fd;">${escapeHtml(req.bdd || 'Critérios de aceite não documentados.')}</div>
-        </div>
+      <div style="display: flex; flex-direction: column; gap: 1rem;">
+        ${renderRequirementNarrativeHtml(req.userStory, { compact: false })}
+        ${renderRequirementBddHtml(req.bdd, { compact: false })}
       </div>
 
       <!-- Demanda Atual e Outras Demandas Vinculadas -->
@@ -8643,6 +9136,23 @@ window.addEventListener('DOMContentLoaded', () => {
     backdrop.addEventListener('click', (e) => {
       if (e.target === backdrop) backdrop.classList.remove('show');
     });
+  });
+
+  // Atalhos de teclado: Escape fecha modal aberto; Setas navegam no Leitor Harmonioso de Requisitos
+  document.addEventListener('keydown', (e) => {
+    const viewerModal = document.getElementById('modal-requirement-viewer');
+    const isViewerOpen = viewerModal && viewerModal.classList.contains('show');
+    if (e.key === 'Escape') {
+      const openModals = document.querySelectorAll('.modal-backdrop.show');
+      if (openModals.length > 0) {
+        openModals[openModals.length - 1].classList.remove('show');
+      }
+      return;
+    }
+    if (isViewerOpen && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
+      if (e.key === 'ArrowLeft') navigateRequirementViewer(-1);
+      else if (e.key === 'ArrowRight') navigateRequirementViewer(1);
+    }
   });
 
   // Suporte de rolagem fluida via roda do mouse ou trackpad sobre o cabeçalho e abas do modal

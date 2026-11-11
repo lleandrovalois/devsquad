@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   
-  <link rel="stylesheet" href="style.css?v=1.2.1">
+  <link rel="stylesheet" href="style.css?v=1.3.0">
 </head>
 <body>
   <!-- ===================================================================
@@ -517,6 +517,9 @@
               <p class="view-subtitle">Documentação funcional, Histórias de Usuário, Requisitos RF/RNF e Critérios de Aceite.</p>
             </div>
             <div class="header-actions-group" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <button class="btn btn-secondary" id="btn-open-req-reader" onclick="openRequirementViewer()" title="Abrir Leitor Harmonioso de Requisitos com navegação contínua e visualização estruturada">
+                <span>📖 Modo Leitura</span>
+              </button>
               <button class="btn btn-secondary" id="btn-quick-templates" onclick="switchView('templates')" title="Configurar Modelos e Identidade Visual de Documentos">
                 <span>🎨 Templates de Documento</span>
               </button>
@@ -2737,6 +2740,50 @@
     </div>
   </div>
 
+  <!-- Modal: Leitor / Visualizador Harmonioso de Requisitos -->
+  <div class="modal-backdrop" id="modal-requirement-viewer">
+    <div class="modal-dialog glass-panel req-viewer-dialog">
+      <div class="req-viewer-topbar">
+        <div class="req-viewer-breadcrumb">
+          <span class="req-code-badge" id="viewer-req-code">RF-01</span>
+          <span class="badge-subtle" id="viewer-req-type" style="font-size: 0.72rem; font-weight: 700;">RF</span>
+          <span class="moscow-badge moscow-must" id="viewer-req-moscow">Obrigatório</span>
+          <span class="req-viewer-project-crumb" id="viewer-req-project">Projeto</span>
+          <span class="badge-feature" id="viewer-req-feature" style="display: none;">🧩 Feature</span>
+        </div>
+        <div class="req-viewer-nav-group">
+          <div class="req-viewer-pager">
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-viewer-prev" onclick="navigateRequirementViewer(-1)" title="Requisito Anterior (Seta Esquerda)">◀ Anterior</button>
+            <span class="req-viewer-pos" id="viewer-req-position">1 / 1</span>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-viewer-next" onclick="navigateRequirementViewer(1)" title="Próximo Requisito (Seta Direita)">Próximo ▶</button>
+          </div>
+          <button type="button" class="modal-close" data-close="modal-requirement-viewer" aria-label="Fechar Visualizador">&times;</button>
+        </div>
+      </div>
+
+      <div class="req-viewer-titlebar">
+        <div class="req-viewer-title-meta">
+          <h2 class="req-viewer-title" id="viewer-req-title">Título do Requisito</h2>
+          <span class="req-viewer-date" id="viewer-req-date"></span>
+        </div>
+        <div class="req-viewer-actions" id="viewer-req-actions">
+          <!-- Injetado via script.js conforme permissões RBAC -->
+        </div>
+      </div>
+
+      <div class="modal-body req-viewer-scroll-body">
+        <div class="req-viewer-body-grid">
+          <div class="req-viewer-main" id="viewer-req-main-content">
+            <!-- História de Usuário estruturada, Regras de Negócio e Cenários BDD -->
+          </div>
+          <aside class="req-viewer-aside" id="viewer-req-aside-content">
+            <!-- Métricas APF, Demandas vinculadas e Casos de Teste QA -->
+          </aside>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Caso de Teste (Criação e Edição - CRUD) -->
   <div class="modal-backdrop" id="modal-testcase">
     <div class="modal-dialog glass-panel">
@@ -4595,6 +4642,6 @@
 
   <!-- Script Principal da Aplicação -->
   <script src="ifpug-rules.js?v=1.1.0"></script>
-  <script src="script.js?v=1.2.1"></script>
+  <script src="script.js?v=1.3.0"></script>
 </body>
 </html>
