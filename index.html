@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   
-  <link rel="stylesheet" href="style.css?v=1.3.0">
+  <link rel="stylesheet" href="style.css?v=1.3.1">
 </head>
 <body>
   <!-- ===================================================================
@@ -2753,9 +2753,15 @@
         </div>
         <div class="req-viewer-nav-group">
           <div class="req-viewer-pager">
-            <button type="button" class="btn btn-secondary btn-sm" id="btn-viewer-prev" onclick="navigateRequirementViewer(-1)" title="Requisito Anterior (Seta Esquerda)">◀ Anterior</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-viewer-prev" onclick="navigateRequirementViewer(-1)" title="Requisito Anterior (Seta Esquerda)">
+              <span>◀</span>
+              <span>Anterior</span>
+            </button>
             <span class="req-viewer-pos" id="viewer-req-position">1 / 1</span>
-            <button type="button" class="btn btn-secondary btn-sm" id="btn-viewer-next" onclick="navigateRequirementViewer(1)" title="Próximo Requisito (Seta Direita)">Próximo ▶</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-viewer-next" onclick="navigateRequirementViewer(1)" title="Próximo Requisito (Seta Direita)">
+              <span>Próximo</span>
+              <span>▶</span>
+            </button>
           </div>
           <button type="button" class="modal-close" data-close="modal-requirement-viewer" aria-label="Fechar Visualizador">&times;</button>
         </div>
@@ -4642,6 +4648,6 @@
 
   <!-- Script Principal da Aplicação -->
   <script src="ifpug-rules.js?v=1.1.0"></script>
-  <script src="script.js?v=1.3.0"></script>
+  <script src="script.js?v=1.3.1"></script>
 </body>
 </html>
