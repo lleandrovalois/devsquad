@@ -11,12 +11,13 @@ COPY index.html ./
 COPY style.css ./
 COPY script.js ./
 COPY vendor ./vendor
+COPY migrations ./migrations
 
 # Variáveis de ambiente de produção
 ENV NODE_ENV=production
 ENV PORT=3001
 ENV HOST=0.0.0.0
-ENV DB_PATH=/app/data/synchro.db
+ENV DB_PATH=/app/data/flow.db
 
 RUN mkdir -p /app/data
 

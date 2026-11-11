@@ -1,7 +1,7 @@
 services:
-  synchro:
+  flow:
     build: .
-    container_name: synchro-app
+    container_name: flow-app
     restart: unless-stopped
     ports:
       # Vincula exclusivamente à interface local (127.0.0.1) para não expor na WAN
@@ -11,10 +11,10 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - HOST=0.0.0.0
-      - DB_PATH=/app/data/synchro.db
+      - DB_PATH=/app/data/flow.db
     volumes:
-      - synchro_data:/app/data
+      - flow_data:/app/data
 
 volumes:
-  synchro_data:
+  flow_data:
     driver: local

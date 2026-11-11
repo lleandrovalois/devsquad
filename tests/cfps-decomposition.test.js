@@ -6,7 +6,7 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const tmpDbPath = path.join(os.tmpdir(), `synchro_cfps_test_${process.pid}_${Date.now()}.db`);
+const tmpDbPath = path.join(os.tmpdir(), `flow_cfps_test_${process.pid}_${Date.now()}.db`);
 process.env.DB_PATH = tmpDbPath;
 
 const {

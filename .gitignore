@@ -5,6 +5,10 @@ devsquad.db-shm
 synchro.db
 synchro.db-wal
 synchro.db-shm
+flow.db
+flow.db-wal
+flow.db-shm
+*.bak
 .tools/
 scratch/
 .env

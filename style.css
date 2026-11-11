@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Synchro ALM - Design System & Tokens
+   Flow ALM - Design System & Tokens
    ========================================================================== */
 :root {
   /* Cores Principais - Dark Theme (Padrão) */
@@ -4591,7 +4591,7 @@ tr.highlight-pulse {
   border-color: rgba(99, 102, 241, 0.35);
 }
 
-/* Caixa de Métricas do Synchro para Promoção */
+/* Caixa de Métricas do Flow para Promoção */
 .career-metric-row {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

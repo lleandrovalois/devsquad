@@ -1,7 +1,7 @@
 {
-  "name": "synchro",
+  "name": "flow",
   "version": "1.0.0",
-  "description": "Synchro ALM - Plataforma Integrada de Gestão de Requisitos, Equipe Dev (Front & Back), Demandas Multi-Projetos e Camada de Testes/QA",
+  "description": "Flow ALM - Plataforma Integrada de Gestão de Requisitos, Equipe Dev (Front & Back), Demandas Multi-Projetos e Camada de Testes/QA",
   "main": "server.js",
   "scripts": {
     "start": "node --no-warnings --experimental-sqlite server.js",

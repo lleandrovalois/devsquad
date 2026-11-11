@@ -1,6 +1,6 @@
 /**
  * ==============================================================================
- * Synchro - Plataforma de Gestão de Requisitos, Equipe, Demandas e Testes
+ * Flow - Plataforma de Gestão de Requisitos, Equipe, Demandas e Testes
  * CRUD COMPLETO para:
  * 1. Projetos
  * 2. Quadro de Demandas (Tarefas)
@@ -10,11 +10,12 @@
  * ==============================================================================
  */
 
-const STORAGE_KEY = 'synchro_pro_state_v3';
-// Migração retrocompatível do LocalStorage legado se existir
+const STORAGE_KEY = 'flow_pro_state_v3';
+// Migração retrocompatível do LocalStorage legado (Synchro / DevSquad -> Flow)
 try {
-  if (!localStorage.getItem(STORAGE_KEY) && localStorage.getItem('devsquad_pro_state_v3')) {
-    localStorage.setItem(STORAGE_KEY, localStorage.getItem('devsquad_pro_state_v3'));
+  if (!localStorage.getItem(STORAGE_KEY)) {
+    const legacyState = localStorage.getItem('synchro_pro_state_v3') || localStorage.getItem('devsquad_pro_state_v3');
+    if (legacyState) localStorage.setItem(STORAGE_KEY, legacyState);
   }
 } catch (e) {}
 
@@ -35,7 +36,7 @@ const initialSeedData = {
 // ==============================================================================
 // 1.0 Camada de Conexão com a API REST Backend & Banco Relacional SQLite
 // ==============================================================================
-class SynchroAPI {
+class FlowAPI {
   constructor() {
     this.baseUrl = (window.location.protocol === 'http:' || window.location.protocol === 'https:')
       ? ''
@@ -64,7 +65,7 @@ class SynchroAPI {
     if (pill && text) {
       if (online) {
         pill.className = 'db-status-pill online';
-        text.textContent = '🟢 SQLite (synchro.db)';
+        text.textContent = '🟢 SQLite (flow.db)';
         pill.title = 'Conectado ao Banco Relacional SQLite Local (:3001)';
       } else {
         pill.className = 'db-status-pill offline';
@@ -187,9 +188,11 @@ class SynchroAPI {
   }
 }
 
-const api = new SynchroAPI();
+const api = new FlowAPI();
 window.api = api;
-window.DevSquadAPI = SynchroAPI;
+window.FlowAPI = FlowAPI;
+window.SynchroAPI = FlowAPI;
+window.DevSquadAPI = FlowAPI;
 
 // ==============================================================================
 // 1. Gerenciador de Estado Reativo (Store)
@@ -1217,7 +1220,7 @@ class ALMStore {
       primaryColor: templateData.primaryColor || '#0284c7',
       footerText: templateData.footerText || '',
       approvalTerms: templateData.approvalTerms || '',
-      signeeContratadaTitle: templateData.signeeContratadaTitle || 'PELA CONTRATADA (SYNCHRO)',
+      signeeContratadaTitle: templateData.signeeContratadaTitle || 'PELA CONTRATADA (FLOW)',
       signeeContratanteTitle: templateData.signeeContratanteTitle || 'PELA CONTRATANTE (CLIENTE)',
       includeUserStory: templateData.includeUserStory !== false,
       includeAcceptanceCriteria: templateData.includeAcceptanceCriteria !== false,
@@ -1824,7 +1827,7 @@ const defaultAuthUsers = [
   {
     id: "u_admin",
     name: "Carlos Valois (Admin)",
-    email: "admin@synchro.com",
+    email: "admin@flow.com",
     password: "admin123",
     role: "admin",
     devRole: null,
@@ -1946,15 +1949,17 @@ const RolePermissions = {
 
 class UserAuthStore {
   constructor() {
-    this.usersKey = 'synchro_users_v1';
-    this.sessionKey = 'synchro_session_user';
-    // Migração de dados de usuário legados se existirem
+    this.usersKey = 'flow_users_v1';
+    this.sessionKey = 'flow_session_user';
+    // Migração retrocompatível de dados de usuário legados (Synchro / DevSquad -> Flow)
     try {
-      if (!localStorage.getItem(this.usersKey) && localStorage.getItem('devsquad_users_v1')) {
-        localStorage.setItem(this.usersKey, localStorage.getItem('devsquad_users_v1'));
+      if (!localStorage.getItem(this.usersKey)) {
+        const legacyUsers = localStorage.getItem('synchro_users_v1') || localStorage.getItem('devsquad_users_v1');
+        if (legacyUsers) localStorage.setItem(this.usersKey, legacyUsers);
       }
-      if (!localStorage.getItem(this.sessionKey) && localStorage.getItem('devsquad_session_user')) {
-        localStorage.setItem(this.sessionKey, localStorage.getItem('devsquad_session_user'));
+      if (!localStorage.getItem(this.sessionKey)) {
+        const legacySess = localStorage.getItem('synchro_session_user') || localStorage.getItem('devsquad_session_user');
+        if (legacySess) localStorage.setItem(this.sessionKey, legacySess);
       }
     } catch (e) {}
     this.initUsers();
@@ -1971,9 +1976,9 @@ class UserAuthStore {
         users = JSON.parse(JSON.stringify(defaultAuthUsers));
       } else {
         // Remover contas de demonstração que não foram cadastradas pelo usuário
-        const mockEmails = new Set(['gestor@synchro.com', 'lucas@synchro.com', 'qa@synchro.com', 'gestor@devsquad.com', 'lucas@devsquad.com', 'qa@devsquad.com']);
+        const mockEmails = new Set(['gestor@flow.com', 'lucas@flow.com', 'qa@flow.com', 'gestor@synchro.com', 'lucas@synchro.com', 'qa@synchro.com', 'gestor@devsquad.com', 'lucas@devsquad.com', 'qa@devsquad.com']);
         users = users.filter(u => !mockEmails.has(u.email.toLowerCase()));
-        if (!users.some(u => u.email.toLowerCase() === 'admin@synchro.com' || u.email.toLowerCase() === 'admin@devsquad.com')) {
+        if (!users.some(u => /^admin@(?:flow|synchro|devsquad)\.com$/i.test(u.email || ''))) {
           users.unshift(defaultAuthUsers[0]);
         }
       }
@@ -2050,24 +2055,21 @@ class UserAuthStore {
 
   async login(email, password) {
     const cleanEmail = (email || '').trim().toLowerCase();
-    const aliasEmail = cleanEmail.endsWith('@devsquad.com')
-      ? cleanEmail.replace(/@devsquad\.com$/, '@synchro.com')
-      : (cleanEmail.endsWith('@synchro.com') ? cleanEmail.replace(/@synchro\.com$/, '@devsquad.com') : cleanEmail);
+    const aliasEmails = [cleanEmail];
+    if (/@(?:flow|synchro|devsquad)\.com$/i.test(cleanEmail)) {
+      const localPart = cleanEmail.replace(/@(?:flow|synchro|devsquad)\.com$/i, '');
+      aliasEmails.push(`${localPart}@flow.com`, `${localPart}@synchro.com`, `${localPart}@devsquad.com`);
+    }
+    const emailSet = new Set(aliasEmails);
 
     // 1. Autenticação direta no Backend SQLite quando online
     if (typeof api !== 'undefined' && api.isOnline) {
       try {
         let res = await api.apiRequest('/api/auth/login', 'POST', { email: cleanEmail, password });
-        if ((!res || !res.success) && aliasEmail !== cleanEmail) {
-          res = await api.apiRequest('/api/auth/login', 'POST', { email: aliasEmail, password });
-        }
         if (res && res.success && res.user) {
           const sessionUser = this.setSession(res.user);
           const users = this.getUsers();
-          const idx = users.findIndex(u => {
-            const ue = (u.email || '').toLowerCase();
-            return ue === cleanEmail || ue === aliasEmail;
-          });
+          const idx = users.findIndex(u => emailSet.has((u.email || '').toLowerCase()));
           const fullUser = { ...res.user, password };
           if (idx !== -1) {
             users[idx] = fullUser;
@@ -2076,7 +2078,7 @@ class UserAuthStore {
           }
           this.saveUsers(users);
           return { success: true, user: sessionUser };
-        } else if (res && res.message && aliasEmail === cleanEmail) {
+        } else if (res && res.message) {
           return { success: false, message: res.message };
         }
       } catch (e) {
@@ -2086,10 +2088,7 @@ class UserAuthStore {
 
     // 2. Fallback de Autenticação Offline (LocalStorage)
     const users = this.getUsers();
-    const user = users.find(u => {
-      const ue = (u.email || '').toLowerCase();
-      return ue === cleanEmail || ue === aliasEmail;
-    });
+    const user = users.find(u => emailSet.has((u.email || '').toLowerCase()));
 
     if (!user) {
       return { success: false, message: 'Usuário não encontrado com este e-mail. Verifique a digitação ou contate o Administrador.' };
@@ -2518,7 +2517,7 @@ function renderDashboard() {
 
 function getViewLayoutMode(viewName) {
   try {
-    return localStorage.getItem(`synchro_view_layout_${viewName}`) || localStorage.getItem(`devsquad_view_layout_${viewName}`) || 'cards';
+    return localStorage.getItem(`flow_view_layout_${viewName}`) || localStorage.getItem(`synchro_view_layout_${viewName}`) || localStorage.getItem(`devsquad_view_layout_${viewName}`) || 'cards';
   } catch (e) {
     return 'cards';
   }
@@ -2527,7 +2526,7 @@ window.getViewLayoutMode = getViewLayoutMode;
 
 function setViewLayoutMode(viewName, mode) {
   try {
-    localStorage.setItem(`synchro_view_layout_${viewName}`, mode);
+    localStorage.setItem(`flow_view_layout_${viewName}`, mode);
   } catch (e) {
     console.error('Erro ao salvar preferência de layout:', e);
   }
@@ -5729,7 +5728,7 @@ async function runAutomatedTestSuite() {
     runnerConsole.scrollTop = runnerConsole.scrollHeight;
   }
 
-  appendLog("Iniciando Bateria de Testes de Qualidade do Synchro v3.0 (CRUD Engine)...", "info");
+  appendLog("Iniciando Bateria de Testes de Qualidade do Flow v3.0 (CRUD Engine)...", "info");
   await delay(250);
 
   const testSteps = [
@@ -6285,7 +6284,7 @@ window.exportAuditLogsXLSX = function() {
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Trilha de Auditoria');
 
   const today = new Date().toISOString().split('T')[0];
-  const filename = `auditoria_synchro_${today}.xlsx`;
+  const filename = `auditoria_flow_${today}.xlsx`;
   XLSX.writeFile(workbook, filename);
 
   showToast(`Relatório XLSX gerado com sucesso (${logs.length} registros exportados)!`);
@@ -6326,7 +6325,7 @@ window.exportAuditLogsPDF = function() {
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(15);
   doc.setFont('helvetica', 'bold');
-  doc.text('SYNCHRO PRO - RELATÓRIO OFICIAL DE AUDITORIA & CONFORMIDADE', 30, 30);
+  doc.text('FLOW PRO - RELATÓRIO OFICIAL DE AUDITORIA & CONFORMIDADE', 30, 30);
 
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
@@ -6381,7 +6380,7 @@ window.exportAuditLogsPDF = function() {
         const total = doc.internal.getNumberOfPages();
         doc.setFontSize(8);
         doc.setTextColor(148, 163, 184);
-        doc.text('Synchro ALM Pro - Trilha de Auditoria Imutável do Sistema', 30, pageHeight - 16);
+        doc.text('Flow ALM Pro - Trilha de Auditoria Imutável do Sistema', 30, pageHeight - 16);
         doc.text(`Página ${data.pageNumber} de ${total}`, pageWidth - 30, pageHeight - 16, { align: 'right' });
       }
     });
@@ -6410,7 +6409,7 @@ window.exportAuditLogsPDF = function() {
   }
 
   const today = new Date().toISOString().split('T')[0];
-  doc.save(`auditoria_synchro_${today}.pdf`);
+  doc.save(`auditoria_flow_${today}.pdf`);
   showToast(`Relatório PDF gerado com sucesso (${logs.length} registros)!`);
 };
 
@@ -6449,7 +6448,7 @@ window.exportAuditLogsCSV = function() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `auditoria_synchro_${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `auditoria_flow_${new Date().toISOString().split('T')[0]}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -6853,10 +6852,10 @@ window.exportMeasurementReportPDF = function() {
     primaryColor: '#0284c7',
     docTitle: 'RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS',
     docSubtitle: 'Artefato Oficial de Comprovação de Entrega Técnica para Fins de Faturamento & Aceite',
-    headerInstitution: 'SYNCHRO ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE',
-    footerText: 'Synchro ALM Pro — Artefato Formal de Medição & Aceite Técnico',
+    headerInstitution: 'FLOW ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE',
+    footerText: 'Flow ALM Pro — Artefato Formal de Medição & Aceite Técnico',
     approvalTerms: 'Pelo presente instrumento, a CONTRATANTE atesta expressamente o pleno recebimento, homologação técnica e aceite formal dos requisitos de software e critérios de aceite descritos neste Relatório de Medição correspondentes à Feature / Marco acima especificado. Declara que os entregáveis foram devidamente verificados e aprovados pelo controle de qualidade (QA), em conformidade com as cláusulas contratuais, autorizando a emissão da Nota Fiscal de Serviços e o respectivo faturamento financeiro.',
-    signeeContratadaTitle: 'PELA CONTRATADA (SYNCHRO)',
+    signeeContratadaTitle: 'PELA CONTRATADA (FLOW)',
     signeeContratanteTitle: 'PELA CONTRATANTE (CLIENTE)',
     includeUserStory: true,
     includeAcceptanceCriteria: true,
@@ -6903,7 +6902,7 @@ window.exportMeasurementReportPDF = function() {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.8);
   doc.setTextColor(primRgb[0], primRgb[1], primRgb[2]);
-  doc.text((template.headerInstitution || 'SYNCHRO ALM PRO — PLATAFORMA DE ENGENHARIA').slice(0, 75), headerTextX, 23);
+  doc.text((template.headerInstitution || 'FLOW ALM PRO — PLATAFORMA DE ENGENHARIA').slice(0, 75), headerTextX, 23);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(template.docTitle && template.docTitle.length > 55 ? 10.5 : 12.5);
@@ -7136,7 +7135,7 @@ window.exportMeasurementReportPDF = function() {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
       doc.setTextColor(15, 23, 42);
-      doc.text(template.signeeContratadaTitle || 'PELA CONTRATADA (SYNCHRO)', 154, signY + 11, { align: 'center' });
+      doc.text(template.signeeContratadaTitle || 'PELA CONTRATADA (FLOW)', 154, signY + 11, { align: 'center' });
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(71, 85, 105);
@@ -7165,7 +7164,7 @@ window.exportMeasurementReportPDF = function() {
       doc.setPage(i);
       doc.setFontSize(6.8);
       doc.setTextColor(148, 163, 184);
-      doc.text(template.footerText || 'Synchro ALM Pro — Artefato Formal de Medição & Aceite Técnico de Entrega', 36, pageHeight - 16);
+      doc.text(template.footerText || 'Flow ALM Pro — Artefato Formal de Medição & Aceite Técnico de Entrega', 36, pageHeight - 16);
       doc.text(`Doc Ref: ${docHash} | Página ${i} de ${totalPages}`, pageWidth - 36, pageHeight - 16, { align: 'right' });
     }
   }
@@ -7233,10 +7232,10 @@ window.printMeasurementReport = function() {
     primaryColor: '#0284c7',
     docTitle: 'RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS',
     docSubtitle: 'Artefato Oficial de Comprovação de Entrega Técnica para Fins de Faturamento & Aceite',
-    headerInstitution: 'SYNCHRO ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE',
-    footerText: 'Synchro ALM Pro — Artefato Formal de Medição & Aceite Técnico',
+    headerInstitution: 'FLOW ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE',
+    footerText: 'Flow ALM Pro — Artefato Formal de Medição & Aceite Técnico',
     approvalTerms: 'Pelo presente instrumento, a CONTRATANTE atesta expressamente o pleno recebimento, homologação técnica e aceite formal dos requisitos de software e critérios de aceite descritos neste Relatório de Medição correspondentes à Feature / Marco acima especificado. Declara que os entregáveis foram devidamente verificados e aprovados pelo controle de qualidade (QA), em conformidade com as especificações contratadas, autorizando a emissão da respectiva Nota Fiscal de Serviços para faturamento.',
-    signeeContratadaTitle: 'PELA CONTRATADA (SYNCHRO)',
+    signeeContratadaTitle: 'PELA CONTRATADA (FLOW)',
     signeeContratanteTitle: 'PELA CONTRATANTE (CLIENTE)',
     includeUserStory: true,
     includeAcceptanceCriteria: true,
@@ -7346,7 +7345,7 @@ window.printMeasurementReport = function() {
 
       <div class="header">
         <div class="header-content">
-          <div class="brand">${escapeHtml(template.headerInstitution || 'Synchro ALM Pro')}</div>
+          <div class="brand">${escapeHtml(template.headerInstitution || 'Flow ALM Pro')}</div>
           <h1 class="title">${escapeHtml(template.docTitle)}</h1>
           <p class="subtitle">${escapeHtml(template.docSubtitle || '')}</p>
         </div>
@@ -7415,7 +7414,7 @@ window.printMeasurementReport = function() {
         <div class="signatures">
           <div>
             <div class="sig-line"></div>
-            <div class="sig-title">${escapeHtml(template.signeeContratadaTitle || 'PELA CONTRATADA (SYNCHRO)')}</div>
+            <div class="sig-title">${escapeHtml(template.signeeContratadaTitle || 'PELA CONTRATADA (FLOW)')}</div>
             <div class="sig-sub">${escapeHtml(managerName)}</div>
             <div class="sig-sub">Gestor de Projetos / Scrum Master</div>
             <div class="sig-sub">Data: ${new Date().toLocaleDateString('pt-BR')}</div>
@@ -7431,7 +7430,7 @@ window.printMeasurementReport = function() {
       ` : ''}
 
       <div class="footer">
-        <span>${escapeHtml(template.footerText || 'Synchro ALM Pro — Artefato Formal de Medição & Aceite Técnico')}</span>
+        <span>${escapeHtml(template.footerText || 'Flow ALM Pro — Artefato Formal de Medição & Aceite Técnico')}</span>
         <span>Código de Autenticidade: DSQ-MED-${Date.now().toString(36).toUpperCase()}</span>
       </div>
     </body>
@@ -8488,7 +8487,7 @@ function setupAuthEventListeners() {
 // 5. Inicialização e Event Listeners
 // ==============================================================================
 window.addEventListener('DOMContentLoaded', () => {
-  const savedTheme = localStorage.getItem('synchro_theme') || localStorage.getItem('devsquad_theme') || 'dark';
+  const savedTheme = localStorage.getItem('flow_theme') || localStorage.getItem('synchro_theme') || localStorage.getItem('devsquad_theme') || 'dark';
   document.documentElement.setAttribute('data-theme', savedTheme);
 
   // Inicializa Listeners de Autenticação e Topbar
@@ -8524,7 +8523,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('db-status-pill')?.addEventListener('click', async () => {
       const online = await api.checkHealth();
       if (online) {
-        showToast('🟢 Backend Online: Conexão ativa com synchro.db!');
+        showToast('🟢 Backend Online: Conexão ativa com flow.db!');
       } else {
         showToast('🟠 Backend Offline: Servidor desconectado. Operando em Cache Local.');
       }
@@ -8646,7 +8645,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
     const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('synchro_theme', newTheme);
+    localStorage.setItem('flow_theme', newTheme);
   });
 
   // Filtro Global de Projetos no Topbar
@@ -9465,7 +9464,7 @@ const careerTracksData = {
           "Liderança de 5 ou mais iniciativas críticas de infraestrutura, arquitetura ou banco de dados.",
           "Taxa de homologação direta em QA igual ou superior a 90%.",
           "Condução de revisões de código aprofundadas com foco em segurança, integridade e performance.",
-          "Score de prontidão oficial no Synchro PRO atingindo 85% ou mais."
+          "Score de prontidão oficial no Flow PRO atingindo 85% ou mais."
         ]
       },
       {
@@ -9516,7 +9515,7 @@ const careerTracksData = {
           "Autonomia na criação de planos de teste completos para requisitos de média complexidade.",
           "Abertura de relatórios de bugs completos com steps-to-reproduce, payloads e prints sem ambiguidades.",
           "Manutenção tempestiva das validações das demandas no fluxo do Kanban sem gargalos.",
-          "Domínio do uso dos casos de teste vinculados aos requisitos no Synchro PRO."
+          "Domínio do uso dos casos de teste vinculados aos requisitos no Flow PRO."
         ]
       },
       {
@@ -9557,7 +9556,7 @@ const careerTracksData = {
           readinessScore: "Auditoria de QA Impecável"
         },
         triggers: [
-          "Padronização e governança dos processos de teste em todos os projetos ativos no Synchro PRO.",
+          "Padronização e governança dos processos de teste em todos os projetos ativos no Flow PRO.",
           "Implementação de Quality Gates que garantem zero paradas não planejadas após o deploy.",
           "Capacitação contínua das squads em técnicas avançadas de teste e BDD."
         ]
@@ -9589,7 +9588,7 @@ const careerTracksData = {
           "Manutenção de um backlog saudável e detalhado sem lacunas conceituais para a squad.",
           "Condução autônoma de todas as cerimônias ágeis com participação e engajamento da equipe.",
           "Cumprimento dos prazos de entrega dos projetos com índice superior a 80%.",
-          "Uso eficaz dos módulos de Requisitos, Projetos e Kanban do Synchro PRO."
+          "Uso eficaz dos módulos de Requisitos, Projetos e Kanban do Flow PRO."
         ]
       },
       {
@@ -9620,7 +9619,7 @@ const careerTracksData = {
         nextLevel: "Group PM / Head de Produto",
         tag: "Estratégia de Portfólio & Governança",
         focus: "Governança de portfólio multi-projetos, evolução metodológica e estratégia corporativa.",
-        missionDetail: "Supervisiona múltiplos projetos e produtos simultâneos no Synchro PRO. Define as diretrizes ágeis da organização e garante o alinhamento estratégico com a diretoria executiva.",
+        missionDetail: "Supervisiona múltiplos projetos e produtos simultâneos no Flow PRO. Define as diretrizes ágeis da organização e garante o alinhamento estratégico com a diretoria executiva.",
         hardSkills: ["Gestão de Portfólio & Roadmaps Estratégicos", "Governança Ágil Organizacional", "Métricas de Negócio & ROI", "Design de Processos de Engenharia", "Auditoria de Projetos e Entregas"],
         softSkills: ["Liderança inspiradora e influente", "Comunicação executiva de alto nível", "Formação de novas lideranças ágeis", "Pensamento estratégico de longo prazo"],
         metrics: {
@@ -9781,11 +9780,11 @@ window.renderCareer = function() {
         </div>
       </div>
 
-      <!-- Card: Métricas no Synchro PRO para Promoção -->
+      <!-- Card: Métricas no Flow PRO para Promoção -->
       <div class="career-subcard">
         <div class="career-subcard-header">
           <span>📊</span>
-          <span>Métricas no Synchro PRO para Subir</span>
+          <span>Métricas no Flow PRO para Subir</span>
         </div>
         <div class="career-subcard-body">
           <div class="career-metric-row">
@@ -10010,7 +10009,7 @@ function calculateSimulatorScore(criteria) {
   if (score >= 80) {
     statusText = '🟢 Elegível para Promoção!';
     color = '#10b981';
-    opinionText = `Parabéns! Você cumpre os critérios técnicos e comportamentais fundamentais exigidos pelo Synchro PRO (Score: ${score}%). Suas entregas e histórico respaldam sua conversa de 1:1 para oficializar a promoção.`;
+    opinionText = `Parabéns! Você cumpre os critérios técnicos e comportamentais fundamentais exigidos pelo Flow PRO (Score: ${score}%). Suas entregas e histórico respaldam sua conversa de 1:1 para oficializar a promoção.`;
   } else if (score >= 50) {
     statusText = '🟡 Quase Lá (Em Consolidação)';
     color = '#f59e0b';
@@ -10729,7 +10728,7 @@ window.renderTemplates = function() {
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="color: var(--text-muted);">Instituição:</span>
-            <span style="color: var(--text-secondary); max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(tpl.headerInstitution || 'Synchro ALM Pro')}</span>
+            <span style="color: var(--text-secondary); max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(tpl.headerInstitution || 'Flow ALM Pro')}</span>
           </div>
         </div>
 
@@ -10818,7 +10817,7 @@ window.openTemplateModalForCreate = function() {
 
   document.getElementById('template-doc-title').value = "RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS";
   document.getElementById('template-doc-subtitle').value = "Artefato Oficial de Comprovação de Entrega Técnica para Fins de Faturamento & Aceite";
-  document.getElementById('template-header-institution').value = "SYNCHRO ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE";
+  document.getElementById('template-header-institution').value = "FLOW ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE";
 
   document.getElementById('toggle-user-story').checked = true;
   document.getElementById('toggle-acceptance-criteria').checked = true;
@@ -10828,9 +10827,9 @@ window.openTemplateModalForCreate = function() {
   document.getElementById('toggle-status-banner').checked = true;
 
   document.getElementById('template-approval-terms').value = "Pelo presente instrumento, a CONTRATANTE atesta expressamente o pleno recebimento, homologação técnica e aceite formal dos requisitos de software e critérios de aceite descritos neste Relatório de Medição correspondentes à Feature / Marco acima especificado. Declara que os entregáveis foram devidamente verificados e aprovados pelo controle de qualidade (QA), em conformidade com as cláusulas contratuais, autorizando a emissão da Nota Fiscal de Serviços e o respectivo faturamento financeiro.";
-  document.getElementById('template-signee-contratada').value = "PELA CONTRATADA (SYNCHRO)";
+  document.getElementById('template-signee-contratada').value = "PELA CONTRATADA (FLOW)";
   document.getElementById('template-signee-contratante').value = "PELA CONTRATANTE (CLIENTE)";
-  document.getElementById('template-footer-text').value = "Synchro ALM Pro — Artefato Formal de Medição & Aceite Técnico de Entrega";
+  document.getElementById('template-footer-text').value = "Flow ALM Pro — Artefato Formal de Medição & Aceite Técnico de Entrega";
 
   // Reseta visualizador de logo
   const logoImg = document.getElementById('template-logo-img');
@@ -10873,7 +10872,7 @@ window.openTemplateModalForEdit = function(templateId) {
 
   document.getElementById('template-doc-title').value = tpl.docTitle || "RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS";
   document.getElementById('template-doc-subtitle').value = tpl.docSubtitle || "";
-  document.getElementById('template-header-institution').value = tpl.headerInstitution || "SYNCHRO ALM PRO";
+  document.getElementById('template-header-institution').value = tpl.headerInstitution || "FLOW ALM PRO";
 
   document.getElementById('toggle-user-story').checked = tpl.includeUserStory !== false;
   document.getElementById('toggle-acceptance-criteria').checked = tpl.includeAcceptanceCriteria !== false;
@@ -10883,7 +10882,7 @@ window.openTemplateModalForEdit = function(templateId) {
   document.getElementById('toggle-status-banner').checked = tpl.includeStatusBanner !== false;
 
   document.getElementById('template-approval-terms').value = tpl.approvalTerms || "";
-  document.getElementById('template-signee-contratada').value = tpl.signeeContratadaTitle || "PELA CONTRATADA (SYNCHRO)";
+  document.getElementById('template-signee-contratada').value = tpl.signeeContratadaTitle || "PELA CONTRATADA (FLOW)";
   document.getElementById('template-signee-contratante').value = tpl.signeeContratanteTitle || "PELA CONTRATANTE (CLIENTE)";
   document.getElementById('template-footer-text').value = tpl.footerText || "";
 
@@ -10908,7 +10907,7 @@ window.openTemplateModalForEdit = function(templateId) {
 window.updateLiveTemplatePreview = function() {
   const docTitle = document.getElementById('template-doc-title')?.value || 'RELATÓRIO DE MEDIÇÃO';
   const docSubtitle = document.getElementById('template-doc-subtitle')?.value || '';
-  const institution = document.getElementById('template-header-institution')?.value || 'SYNCHRO ALM PRO';
+  const institution = document.getElementById('template-header-institution')?.value || 'FLOW ALM PRO';
   const color = document.getElementById('template-primary-color')?.value || '#0284c7';
   const logoBase64 = document.getElementById('template-logo-base64')?.value || '';
 
@@ -10922,7 +10921,7 @@ window.updateLiveTemplatePreview = function() {
   const terms = document.getElementById('template-approval-terms')?.value || 'Pelo presente instrumento, a CONTRATANTE atesta o pleno recebimento...';
   const sigContratada = document.getElementById('template-signee-contratada')?.value || 'CONTRATADA';
   const sigContratante = document.getElementById('template-signee-contratante')?.value || 'CONTRATANTE';
-  const footerText = document.getElementById('template-footer-text')?.value || 'Synchro ALM Pro';
+  const footerText = document.getElementById('template-footer-text')?.value || 'Flow ALM Pro';
 
   // Aplica cores principais
   const miniHeader = document.getElementById('mini-header-bar');
@@ -11125,7 +11124,7 @@ window.testTemplatePrint = function(templateId) {
 
       <div class="doc-header">
         <div>
-          <div class="brand">${escapeHtml(tpl.headerInstitution || 'Synchro ALM Pro')}</div>
+          <div class="brand">${escapeHtml(tpl.headerInstitution || 'Flow ALM Pro')}</div>
           <h1 class="title">${escapeHtml(tpl.docTitle || 'RELATÓRIO FORMAL DE MEDIÇÃO')}</h1>
           <p class="subtitle">${escapeHtml(tpl.docSubtitle || '')}</p>
         </div>
@@ -11199,7 +11198,7 @@ window.testTemplatePrint = function(templateId) {
       ${tpl.includeSignatures !== false ? `
         <div class="signatures">
           <div>
-            <div class="sig-line">${escapeHtml(tpl.signeeContratadaTitle || 'PELA CONTRATADA (SYNCHRO)')}</div>
+            <div class="sig-line">${escapeHtml(tpl.signeeContratadaTitle || 'PELA CONTRATADA (FLOW)')}</div>
             <div style="font-size: 10px; color: #64748b; margin-top: 3px;">Assinatura do Responsável Técnico</div>
           </div>
           <div>
@@ -11210,7 +11209,7 @@ window.testTemplatePrint = function(templateId) {
       ` : ''}
 
       <div class="footer">
-        <span>${escapeHtml(tpl.footerText || 'Synchro ALM Pro')}</span>
+        <span>${escapeHtml(tpl.footerText || 'Flow ALM Pro')}</span>
         <span>Folha 1 de 1</span>
       </div>
     </body>
@@ -11249,7 +11248,7 @@ window.setupTemplateEventListeners = function() {
       const includeStatusBanner = document.getElementById('toggle-status-banner')?.checked;
 
       const approvalTerms = document.getElementById('template-approval-terms')?.value.trim();
-      const signeeContratadaTitle = document.getElementById('template-signee-contratada')?.value.trim() || 'PELA CONTRATADA (SYNCHRO)';
+      const signeeContratadaTitle = document.getElementById('template-signee-contratada')?.value.trim() || 'PELA CONTRATADA (FLOW)';
       const signeeContratanteTitle = document.getElementById('template-signee-contratante')?.value.trim() || 'PELA CONTRATANTE (CLIENTE)';
       const footerText = document.getElementById('template-footer-text')?.value.trim();
 
@@ -12609,7 +12608,7 @@ window.showApfDetails = showApfDetails;
 async function seedSampleApfData() {
   const currentProjId = store.selectedProject !== 'all' ? store.selectedProject : (store.state.projects[0] ? store.state.projects[0].id : '');
   const proj = store.getProjectById(currentProjId);
-  const projName = proj ? proj.name : 'Iniciativa Synchro';
+  const projName = proj ? proj.name : 'Iniciativa Flow';
 
   const sampleFunctions = [
     {
@@ -12921,7 +12920,7 @@ function exportApfToExcel() {
   const wsSummary = XLSX.utils.json_to_sheet(dataRowsSummary);
   XLSX.utils.book_append_sheet(wb, wsSummary, '3. Faturamento Consolidado');
 
-  const filename = `Synchro_APF_Faturamento_${(projectName || 'Geral').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const filename = `Flow_APF_Faturamento_${(projectName || 'Geral').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
   XLSX.writeFile(wb, filename);
   showToast(`Planilha "${filename}" com 3 abas exportada com sucesso!`);
 }

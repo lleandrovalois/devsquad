@@ -1,6 +1,6 @@
 /**
  * ==============================================================================
- * Synchro PRO - Regras Normativas e Matrizes IFPUG (CPM 4.3.1)
+ * Flow PRO - Regras Normativas e Matrizes IFPUG (CPM 4.3.1)
  * Módulo isomórfico (Node.js CommonJS e Browser) com fonte única da verdade para
  * determinação de complexidade funcional e Pontos de Função Não Ajustados (PF).
  * ==============================================================================

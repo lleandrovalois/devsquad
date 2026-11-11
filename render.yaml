@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: synchro-pro
+    name: flow-pro
     runtime: node
     plan: free
     buildCommand: ""

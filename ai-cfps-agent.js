@@ -1,6 +1,6 @@
 /**
  * ==============================================================================
- * Synchro PRO - Agente Especialista CFPS & Mensuração IFPUG / SISP via IA
+ * Flow PRO - Agente Especialista CFPS & Mensuração IFPUG / SISP via IA
  * Motor multi-provedor (Google Gemini Interactions API, OpenAI, Anthropic,
  * Ollama / Compatíveis OpenAI) com Saída Estruturada JSON e Zero Dependências.
  * ==============================================================================

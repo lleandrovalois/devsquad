@@ -1,7 +1,7 @@
 /**
  * ==============================================================================
- * Synchro PRO - Servidor Backend REST API & Banco Relacional SQLite
- * Arquitetura Cliente-Servidor com persistência transacional em synchro.db
+ * Flow PRO - Servidor Backend REST API & Banco Relacional SQLite
+ * Arquitetura Cliente-Servidor com persistência transacional em flow.db
  * ==============================================================================
  */
 
@@ -23,7 +23,7 @@ aiAgent.loadDotEnv(path.join(__dirname, '.env'));
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
 
-let defaultDbPath = path.join(__dirname, 'synchro.db');
+let defaultDbPath = path.join(__dirname, 'flow.db');
 const DB_PATH = process.env.DB_PATH || defaultDbPath;
 
 const dbDir = path.dirname(DB_PATH);
@@ -32,9 +32,12 @@ if (!fs.existsSync(dbDir)) {
 }
 
 // --------------------------------------------------------------------------
-// Migração Segura e Transparente do Banco Legado (devsquad.db -> synchro.db)
+// Migração Segura e Transparente do Banco Legado (synchro.db / devsquad.db -> flow.db)
 // --------------------------------------------------------------------------
 const legacyCandidates = [
+  path.join(dbDir, 'synchro.db'),
+  path.join(__dirname, 'synchro.db'),
+  '/app/data/synchro.db',
   path.join(dbDir, 'devsquad.db'),
   path.join(__dirname, 'devsquad.db'),
   '/app/data/devsquad.db'
@@ -74,11 +77,21 @@ if (foundLegacyPath && foundLegacyPath !== DB_PATH) {
 
   if (shouldMigrate) {
     try {
-      console.log(`🔄 Migrando banco legado devsquad.db (${foundLegacyPath}) para synchro.db (${DB_PATH})...`);
+      const legacyName = path.basename(foundLegacyPath);
+      const targetName = path.basename(DB_PATH);
+      console.log(`🔄 Migrando banco legado ${legacyName} (${foundLegacyPath}) para ${targetName} (${DB_PATH})...`);
       fs.copyFileSync(foundLegacyPath, DB_PATH);
-      if (fs.existsSync(foundLegacyPath + '-wal')) fs.copyFileSync(foundLegacyPath + '-wal', DB_PATH + '-wal');
-      if (fs.existsSync(foundLegacyPath + '-shm')) fs.copyFileSync(foundLegacyPath + '-shm', DB_PATH + '-shm');
-      console.log('✅ Banco legado devsquad.db migrado com sucesso para synchro.db!');
+      if (fs.existsSync(foundLegacyPath + '-wal')) {
+        fs.copyFileSync(foundLegacyPath + '-wal', DB_PATH + '-wal');
+      } else if (fs.existsSync(DB_PATH + '-wal')) {
+        fs.unlinkSync(DB_PATH + '-wal');
+      }
+      if (fs.existsSync(foundLegacyPath + '-shm')) {
+        fs.copyFileSync(foundLegacyPath + '-shm', DB_PATH + '-shm');
+      } else if (fs.existsSync(DB_PATH + '-shm')) {
+        fs.unlinkSync(DB_PATH + '-shm');
+      }
+      console.log(`✅ Banco legado ${legacyName} migrado com sucesso para ${targetName}!`);
     } catch (migErr) {
       console.warn('⚠️ Falha ao migrar arquivo de banco legado:', migErr.message);
     }
@@ -86,7 +99,7 @@ if (foundLegacyPath && foundLegacyPath !== DB_PATH) {
 }
 
 console.log('--------------------------------------------------');
-console.log('🚀 Inicializando Synchro PRO Backend Server...');
+console.log('🚀 Inicializando Flow PRO Backend Server...');
 console.log('📁 Banco de Dados SQLite:', DB_PATH);
 console.log('--------------------------------------------------');
 
@@ -258,7 +271,7 @@ db.exec(`
     primary_color TEXT DEFAULT '#0284c7',
     footer_text TEXT,
     approval_terms TEXT,
-    signee_contratada_title TEXT DEFAULT 'PELA CONTRATADA (SYNCHRO)',
+    signee_contratada_title TEXT DEFAULT 'PELA CONTRATADA (FLOW)',
     signee_contratante_title TEXT DEFAULT 'PELA CONTRATANTE (CLIENTE)',
     include_user_story INTEGER DEFAULT 1,
     include_acceptance_criteria INTEGER DEFAULT 1,
@@ -695,7 +708,7 @@ function seedDatabaseIfEmpty() {
     `);
 
     const defaultUsers = [
-      { id: "u_admin", name: "Carlos Valois (Admin)", email: "admin@synchro.com", password: "admin123", role: "admin", dev_role: null, seniority: "Workspace Owner / Diretor", skills: JSON.stringify(["Arquitetura", "Governança", "DevOps", "Segurança", "Go"]), avatar_bg: "#f59e0b", created_at: "2026-01-01T00:00:00.000Z" }
+      { id: "u_admin", name: "Carlos Valois (Admin)", email: "admin@flow.com", password: "admin123", role: "admin", dev_role: null, seniority: "Workspace Owner / Diretor", skills: JSON.stringify(["Arquitetura", "Governança", "DevOps", "Segurança", "Go"]), avatar_bg: "#f59e0b", created_at: "2026-01-01T00:00:00.000Z" }
     ];
 
     defaultUsers.forEach(u => {
@@ -707,24 +720,43 @@ function seedDatabaseIfEmpty() {
   seedDefaultCareers(false);
   seedDefaultDocumentTemplates(false);
 
-  // Auto-migração transparente de registros legados DevSquad -> Synchro
+  // Auto-migração transparente e idempotente de registros/DDL legados DevSquad/Synchro -> Flow
   try {
-    db.prepare(`
-      UPDATE document_templates
-      SET 
-        name = REPLACE(name, 'DevSquad', 'Synchro'),
-        description = REPLACE(description, 'DevSquad', 'Synchro'),
-        header_institution = REPLACE(header_institution, 'DEVSQUAD', 'SYNCHRO'),
-        footer_text = REPLACE(REPLACE(footer_text, 'DevSquad', 'Synchro'), 'DEVSQUAD', 'SYNCHRO'),
-        signee_contratada_title = REPLACE(signee_contratada_title, 'DEVSQUAD', 'SYNCHRO')
-      WHERE name LIKE '%DevSquad%' OR header_institution LIKE '%DEVSQUAD%' OR footer_text LIKE '%DevSquad%' OR signee_contratada_title LIKE '%DEVSQUAD%'
-    `).run();
+    const ddlRow = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='document_templates'").get();
+    const needsDdlRebuild = /PELA CONTRATADA \((?:SYNCHRO|DEVSQUAD)\)/i.test(ddlRow?.sql || '');
+    const migrationSqlPath = path.join(__dirname, 'migrations', '001_rebrand_to_flow.sql');
+    if (needsDdlRebuild && fs.existsSync(migrationSqlPath)) {
+      db.exec(fs.readFileSync(migrationSqlPath, 'utf8'));
+    } else {
+      db.prepare(`
+        UPDATE document_templates
+        SET 
+          name = REPLACE(REPLACE(REPLACE(REPLACE(name, 'Synchro', 'Flow'), 'SYNCHRO', 'FLOW'), 'DevSquad', 'Flow'), 'DEVSQUAD', 'FLOW'),
+          description = REPLACE(REPLACE(REPLACE(REPLACE(description, 'Synchro', 'Flow'), 'SYNCHRO', 'FLOW'), 'DevSquad', 'Flow'), 'DEVSQUAD', 'FLOW'),
+          header_institution = REPLACE(REPLACE(REPLACE(REPLACE(header_institution, 'SYNCHRO', 'FLOW'), 'Synchro', 'Flow'), 'DEVSQUAD', 'FLOW'), 'DevSquad', 'Flow'),
+          footer_text = REPLACE(REPLACE(REPLACE(REPLACE(footer_text, 'Synchro', 'Flow'), 'SYNCHRO', 'FLOW'), 'DevSquad', 'Flow'), 'DEVSQUAD', 'FLOW'),
+          signee_contratada_title = REPLACE(REPLACE(REPLACE(REPLACE(signee_contratada_title, 'SYNCHRO', 'FLOW'), 'Synchro', 'Flow'), 'DEVSQUAD', 'FLOW'), 'DevSquad', 'Flow')
+        WHERE name LIKE '%Synchro%' OR name LIKE '%DevSquad%'
+           OR description LIKE '%Synchro%' OR description LIKE '%DevSquad%'
+           OR header_institution LIKE '%SYNCHRO%' OR header_institution LIKE '%Synchro%' OR header_institution LIKE '%DEVSQUAD%' OR header_institution LIKE '%DevSquad%'
+           OR footer_text LIKE '%Synchro%' OR footer_text LIKE '%SYNCHRO%' OR footer_text LIKE '%DevSquad%' OR footer_text LIKE '%DEVSQUAD%'
+           OR signee_contratada_title LIKE '%SYNCHRO%' OR signee_contratada_title LIKE '%Synchro%' OR signee_contratada_title LIKE '%DEVSQUAD%' OR signee_contratada_title LIKE '%DevSquad%'
+      `).run();
 
-    db.prepare(`
-      UPDATE users
-      SET email = REPLACE(email, '@devsquad.com', '@synchro.com')
-      WHERE email LIKE '%@devsquad.com'
-    `).run();
+      db.prepare(`
+        UPDATE users
+        SET email = REPLACE(email, '@devsquad.com', '@flow.com')
+        WHERE lower(email) LIKE '%@devsquad.com'
+          AND NOT EXISTS (SELECT 1 FROM users u2 WHERE lower(u2.email) = lower(REPLACE(users.email, '@devsquad.com', '@flow.com')))
+      `).run();
+
+      db.prepare(`
+        UPDATE users
+        SET email = REPLACE(email, '@synchro.com', '@flow.com')
+        WHERE lower(email) LIKE '%@synchro.com'
+          AND NOT EXISTS (SELECT 1 FROM users u2 WHERE lower(u2.email) = lower(REPLACE(users.email, '@synchro.com', '@flow.com')))
+      `).run();
+    }
   } catch (e) { }
 
   console.log('✅ Banco de dados SQLite verificado e pronto para operações!');
@@ -753,17 +785,17 @@ function seedDefaultDocumentTemplates(force = false) {
     const defaultTemplates = [
       {
         id: "tpl_default",
-        name: "Padrão Corporativo Synchro (Oficial)",
-        description: "Template institucional padrão do Synchro ALM com paleta Sky Blue (#0284c7), todos os blocos ativados e termo padrão de aceite contratual e medição.",
+        name: "Padrão Corporativo Flow (Oficial)",
+        description: "Template institucional padrão do Flow ALM com paleta Sky Blue (#0284c7), todos os blocos ativados e termo padrão de aceite contratual e medição.",
         is_default: 1,
         logo_url: "",
         doc_title: "RELATÓRIO FORMAL DE MEDIÇÃO & DOCUMENTO DE REQUISITOS",
         doc_subtitle: "Artefato Oficial de Comprovação de Entrega Técnica para Fins de Faturamento & Aceite",
-        header_institution: "SYNCHRO ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE",
+        header_institution: "FLOW ALM PRO — PLATAFORMA INTEGRADA DE ENGENHARIA DE SOFTWARE",
         primary_color: "#0284c7",
-        footer_text: "Synchro ALM Pro — Artefato Formal de Medição & Aceite Técnico",
+        footer_text: "Flow ALM Pro — Artefato Formal de Medição & Aceite Técnico",
         approval_terms: "Pelo presente instrumento, a CONTRATANTE atesta expressamente o pleno recebimento, homologação técnica e aceite formal dos requisitos de software e critérios de aceite descritos neste Relatório de Medição correspondentes à Feature / Marco acima especificado. Declara que os entregáveis foram devidamente verificados e aprovados pelo controle de qualidade (QA), em conformidade com as especificações contratadas, autorizando a emissão da respectiva Nota Fiscal de Serviços para faturamento.",
-        signee_contratada_title: "PELA CONTRATADA (SYNCHRO)",
+        signee_contratada_title: "PELA CONTRATADA (FLOW)",
         signee_contratante_title: "PELA CONTRATANTE (CLIENTE)",
         include_user_story: 1,
         include_acceptance_criteria: 1,
@@ -807,7 +839,7 @@ function seedDefaultDocumentTemplates(force = false) {
         doc_subtitle: "Alinhamento Contínuo de Escopo, Critérios de Aceite e Histórias de Usuário",
         header_institution: "SQUAD DE ENGENHARIA DE PRODUTO & ARQUITETURA ÁGIL",
         primary_color: "#059669",
-        footer_text: "Synchro Agile Spec — Uso Interno e Alinhamento Técnico de Produto",
+        footer_text: "Flow Agile Spec — Uso Interno e Alinhamento Técnico de Produto",
         approval_terms: "Os requisitos funcionais descritos neste documento foram refinados e validados conjuntamente pelo time de produto e engenharia, servindo como especificação oficial e critérios de aceite da sprint corrente.",
         signee_contratada_title: "PRODUCT OWNER (PO)",
         signee_contratante_title: "TECH LEAD / ENGENHEIRO RESPONSÁVEL",
@@ -1229,7 +1261,7 @@ function getFullDocumentTemplates() {
     primaryColor: r.primary_color || '#0284c7',
     footerText: r.footer_text || '',
     approvalTerms: r.approval_terms || '',
-    signeeContratadaTitle: r.signee_contratada_title || 'PELA CONTRATADA (SYNCHRO)',
+    signeeContratadaTitle: r.signee_contratada_title || 'PELA CONTRATADA (FLOW)',
     signeeContratanteTitle: r.signee_contratante_title || 'PELA CONTRATANTE (CLIENTE)',
     includeUserStory: r.include_user_story === 1,
     includeAcceptanceCriteria: r.include_acceptance_criteria === 1,
@@ -4118,7 +4150,15 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 400, { success: false, message: 'E-mail e senha são obrigatórios.' });
       }
 
-      const user = db.prepare('SELECT * FROM users WHERE lower(email) = lower(?)').get(email.trim());
+      const cleanLoginEmail = email.trim().toLowerCase();
+      const emailCandidates = [cleanLoginEmail];
+      if (/@(?:flow|synchro|devsquad)\.com$/i.test(cleanLoginEmail)) {
+        const localPart = cleanLoginEmail.replace(/@(?:flow|synchro|devsquad)\.com$/i, '');
+        emailCandidates.push(`${localPart}@flow.com`, `${localPart}@synchro.com`, `${localPart}@devsquad.com`);
+      }
+      const uniqueEmails = [...new Set(emailCandidates)];
+      const placeholders = uniqueEmails.map(() => 'lower(?)').join(', ');
+      const user = db.prepare(`SELECT * FROM users WHERE lower(email) IN (${placeholders})`).get(...uniqueEmails);
       if (!user || user.password !== password) {
         return sendJson(res, 401, { success: false, message: 'E-mail ou senha incorretos.' });
       }
@@ -5503,7 +5543,7 @@ const server = http.createServer(async (req, res) => {
           (data.primaryColor || data.primary_color || '#0284c7').trim(),
           (data.footerText || data.footer_text || '').trim(),
           (data.approvalTerms || data.approval_terms || '').trim(),
-          (data.signeeContratadaTitle || data.signee_contratada_title || 'PELA CONTRATADA (SYNCHRO)').trim(),
+          (data.signeeContratadaTitle || data.signee_contratada_title || 'PELA CONTRATADA (FLOW)').trim(),
           (data.signeeContratanteTitle || data.signee_contratante_title || 'PELA CONTRATANTE (CLIENTE)').trim(),
           data.includeUserStory !== false ? 1 : 0,
           data.includeAcceptanceCriteria !== false ? 1 : 0,
@@ -6568,12 +6608,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     // --------------------------------------------------------------------------
-    // SERVIDOR DE ARQUIVOS ESTÁTICOS (Frontend Synchro PRO)
+    // SERVIDOR DE ARQUIVOS ESTÁTICOS (Frontend Flow PRO)
     // --------------------------------------------------------------------------
     const normalizedPath = pathname === '/' ? '/index.html' : pathname;
     const isProtectedAsset = normalizedPath.includes('/.')
-      || /\.(db|db-wal|db-shm|env|sh)$/i.test(normalizedPath)
-      || /^\/(?:server\.js|ai-cfps-agent\.js|package(?:-lock)?\.json|dockerfile|docker-compose\.yml)$/i.test(normalizedPath);
+      || /\.(db|db-wal|db-shm|env|sh|sql|bak)$/i.test(normalizedPath)
+      || /^\/(?:migrations\/|server\.js|ai-cfps-agent\.js|package(?:-lock)?\.json|dockerfile|docker-compose\.yml)/i.test(normalizedPath);
 
     let filePath = isProtectedAsset
       ? path.join(__dirname, 'index.html')
@@ -6620,7 +6660,7 @@ if (require.main === module) {
     }
 
     console.log(`==================================================`);
-    console.log(`🌐 Servidor Synchro PRO rodando com sucesso!`);
+    console.log(`🌐 Servidor Flow PRO rodando com sucesso!`);
     console.log(`🔗 Acesso Local:        http://localhost:${PORT}`);
     console.log(`🔗 Acesso Loopback:     http://127.0.0.1:${PORT}`);
     if (lanIps.length > 0) {
