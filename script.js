@@ -8542,10 +8542,25 @@ window.addEventListener('DOMContentLoaded', () => {
   // Toggle da Sidebar Lateral
   const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
   const sidebar = document.getElementById('alm-sidebar');
+  const sidebarBrandLogo = sidebar?.querySelector('.brand-logo');
+  const syncSidebarToggleState = (isCollapsed) => {
+    if (!sidebarToggleBtn) return;
+    sidebarToggleBtn.textContent = isCollapsed ? '▶' : '◀';
+    sidebarToggleBtn.title = isCollapsed ? 'Expandir Menu' : 'Recolher Menu';
+    sidebarToggleBtn.setAttribute('aria-label', isCollapsed ? 'Expandir Menu' : 'Recolher Menu');
+    sidebarToggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
+  };
   if (sidebarToggleBtn && sidebar) {
+    syncSidebarToggleState(sidebar.classList.contains('collapsed'));
     sidebarToggleBtn.addEventListener('click', () => {
-      sidebar.classList.toggle('collapsed');
-      sidebarToggleBtn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+      const isCollapsed = sidebar.classList.toggle('collapsed');
+      syncSidebarToggleState(isCollapsed);
+    });
+    sidebarBrandLogo?.addEventListener('click', () => {
+      if (sidebar.classList.contains('collapsed')) {
+        sidebar.classList.remove('collapsed');
+        syncSidebarToggleState(false);
+      }
     });
   }
 
@@ -8553,6 +8568,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const mobileMenuBtn = document.getElementById('mobile-menu-btn');
   if (mobileMenuBtn && sidebar) {
     mobileMenuBtn.addEventListener('click', () => {
+      sidebar.classList.remove('collapsed');
+      syncSidebarToggleState(false);
       sidebar.classList.toggle('mobile-open');
     });
   }

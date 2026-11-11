@@ -190,12 +190,31 @@ html, body {
 }
 
 .alm-sidebar.collapsed .sidebar-header {
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  padding: 1.25rem 0.5rem;
+  gap: 0.65rem;
+  padding: 1rem 0.5rem 0.85rem;
+}
+
+.alm-sidebar.collapsed .brand-logo {
+  cursor: pointer;
 }
 
 .alm-sidebar.collapsed .sidebar-toggle {
-  display: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 28px;
+  background: var(--bg-subpanel);
+  border: 1px solid var(--border-medium);
+  color: var(--accent-primary);
+}
+
+.alm-sidebar.collapsed .sidebar-toggle:hover {
+  border-color: var(--accent-primary);
+  background: rgba(63, 184, 179, 0.14);
 }
 
 .alm-sidebar.collapsed .nav-item {
@@ -273,18 +292,23 @@ html, body {
 
 .sidebar-toggle {
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 0.4rem;
+  padding: 0.4rem 0.5rem;
   font-size: 0.8rem;
   border-radius: var(--radius-sm);
-  transition: color var(--transition);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  flex-shrink: 0;
 }
 
 .sidebar-toggle:hover {
   color: var(--text-main);
   background: var(--bg-hover);
+  border-color: var(--border-subtle);
 }
 
 /* Navegação Lateral */
@@ -295,6 +319,25 @@ html, body {
   gap: 0.4rem;
   flex: 1;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(63, 184, 179, 0.35) transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(63, 184, 179, 0.28);
+  border-radius: 999px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(63, 184, 179, 0.55);
 }
 
 .nav-section-title {
@@ -347,6 +390,8 @@ html, body {
   border-radius: var(--radius-full);
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .nav-item.active .nav-counter {
