@@ -133,8 +133,7 @@ echo "🐳 Construindo e iniciando o container isolado (flow-app)..."
 docker compose up -d --no-deps --build flow
 
 # 7. Criar arquivo de configuração isolado no Nginx
-NGINX_CONF="/etc/nginx/sites-available/flow.conf"
-[ -f "/etc/nginx/sites-enabled/devsquad.conf" ] && NGINX_CONF="/etc/nginx/sites-available/devsquad.conf"
+NGINX_CONF="/etc/nginx/sites-available/${DOMAIN_NAME}"
 echo "🌐 Configurando VirtualHost do Nginx em $NGINX_CONF..."
 
 cat <<EOF > "$NGINX_CONF"
