@@ -404,6 +404,7 @@ class ALMStore {
       color: data.color || "#3b82f6",
       status: data.status || "Ativo",
       deadline: data.deadline || "",
+      processMakerNumber: (data.processMakerNumber || "").trim(),
       features: Array.isArray(data.features) ? data.features : []
     };
     this.state.projects.push(newProject);
@@ -421,6 +422,7 @@ class ALMStore {
       if (data.color !== undefined) project.color = data.color;
       if (data.status !== undefined) project.status = data.status;
       if (data.deadline !== undefined) project.deadline = data.deadline;
+      if (data.processMakerNumber !== undefined) project.processMakerNumber = (data.processMakerNumber || "").trim();
       if (data.features !== undefined) project.features = Array.isArray(data.features) ? data.features : [];
       this.saveState();
       api.apiRequest(`/api/projects/${id}`, 'PUT', data);
@@ -612,9 +614,14 @@ class ALMStore {
     }
     if (this.searchQuery) {
       const q = this.searchQuery.toLowerCase();
-      list = list.filter(r => (r.title && r.title.toLowerCase().includes(q)) || 
-                              (r.code && r.code.toLowerCase().includes(q)) || 
-                              (r.feature && r.feature.toLowerCase().includes(q)) || 
+      list = list.filter(r => (r.title && r.title.toLowerCase().includes(q)) ||
+                              (r.code && r.code.toLowerCase().includes(q)) ||
+                              (r.feature && r.feature.toLowerCase().includes(q)) ||
+                              (r.numeroProcessMaker && r.numeroProcessMaker.toLowerCase().includes(q)) ||
+                              (r.fluxoPrincipal && r.fluxoPrincipal.toLowerCase().includes(q)) ||
+                              (Array.isArray(r.entradas) && r.entradas.some(e => (e.campo || '').toLowerCase().includes(q) || (e.descricao || '').toLowerCase().includes(q))) ||
+                              (Array.isArray(r.saidas) && r.saidas.some(s => (s.campo || '').toLowerCase().includes(q) || (s.descricao || '').toLowerCase().includes(q))) ||
+                              (Array.isArray(r.criteriosAceite) && r.criteriosAceite.some(c => (c.item || '').toLowerCase().includes(q) || (c.descricao || '').toLowerCase().includes(q))) ||
                               (r.userStory && r.userStory.toLowerCase().includes(q)));
     }
     return [...list].sort((a, b) => {
@@ -677,6 +684,35 @@ class ALMStore {
   addRequirement(data) {
     const now = new Date().toISOString();
     const feature = (data.feature || '').trim();
+    const project = data.projectId ? this.getProjectById(data.projectId) : null;
+    const numeroProcessMaker = (data.numeroProcessMaker || (project && project.processMakerNumber) || '').trim();
+    const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+    const defaultRoleLabel = {
+      admin: 'Administrador / Gestor Executivo',
+      pm: 'Product Manager / Analista de Requisitos',
+      dev: 'Engenheiro de Software',
+      qa: 'Analista de QA'
+    };
+    const criadoPor = data.criadoPor && data.criadoPor.nome ? data.criadoPor : {
+      id: (currentUser && currentUser.id) || '',
+      nome: (currentUser && currentUser.name) || 'Analista de Requisitos',
+      cargo: (currentUser && (currentUser.devRole || defaultRoleLabel[currentUser.role])) || 'Analista de Requisitos',
+      email: (currentUser && currentUser.email) || ''
+    };
+    const versaoAtual = (data.versaoAtual || '1.0').trim() || '1.0';
+    let historicoAtualizacoes = Array.isArray(data.historicoAtualizacoes) ? data.historicoAtualizacoes : [];
+    if (historicoAtualizacoes.length === 0) {
+      historicoAtualizacoes = [{
+        data: now.slice(0, 10),
+        versao: versaoAtual,
+        descricao: 'Primeira versão dos requisitos.',
+        responsavelId: criadoPor.id || '',
+        responsavelNome: criadoPor.nome || 'Analista de Requisitos',
+        responsavelCargo: criadoPor.cargo || 'Analista de Requisitos',
+        responsavelEmail: criadoPor.email || ''
+      }];
+    }
+
     const newReq = {
       id: "req" + Date.now(),
       code: (data.code || "RF-01").toUpperCase(),
@@ -685,8 +721,18 @@ class ALMStore {
       feature: feature,
       type: data.type,
       moscow: data.moscow,
-      userStory: data.userStory,
-      bdd: data.bdd,
+      userStory: data.userStory || '',
+      bdd: data.bdd || '',
+      numeroProcessMaker,
+      versaoAtual,
+      criadoPor,
+      fluxoPrincipal: data.fluxoPrincipal || '',
+      telas: Array.isArray(data.telas) ? data.telas : [],
+      entradas: Array.isArray(data.entradas) ? data.entradas : [],
+      saidas: Array.isArray(data.saidas) ? data.saidas : [],
+      criteriosAceite: Array.isArray(data.criteriosAceite) ? data.criteriosAceite : [],
+      historicoAtualizacoes,
+      updatedAt: now,
       createdAt: data.createdAt || now
     };
     if (data.projectId && feature) {
@@ -714,6 +760,16 @@ class ALMStore {
       if (data.moscow !== undefined) req.moscow = data.moscow;
       if (data.userStory !== undefined) req.userStory = data.userStory;
       if (data.bdd !== undefined) req.bdd = data.bdd;
+      if (data.numeroProcessMaker !== undefined) req.numeroProcessMaker = (data.numeroProcessMaker || '').trim();
+      if (data.versaoAtual !== undefined) req.versaoAtual = (data.versaoAtual || '1.0').trim() || '1.0';
+      if (data.criadoPor !== undefined) req.criadoPor = data.criadoPor;
+      if (data.fluxoPrincipal !== undefined) req.fluxoPrincipal = data.fluxoPrincipal;
+      if (Array.isArray(data.telas)) req.telas = data.telas;
+      if (Array.isArray(data.entradas)) req.entradas = data.entradas;
+      if (Array.isArray(data.saidas)) req.saidas = data.saidas;
+      if (Array.isArray(data.criteriosAceite)) req.criteriosAceite = data.criteriosAceite;
+      if (Array.isArray(data.historicoAtualizacoes)) req.historicoAtualizacoes = data.historicoAtualizacoes;
+      req.updatedAt = new Date().toISOString();
       this.saveState();
       api.apiRequest(`/api/requirements/${id}`, 'PUT', data);
       return true;
@@ -2773,6 +2829,8 @@ window.openProjectModalForCreate = function() {
   document.getElementById('project-status-input').value = "Ativo";
   const featInput = document.getElementById('project-features-input');
   if (featInput) featInput.value = "";
+  const pmInput = document.getElementById('project-pm-input');
+  if (pmInput) pmInput.value = "";
   openModal('modal-project');
 };
 
@@ -2799,6 +2857,10 @@ window.openProjectModalForEdit = function(projectId) {
   const featInput = document.getElementById('project-features-input');
   if (featInput) {
     featInput.value = Array.isArray(project.features) ? project.features.join(', ') : (project.features || "");
+  }
+  const pmInput = document.getElementById('project-pm-input');
+  if (pmInput) {
+    pmInput.value = project.processMakerNumber || "";
   }
 
   openModal('modal-project');
@@ -3082,35 +3144,448 @@ function renderRequirementBddHtml(rawBdd, options = {}) {
 }
 
 /**
+ * Retorna sigla e rótulo legível para tipo de requisito (RF / RNF / RN).
+ */
+function getRequirementTypeInfo(type) {
+  if (type === 'non-functional') return { abbr: 'RNF', label: 'Não-Funcional (RNF)' };
+  if (type === 'business-rule') return { abbr: 'RN', label: 'Regra de Negócio (RN)' };
+  return { abbr: 'RF', label: 'Funcional (RF)' };
+}
+
+/**
+ * Normaliza arrays da Especificação SUSIS/Banpará e identifica se o requisito possui conteúdo estruturado.
+ */
+function hasStructuredSpecContent(req) {
+  if (!req) return false;
+  return Boolean(
+    (req.descricaoRequisito && req.descricaoRequisito.trim()) ||
+    (req.preCondicoes && req.preCondicoes.trim()) ||
+    (req.posCondicoes && req.posCondicoes.trim()) ||
+    (req.fluxoPrincipal && req.fluxoPrincipal.trim()) ||
+    (req.fluxoRequisito && req.fluxoRequisito.trim()) ||
+    (Array.isArray(req.regrasNegocio) && req.regrasNegocio.length > 0) ||
+    (Array.isArray(req.secoesCustomizadas) && req.secoesCustomizadas.length > 0) ||
+    (Array.isArray(req.telas) && req.telas.length > 0) ||
+    (Array.isArray(req.entradas) && req.entradas.length > 0) ||
+    (Array.isArray(req.saidas) && req.saidas.length > 0) ||
+    (Array.isArray(req.criteriosAceite) && req.criteriosAceite.length > 0)
+  );
+}
+
+const ANEXO_01_CRITERIA_DEFINITIONS = [
+  { tipo: 'Negócio (N)', title: 'Negócios (N)', desc: 'Representa uma restrição relacionada à natureza intrínseca do negócio. Por exemplo: todo atleta estrangeiro deve ter um número de passaporte.' },
+  { tipo: 'Validação (V)', title: 'Validação (V)', desc: 'Representa uma validação que o aplicativo precisa executar, não diretamente relacionada ao negócio principal. Por exemplo: O endereço de e-mail do atleta deve ser válido.' },
+  { tipo: 'Interface (I)', title: 'Interface (I)', desc: 'Representa qualquer restrição relacionada à interface do usuário. Um widget deve ser ativado/desativado conforme condição ou conteúdo de outro widget.' },
+  { tipo: 'Técnico (T)', title: 'Técnico (T)', desc: 'Representa uma restrição técnica sobre como a solução deve ser implementada (tempo de resposta, segurança, ordem de persistência em botões de confirmação).' },
+  { tipo: 'Não Funcional (NF)', title: 'Não funcional (NF)', desc: 'Representa preocupações sobre qualidade, rastreamento, desempenho e confiabilidade.' },
+  { tipo: 'Outros (O)', title: 'Outros (O)', desc: 'Quando não se enquadra em nenhum dos tipos anteriores.' }
+];
+
+/**
+ * Renderiza resumo compacto nos cards quando o requisito usa o padrão SUSIS / Banpará.
+ */
+function renderRequirementSpecSummaryHtml(req, options = {}) {
+  const { compact = true, reqId = req?.id } = options;
+  const flow = String(req?.fluxoPrincipal || req?.fluxoRequisito || '').trim();
+  const desc = String(req?.descricaoRequisito || '').trim();
+  const telas = Array.isArray(req?.telas) ? req.telas : [];
+  const entradas = Array.isArray(req?.entradas) ? req.entradas : [];
+  const saidas = Array.isArray(req?.saidas) ? req.saidas : [];
+  const criterios = Array.isArray(req?.criteriosAceite) ? req.criteriosAceite : [];
+  const rns = Array.isArray(req?.regrasNegocio) ? req.regrasNegocio : [];
+  const customSecs = Array.isArray(req?.secoesCustomizadas) ? req.secoesCustomizadas : [];
+
+  const flowPreview = flow
+    ? (compact && flow.length > 280 ? `${flow.slice(0, 280).trim()}...` : flow)
+    : (desc ? (compact && desc.length > 280 ? `${desc.slice(0, 280).trim()}...` : desc) : '');
+
+  return `
+    <div class="req-section-block">
+      <div class="req-spec-meta-strip">
+        ${req?.versaoAtual ? `<span class="req-spec-pill">🏷️ Versão ${escapeHtml(req.versaoAtual)}</span>` : ''}
+        ${req?.numeroProcessMaker ? `<span class="req-spec-pill">🗂️ PM ${escapeHtml(req.numeroProcessMaker)}</span>` : ''}
+        ${rns.length > 0 ? `<span class="req-spec-pill" style="border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">⚖️ <strong>${rns.length}</strong> ${rns.length === 1 ? 'regra (RN)' : 'regras (RN)'}</span>` : ''}
+        <span class="req-spec-pill">🖼️ <strong>${telas.length}</strong> ${telas.length === 1 ? 'tela' : 'telas'}</span>
+        <span class="req-spec-pill">📥 <strong>${entradas.length}</strong> ${entradas.length === 1 ? 'entrada' : 'entradas'}</span>
+        <span class="req-spec-pill">📤 <strong>${saidas.length}</strong> ${saidas.length === 1 ? 'saída' : 'saídas'}</span>
+        <span class="req-spec-pill">✅ <strong>${criterios.length}</strong> ${criterios.length === 1 ? 'critério (CA)' : 'critérios (CA)'}</span>
+        ${customSecs.length > 0 ? `<span class="req-spec-pill" style="border-color: rgba(168, 85, 247, 0.4); color: #c084fc;">🧩 <strong>${customSecs.length}</strong> ${customSecs.length === 1 ? 'seção custom' : 'seções custom'}</span>` : ''}
+      </div>
+      ${desc && desc !== flow ? `
+        <div style="margin-top: 0.65rem;">
+          <span class="req-section-label">Descrição do Requisito</span>
+          <div class="req-flow-box" style="white-space: pre-wrap;">${escapeHtml(compact && desc.length > 280 ? `${desc.slice(0, 280).trim()}...` : desc)}</div>
+        </div>
+      ` : ''}
+      ${flowPreview && (!desc || desc === flow) ? `
+        <div style="margin-top: 0.65rem;">
+          <span class="req-section-label">1.1 Fluxo (Passo a Passo)</span>
+          <div class="req-flow-box">${escapeHtml(flowPreview)}</div>
+        </div>
+      ` : ''}
+      ${rns.length > 0 ? `
+        <div style="margin-top: 0.65rem;">
+          <span class="req-section-label">Regras de Negócio (${rns.length})</span>
+          <div class="req-rn-list">
+            ${(compact ? rns.slice(0, 3) : rns).map((r, idx) => `
+              <div class="req-rn-item">
+                <span class="req-rn-code">${escapeHtml(r.codigo || `RN${String(idx + 1).padStart(3, '0')}`)}</span>
+                <div class="req-rn-body">${escapeHtml(r.descricao || '')}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+      ${criterios.length > 0 ? `
+        <div style="margin-top: 0.65rem;">
+          <span class="req-section-label">1.4 Critérios de Aceite (${criterios.length})</span>
+          <div class="req-rn-list">
+            ${(compact ? criterios.slice(0, 3) : criterios).map((c, idx) => `
+              <div class="req-rn-item">
+                <span class="req-rn-code">${escapeHtml(c.item || `CA${String(idx + 1).padStart(3, '0')}`)}</span>
+                <div class="req-rn-body">
+                  <span class="req-ca-type-badge" style="margin-right: 6px;">${escapeHtml(c.tipo || 'Negócio (N)')} · ${escapeHtml(c.categoria || 'Específico')}</span>
+                  ${escapeHtml(c.descricao || '')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+          ${compact && (criterios.length > 3 || rns.length > 3 || customSecs.length > 0) && reqId ? `
+            <button type="button" class="bdd-more-banner" onclick="openRequirementViewer('${reqId}')">
+              📖 Ver especificação completa SUSIS (${criterios.length} CA, ${rns.length} RN, ${entradas.length} entradas, ${saidas.length} saídas)
+            </button>
+          ` : ''}
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+/**
+ * Renderiza toda a Especificação SUSIS/Banpará no Leitor Harmonioso (Histórico, Fluxo, Telas, Entradas, Saídas, Critérios + Anexo 01).
+ */
+function renderRequirementBanparaViewerHtml(req, project = null) {
+  const pm = req?.numeroProcessMaker || (project && project.processMakerNumber) || '—';
+  const cp = req?.criadoPor || {};
+  const history = Array.isArray(req?.historicoAtualizacoes) ? req.historicoAtualizacoes : [];
+  const rns = Array.isArray(req?.regrasNegocio) ? req.regrasNegocio : [];
+  const customSecs = Array.isArray(req?.secoesCustomizadas) ? req.secoesCustomizadas : [];
+  const telas = Array.isArray(req?.telas) ? req.telas : [];
+  const entradas = Array.isArray(req?.entradas) ? req.entradas : [];
+  const saidas = Array.isArray(req?.saidas) ? req.saidas : [];
+  const criterios = Array.isArray(req?.criteriosAceite) ? req.criteriosAceite : [];
+
+  const sections = [];
+
+  sections.push(`
+    <div class="req-section-block">
+      <span class="req-section-label">📄 Dados do Projeto &amp; Controle</span>
+      <div class="req-project-meta-grid">
+        <div><small>Projeto</small><strong>${escapeHtml(project ? `${project.code ? `[${project.code}] ` : ''}${project.name}` : 'Geral')}</strong></div>
+        <div><small>Número do ProcessMaker</small><strong>${escapeHtml(pm)}</strong></div>
+        <div><small>Versão Atual</small><strong>v${escapeHtml(req?.versaoAtual || '1.0')}</strong></div>
+        <div><small>Criado por</small><strong>${escapeHtml(cp.nome || '—')}</strong></div>
+        <div><small>Cargo</small><strong>${escapeHtml(cp.cargo || '—')}</strong></div>
+        <div><small>E-mail</small><strong>${escapeHtml(cp.email || '—')}</strong></div>
+      </div>
+    </div>
+  `);
+
+  if (history.length > 0) {
+    sections.push(`
+      <div class="req-section-block">
+        <span class="req-section-label">🕒 Histórico de Atualizações (${history.length})</span>
+        <div class="req-spec-table-wrap">
+          <table class="req-spec-table">
+            <thead>
+              <tr>
+                <th style="width: 110px;">Data</th>
+                <th style="width: 80px;">Versão</th>
+                <th>Descrição</th>
+                <th style="width: 210px;">Responsável pela Versão</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${history.map(h => `
+                <tr>
+                  <td>${escapeHtml(h.data || '—')}</td>
+                  <td><strong>${escapeHtml(h.versao || '1.0')}</strong></td>
+                  <td>${escapeHtml(h.descricao || '')}</td>
+                  <td>${escapeHtml(h.responsavelNome || '—')}${h.responsavelCargo ? `<br><small style="color: var(--text-muted);">${escapeHtml(h.responsavelCargo)}</small>` : ''}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `);
+  }
+
+  if (req?.descricaoRequisito && req.descricaoRequisito.trim()) {
+    sections.push(`
+      <div class="req-section-block">
+        <span class="req-section-label">📝 Descrição Geral do Requisito</span>
+        <div class="req-flow-box" style="white-space: pre-wrap;">${escapeHtml(req.descricaoRequisito.trim())}</div>
+      </div>
+    `);
+  }
+
+  if ((req?.preCondicoes && req.preCondicoes.trim()) || (req?.posCondicoes && req.posCondicoes.trim())) {
+    sections.push(`
+      <div class="req-section-block">
+        <span class="req-section-label">🔄 Contexto de Execução (Pré e Pós-condições)</span>
+        <div class="req-cond-grid">
+          <div class="req-cond-card">
+            <div class="req-cond-title">📥 Pré-condições</div>
+            <div class="req-cond-body" style="white-space: pre-wrap;">${escapeHtml(req.preCondicoes?.trim() || 'Nenhuma pré-condição declarada.')}</div>
+          </div>
+          <div class="req-cond-card">
+            <div class="req-cond-title">📤 Pós-condições</div>
+            <div class="req-cond-body" style="white-space: pre-wrap;">${escapeHtml(req.posCondicoes?.trim() || 'Nenhuma pós-condição declarada.')}</div>
+          </div>
+        </div>
+      </div>
+    `);
+  }
+
+  if (rns.length > 0) {
+    sections.push(`
+      <div class="req-section-block">
+        <span class="req-section-label">⚖️ Regras de Negócio (${rns.length})</span>
+        <div class="req-rn-list">
+          ${rns.map((rn, idx) => `
+            <div class="req-rn-item">
+              <span class="req-rn-code">${escapeHtml(rn.codigo || `RN${String(idx + 1).padStart(3, '0')}`)}</span>
+              <div class="req-rn-body" style="white-space: pre-wrap;">${escapeHtml(rn.descricao || '')}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `);
+  }
+
+  const flow = (req?.fluxoPrincipal || req?.fluxoRequisito || '').trim();
+  if (flow) {
+    sections.push(`
+      <div class="req-section-block">
+        <span class="req-section-label">1.1 Fluxo (Passo a Passo)</span>
+        <div class="req-flow-box">${escapeHtml(flow)}</div>
+      </div>
+    `);
+  }
+
+  if (telas.length > 0) {
+    sections.push(`
+      <div class="req-section-block">
+        <span class="req-section-label">1.2 Telas / Protótipos (${telas.length})</span>
+        <div class="req-viewer-screens-grid">
+          ${telas.map((sc, idx) => {
+            const title = sc.title || sc.tituloTela || `Tela ${idx + 1}`;
+            const imgSrc = sc.url || sc.dataUrl || '';
+            return `
+              <div class="req-viewer-screen-item" onclick="openScreenLightbox('${escapeHtml(title)}', '${imgSrc.replace(/'/g, "\\'")}')">
+                <img src="${imgSrc}" alt="${escapeHtml(title)}">
+                <div class="req-viewer-screen-caption">🖼️ ${escapeHtml(title)}</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `);
+  }
+
+  const renderAttrTable = (title, list) => `
+    <div class="req-section-block">
+      <span class="req-section-label">${title} (${list.length})</span>
+      <div class="req-spec-table-wrap">
+        <table class="req-spec-table">
+          <thead>
+            <tr>
+              <th style="width: 150px;">Campo</th>
+              <th>Descrição</th>
+              <th style="width: 130px;">Tipo do campo</th>
+              <th style="width: 72px;">Obrig</th>
+              <th>Regra</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map(row => `
+              <tr>
+                <td><strong>${escapeHtml(row.campo || '')}</strong></td>
+                <td>${escapeHtml(row.descricao || '')}</td>
+                <td><span class="badge-subtle">${escapeHtml(row.tipoCampo || 'Alfanumérico')}</span></td>
+                <td><span class="req-badge-obrig ${row.obrigatorio ? 'is-yes' : 'is-no'}">${row.obrigatorio ? 'Sim' : 'Não'}</span></td>
+                <td style="white-space: pre-wrap;">${escapeHtml(row.regra || '—')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  if (entradas.length > 0) sections.push(renderAttrTable('1.3.1 Atributos — Entradas', entradas));
+  if (saidas.length > 0) sections.push(renderAttrTable('1.3.2 Atributos — Saídas', saidas));
+
+  if (criterios.length > 0) {
+    sections.push(`
+      <div class="req-section-block">
+        <span class="req-section-label">1.4 Critérios de Aceite (${criterios.length})</span>
+        <div class="req-spec-table-wrap">
+          <table class="req-spec-table">
+            <thead>
+              <tr>
+                <th style="width: 85px;">Item</th>
+                <th style="width: 150px;">Tipo</th>
+                <th style="width: 110px;">Categoria</th>
+                <th>Descrição</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${criterios.map((c, idx) => `
+                <tr>
+                  <td><strong style="font-family: var(--font-mono); color: var(--accent-primary);">${escapeHtml(c.item || `CA${String(idx + 1).padStart(3, '0')}`)}</strong></td>
+                  <td><span class="req-ca-type-badge">${escapeHtml(c.tipo || 'Negócio (N)')}</span></td>
+                  <td>${escapeHtml(c.categoria || 'Específico')}</td>
+                  <td style="white-space: pre-wrap;">${escapeHtml(c.descricao || '')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        <details class="req-legacy-details" style="margin-top: 0.65rem;">
+          <summary>📖 Anexo 01 – Lista de Critérios de Aceite (Referência Oficial)</summary>
+          <div class="req-anexo01-grid" style="margin-top: 0.6rem;">
+            ${ANEXO_01_CRITERIA_DEFINITIONS.map(def => `<div><strong>${escapeHtml(def.title)}:</strong> ${escapeHtml(def.desc)}</div>`).join('')}
+          </div>
+        </details>
+      </div>
+    `);
+  }
+
+  if (customSecs.length > 0) {
+    customSecs.forEach(sec => {
+      const fields = Array.isArray(sec.campos) ? sec.campos : [];
+      sections.push(`
+        <div class="req-section-block req-custom-sec-block">
+          <span class="req-section-label">🧩 ${escapeHtml(sec.tituloSecao || 'Seção Personalizada')}</span>
+          ${fields.length > 0 ? `
+            <div class="req-custom-fields-viewer-grid">
+              ${fields.map(f => `
+                <div class="req-custom-field-view-item">
+                  <span class="req-custom-field-view-name">
+                    ${escapeHtml(f.nomeCampo || 'Campo')}${f.obrigatorio ? ' *' : ''}
+                    <span class="badge-subtle" style="font-size: 0.72rem; margin-left: 4px;">${escapeHtml(f.tipoCampo || 'Texto')}</span>
+                  </span>
+                  <div class="req-custom-field-view-val">${f.valor !== undefined && f.valor !== '' ? escapeHtml(String(f.valor)) : '<span style="color:var(--text-muted); font-style:italic;">Não preenchido</span>'}</div>
+                </div>
+              `).join('')}
+            </div>
+          ` : '<p class="empty-note" style="margin: 4px 0 0 0;">Nenhum campo definido nesta seção.</p>'}
+        </div>
+      `);
+    });
+  }
+
+  return sections.join('');
+}
+
+/**
  * Gera representação limpa em Markdown do Requisito para cópia rápida.
  */
 function buildRequirementMarkdown(req) {
-  const project = store.getProjectById(req.projectId);
+  const project = typeof store !== 'undefined' ? store.getProjectById(req.projectId) : null;
+  const typeInfo = getRequirementTypeInfo(req.type);
   const parsed = parseRequirementNarrative(req.userStory);
   const scenarios = parseRequirementBddScenarios(req.bdd);
   const lines = [
     `# [${req.code || 'REQ'}] ${req.title || ''}`,
     '',
     `- **Projeto:** ${project ? project.name : 'Geral'}`,
-    `- **Tipo:** ${req.type === 'non-functional' ? 'Não-Funcional (RNF)' : 'Funcional (RF)'}`,
+    req.numeroProcessMaker ? `- **Número do ProcessMaker:** ${req.numeroProcessMaker}` : null,
+    `- **Tipo:** ${typeInfo.label}`,
+    `- **Versão:** v${req.versaoAtual || '1.0'}`,
     `- **Prioridade (MoSCoW):** ${req.moscow || 'Must'}`,
     req.feature ? `- **Feature / Módulo:** ${req.feature}` : null,
-    '',
-    '## História de Usuário',
-    ''
+    req.criadoPor?.nome ? `- **Criado por:** ${req.criadoPor.nome}${req.criadoPor.cargo ? ` (${req.criadoPor.cargo})` : ''}${req.criadoPor.email ? ` — ${req.criadoPor.email}` : ''}` : null
   ].filter(v => v !== null);
 
-  if (parsed.como || parsed.quero || parsed.paraQue) {
-    if (parsed.como) lines.push(`- **Como:** ${parsed.como}`);
-    if (parsed.quero) lines.push(`- **Quero:** ${parsed.quero}`);
-    if (parsed.paraQue) lines.push(`- **Para que:** ${parsed.paraQue}`);
-  } else if (parsed.fallbackText) {
-    lines.push(parsed.fallbackText);
+  if (Array.isArray(req.historicoAtualizacoes) && req.historicoAtualizacoes.length > 0) {
+    lines.push('', '## Histórico de Atualizações', '', '| Data | Versão | Descrição | Responsável |', '| --- | --- | --- | --- |');
+    req.historicoAtualizacoes.forEach(h => {
+      lines.push(`| ${h.data || ''} | ${h.versao || ''} | ${h.descricao || ''} | ${h.responsavelNome || ''} |`);
+    });
   }
 
-  if (parsed.rules.length > 0) {
-    lines.push('', '## Regras de Negócio', '');
-    parsed.rules.forEach(r => lines.push(`- **${r.code}:** ${r.text}`));
+  if (req.descricaoRequisito && req.descricaoRequisito.trim()) {
+    lines.push('', '## Descrição do Requisito', '', req.descricaoRequisito.trim());
+  }
+
+  if (req.preCondicoes && req.preCondicoes.trim()) {
+    lines.push('', '## Pré-condições', '', req.preCondicoes.trim());
+  }
+
+  if (req.posCondicoes && req.posCondicoes.trim()) {
+    lines.push('', '## Pós-condições', '', req.posCondicoes.trim());
+  }
+
+  if (Array.isArray(req.regrasNegocio) && req.regrasNegocio.length > 0) {
+    lines.push('', '## Regras de Negócio', '', '| Código | Descrição |', '| --- | --- |');
+    req.regrasNegocio.forEach((r, idx) => {
+      lines.push(`| ${r.codigo || `RN${String(idx + 1).padStart(3, '0')}`} | ${String(r.descricao || '').replace(/\n/g, ' ')} |`);
+    });
+  }
+
+  const flow = (req.fluxoPrincipal || req.fluxoRequisito || '').trim();
+  if (flow) {
+    lines.push('', '## 1.1 Fluxo', '', flow);
+  }
+
+  if (Array.isArray(req.telas) && req.telas.length > 0) {
+    lines.push('', '## 1.2 Telas / Protótipos', '');
+    req.telas.forEach((t, idx) => lines.push(`- Tela ${idx + 1}: ${t.title || t.tituloTela || 'Imagem anexada'}`));
+  }
+
+  if (Array.isArray(req.entradas) && req.entradas.length > 0) {
+    lines.push('', '## 1.3.1 Entradas', '', '| Campo | Descrição | Tipo | Obrig | Regra |', '| --- | --- | --- | --- | --- |');
+    req.entradas.forEach(e => lines.push(`| ${e.campo || ''} | ${e.descricao || ''} | ${e.tipoCampo || ''} | ${e.obrigatorio ? 'Sim' : 'Não'} | ${String(e.regra || '').replace(/\n/g, ' ')} |`));
+  }
+
+  if (Array.isArray(req.saidas) && req.saidas.length > 0) {
+    lines.push('', '## 1.3.2 Saídas', '', '| Campo | Descrição | Tipo | Obrig | Regra |', '| --- | --- | --- | --- | --- |');
+    req.saidas.forEach(s => lines.push(`| ${s.campo || ''} | ${s.descricao || ''} | ${s.tipoCampo || ''} | ${s.obrigatorio ? 'Sim' : 'Não'} | ${String(s.regra || '').replace(/\n/g, ' ')} |`));
+  }
+
+  if (Array.isArray(req.criteriosAceite) && req.criteriosAceite.length > 0) {
+    lines.push('', '## 1.4 Critérios de Aceite', '', '| Item | Tipo | Categoria | Descrição |', '| --- | --- | --- | --- |');
+    req.criteriosAceite.forEach((c, idx) => lines.push(`| ${c.item || `CA${String(idx + 1).padStart(3, '0')}`} | ${c.tipo || ''} | ${c.categoria || ''} | ${String(c.descricao || '').replace(/\n/g, ' ')} |`));
+  }
+
+  if (Array.isArray(req.secoesCustomizadas) && req.secoesCustomizadas.length > 0) {
+    req.secoesCustomizadas.forEach(sec => {
+      lines.push('', `## ${sec.tituloSecao || 'Seção Personalizada'}`, '');
+      const fields = Array.isArray(sec.campos) ? sec.campos : [];
+      if (fields.length > 0) {
+        fields.forEach(f => {
+          lines.push(`- **${f.nomeCampo || 'Campo'}:** ${f.valor !== undefined && f.valor !== '' ? f.valor : '—'}`);
+        });
+      }
+    });
+  }
+
+  if (parsed.como || parsed.quero || parsed.paraQue || parsed.fallbackText || parsed.rules.length > 0) {
+    lines.push('', '## História de Usuário', '');
+    if (parsed.como || parsed.quero || parsed.paraQue) {
+      if (parsed.como) lines.push(`- **Como:** ${parsed.como}`);
+      if (parsed.quero) lines.push(`- **Quero:** ${parsed.quero}`);
+      if (parsed.paraQue) lines.push(`- **Para que:** ${parsed.paraQue}`);
+    } else if (parsed.fallbackText) {
+      lines.push(parsed.fallbackText);
+    }
+    if (parsed.rules.length > 0) {
+      lines.push('', '### Regras de Negócio', '');
+      parsed.rules.forEach(r => lines.push(`- **${r.code}:** ${r.text}`));
+    }
   }
 
   if (scenarios.length > 0) {
@@ -3200,8 +3675,9 @@ function renderRequirementViewerContent(req) {
   };
   const moscowClass = req.moscow === 'Must' ? 'moscow-must' : (req.moscow === 'Should' ? 'moscow-should' : 'moscow-could');
 
+  const typeInfo = getRequirementTypeInfo(req.type);
   document.getElementById('viewer-req-code').textContent = req.code || 'REQ';
-  document.getElementById('viewer-req-type').textContent = req.type === 'non-functional' ? 'Não-Funcional (RNF)' : 'Funcional (RF)';
+  document.getElementById('viewer-req-type').textContent = typeInfo.label;
   const moscowEl = document.getElementById('viewer-req-moscow');
   moscowEl.className = `moscow-badge ${moscowClass}`;
   moscowEl.textContent = moscowLabels[req.moscow] || req.moscow;
@@ -3228,6 +3704,12 @@ function renderRequirementViewerContent(req) {
 
   const actionsEl = document.getElementById('viewer-req-actions');
   actionsEl.innerHTML = `
+    <button type="button" class="btn btn-secondary btn-sm" onclick="exportSingleRequirementSpecPDF('${req.id}')" title="Gerar PDF formal no padrão Especificação SUSIS / Banpará">
+      📄 PDF SUSIS
+    </button>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="printSingleRequirementSpec('${req.id}')" title="Visualizar / Imprimir Especificação no padrão SUSIS / Banpará">
+      🖨️ Imprimir Spec
+    </button>
     <button type="button" class="btn btn-secondary btn-sm" onclick="copyRequirementMarkdown('${req.id}')" title="Copiar especificação estruturada em Markdown">
       📋 Copiar MD
     </button>
@@ -3248,10 +3730,17 @@ function renderRequirementViewerContent(req) {
     ` : ''}
   `;
 
-  document.getElementById('viewer-req-main-content').innerHTML = `
-    ${renderRequirementNarrativeHtml(req.userStory, { compact: false })}
-    ${renderRequirementBddHtml(req.bdd, { compact: false })}
-  `;
+  const hasBanpara = hasStructuredSpecContent(req);
+  const hasLegacyNarrative = Boolean((req.userStory && req.userStory.trim()) || (req.bdd && req.bdd.trim()));
+  let mainHtml = '';
+  if (hasBanpara || !hasLegacyNarrative) {
+    mainHtml += renderRequirementBanparaViewerHtml(req, project);
+  }
+  if (hasLegacyNarrative) {
+    mainHtml += renderRequirementNarrativeHtml(req.userStory, { compact: false });
+    mainHtml += renderRequirementBddHtml(req.bdd, { compact: false });
+  }
+  document.getElementById('viewer-req-main-content').innerHTML = mainHtml;
 
   const doneTasksCount = linkedTasks.filter(t => t.status === 'done').length;
   const tasksPct = linkedTasks.length > 0 ? Math.round((doneTasksCount / linkedTasks.length) * 100) : 0;
@@ -3394,12 +3883,16 @@ function renderRequirements() {
         reqActionsHtml += `<button class="card-btn-action btn-del btn-xs" onclick="confirmDeleteRequirement('${req.id}', '${req.code}', '${escapeHtml(req.title)}')" title="Excluir Requisito">🗑️ Excluir</button>`;
       }
 
+      const typeInfo = getRequirementTypeInfo(req.type);
+      const listSummaryText = req.fluxoPrincipal
+        ? req.fluxoPrincipal.replace(/\s+/g, ' ').trim()
+        : (req.userStory || 'Sem descrição');
       rowsHtml += `
         <tr id="req-row-${req.id}">
           <td>
             <div style="display: flex; flex-direction: column; gap: 2px;">
               <span class="req-code-badge" onclick="openRequirementViewer('${req.id}')" style="cursor: pointer;">${escapeHtml(req.code)}</span>
-              <span class="badge-subtle" style="font-size: 0.68rem; align-self: flex-start;">${req.type === 'non-functional' ? 'RNF' : 'RF'}</span>
+              <span class="badge-subtle" style="font-size: 0.68rem; align-self: flex-start;">${typeInfo.abbr}</span>
             </div>
           </td>
           <td>
@@ -3407,9 +3900,11 @@ function renderRequirements() {
               <strong class="cell-main-title" onclick="openRequirementViewer('${req.id}')" style="cursor: pointer;" title="Abrir no Leitor Harmonioso">${escapeHtml(req.title)}</strong>
               <div class="cell-sub-meta">
                 <span class="badge-subtle" style="font-size: 0.7rem;">${project ? escapeHtml(project.name) : 'Geral'}</span>
+                ${req.versaoAtual ? `<span class="badge-subtle" style="font-size: 0.7rem;">v${escapeHtml(req.versaoAtual)}</span>` : ''}
+                ${req.numeroProcessMaker ? `<span class="badge-subtle" style="font-size: 0.7rem;">PM ${escapeHtml(req.numeroProcessMaker)}</span>` : ''}
                 ${req.feature ? `<span class="badge-feature-pill" title="Feature / Módulo de Negócio">🧩 ${escapeHtml(req.feature)}</span>` : ''}
                 ${req.createdAt ? `<span class="badge-subtle req-date-badge" style="font-size: 0.7rem; color: var(--text-muted);" title="Data de Criação: ${formatDateTimeBR(req.createdAt)}">🕒 ${formatDateTimeBR(req.createdAt)}</span>` : ''}
-                <span class="cell-sub-desc" title="História de Usuário: ${escapeHtml(req.userStory || '')}">📖 ${escapeHtml(req.userStory || 'Sem User Story')}</span>
+                <span class="cell-sub-desc" title="${escapeHtml(listSummaryText)}">📖 ${escapeHtml(listSummaryText)}</span>
               </div>
             </div>
           </td>
@@ -3479,10 +3974,16 @@ function renderRequirements() {
         reqActionsHtml += `<button class="card-btn-action btn-del" onclick="confirmDeleteRequirement('${req.id}', '${req.code}', '${escapeHtml(req.title)}')" title="Excluir Requisito">🗑️ Excluir</button>`;
       }
 
+      const typeInfo = getRequirementTypeInfo(req.type);
       const card = document.createElement('article');
       card.className = 'requirement-card glass-panel';
       card.id = `req-card-${req.id}`;
       card.setAttribute('data-req-id', req.id);
+      const usesStructured = hasStructuredSpecContent(req);
+      const cardBodyHtml = usesStructured
+        ? renderRequirementSpecSummaryHtml(req, { compact: true, reqId: req.id })
+        : `${renderRequirementNarrativeHtml(req.userStory, { compact: true, reqId: req.id, maxRules: 3 })}${renderRequirementBddHtml(req.bdd, { compact: true, reqId: req.id, maxScenarios: 2 })}`;
+
       card.innerHTML = `
         <div class="req-header-wrap">
           <div class="req-header-top">
@@ -3495,7 +3996,9 @@ function renderRequirements() {
             </div>
           </div>
           <div class="req-header-meta">
-            <span class="badge-subtle" style="font-size: 0.7rem; font-weight: 700;">${req.type === 'non-functional' ? 'RNF' : 'RF'}</span>
+            <span class="badge-subtle" style="font-size: 0.7rem; font-weight: 700;">${typeInfo.abbr}</span>
+            ${req.versaoAtual ? `<span class="badge-subtle" style="font-size: 0.7rem; font-weight: 700;">v${escapeHtml(req.versaoAtual)}</span>` : ''}
+            ${req.numeroProcessMaker ? `<span class="badge-subtle" style="font-size: 0.7rem;">PM ${escapeHtml(req.numeroProcessMaker)}</span>` : ''}
             <span class="moscow-badge ${moscowClass}">${moscowLabels[req.moscow] || req.moscow}</span>
             <span class="badge-subtle">${project ? escapeHtml(project.name) : 'Geral'}</span>
             ${req.feature ? `<span class="badge-feature" title="Feature / Módulo de Negócio">🧩 ${escapeHtml(req.feature)}</span>` : ''}
@@ -3504,8 +4007,7 @@ function renderRequirements() {
           </div>
         </div>
 
-        ${renderRequirementNarrativeHtml(req.userStory, { compact: true, reqId: req.id, maxRules: 3 })}
-        ${renderRequirementBddHtml(req.bdd, { compact: true, reqId: req.id, maxScenarios: 2 })}
+        ${cardBodyHtml}
 
         <div class="req-footer-row">
           <div class="req-linked-tasks-block">
@@ -3544,7 +4046,7 @@ function renderRequirements() {
 let isManualReqCode = false;
 
 function getNextRequirementCode(projectId, reqType) {
-  const prefix = reqType === 'non-functional' ? 'RNF' : 'RF';
+  const prefix = reqType === 'non-functional' ? 'RNF' : (reqType === 'business-rule' ? 'RN' : 'RF');
   if (!projectId) return `${prefix}-01`;
 
   // Consulta requisitos cadastrados especificamente para o projeto
@@ -3736,6 +4238,884 @@ function populateFeatureFilterOptions() {
 }
 window.populateFeatureFilterOptions = populateFeatureFilterOptions;
 
+// ==============================================================================
+// Controlador do Modal Estruturado de Requisitos (Padrão SUSIS / Banpará)
+// ==============================================================================
+const REQ_TAB_ORDER = ['general', 'business-rules', 'attributes', 'criteria', 'custom-sections', 'history'];
+const REQ_INPUT_FIELD_TYPES = [
+  'Alfanumérico', 'Numérico', 'Data', 'Data/Hora', 'Booleano',
+  'Arquivo/Upload', 'Select/Dropdown', 'Texto Longo', 'E-mail', 'CPF/CNPJ', 'Telefone', 'Outro'
+];
+const REQ_OUTPUT_FIELD_TYPES = [
+  'Alfanumérico', 'Numérico', 'Data', 'Data/Hora', 'Menu Dropdown',
+  'Status/Badge', 'Link/Ação', 'Tabela/Grid', 'Arquivo', 'Outro'
+];
+const REQ_ANEXO01_TYPES = [
+  'Negócio (N)', 'Validação (V)', 'Interface (I)',
+  'Técnico (T)', 'Não Funcional (NF)', 'Outros (O)'
+];
+const REQ_CUSTOM_FIELD_TYPES = [
+  'Texto Curto',
+  'Texto Longo / Rich Text',
+  'Lista de Itens',
+  'Tabela Chave-Valor',
+  'Numérico',
+  'Booleano'
+];
+
+window.reqFormDraft = {
+  activeTab: 'general',
+  criadoPor: { id: '', nome: '', cargo: '', email: '' },
+  regrasNegocio: [],
+  telas: [],
+  entradas: [],
+  saidas: [],
+  criteriosAceite: [],
+  secoesCustomizadas: [],
+  historicoAtualizacoes: []
+};
+
+function getCurrentUserSpecProfile() {
+  const user = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
+  const roleMap = {
+    admin: 'Administrador / Gestor Executivo',
+    pm: 'Product Manager / Analista de Requisitos',
+    dev: 'Engenheiro de Software',
+    qa: 'Analista de QA'
+  };
+  return {
+    id: (user && user.id) || '',
+    nome: (user && user.name) || 'Analista de Requisitos',
+    cargo: (user && (user.devRole || roleMap[user.role])) || 'Analista de Requisitos',
+    email: (user && user.email) || ''
+  };
+}
+
+function updateReqModalTabBadges() {
+  const rnBadge = document.getElementById('req-tab-rn-count');
+  const attrBadge = document.getElementById('req-tab-attr-count');
+  const caBadge = document.getElementById('req-tab-ca-count');
+  const customBadge = document.getElementById('req-tab-custom-count');
+  const histBadge = document.getElementById('req-tab-hist-count');
+  const screensCount = document.getElementById('req-screens-count-label');
+  const verVal = document.getElementById('req-version')?.value?.trim() || '1.0';
+  const verPill = document.getElementById('req-header-version-pill');
+
+  if (rnBadge) rnBadge.textContent = String(reqFormDraft.regrasNegocio?.length || 0);
+  if (attrBadge) attrBadge.textContent = String((reqFormDraft.entradas?.length || 0) + (reqFormDraft.saidas?.length || 0));
+  if (caBadge) caBadge.textContent = String(reqFormDraft.criteriosAceite?.length || 0);
+  if (customBadge) customBadge.textContent = String(reqFormDraft.secoesCustomizadas?.length || 0);
+  if (histBadge) histBadge.textContent = String(reqFormDraft.historicoAtualizacoes?.length || 0);
+  if (screensCount) screensCount.textContent = `${reqFormDraft.telas?.length || 0} tela(s) anexada(s)`;
+  if (verPill) verPill.textContent = `v${verVal}`;
+}
+
+window.switchReqModalTab = function(tabKey) {
+  if (!REQ_TAB_ORDER.includes(tabKey)) tabKey = 'general';
+  reqFormDraft.activeTab = tabKey;
+
+  document.querySelectorAll('#modal-req-tabs .modal-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.reqTab === tabKey);
+  });
+  REQ_TAB_ORDER.forEach(k => {
+    const pane = document.getElementById(`req-pane-${k}`);
+    if (pane) pane.classList.toggle('active', k === tabKey);
+  });
+
+  const idx = REQ_TAB_ORDER.indexOf(tabKey);
+  const prevBtn = document.getElementById('btn-req-prev-tab');
+  const nextBtn = document.getElementById('btn-req-next-tab');
+  if (prevBtn) prevBtn.disabled = idx <= 0;
+  if (nextBtn) nextBtn.style.display = idx >= REQ_TAB_ORDER.length - 1 ? 'none' : 'inline-flex';
+
+  const scrollBody = document.getElementById('req-form-scroll-body');
+  if (scrollBody) scrollBody.scrollTop = 0;
+};
+
+window.stepReqModalTab = function(delta) {
+  const curIdx = REQ_TAB_ORDER.indexOf(reqFormDraft.activeTab || 'general');
+  const nextIdx = Math.max(0, Math.min(REQ_TAB_ORDER.length - 1, curIdx + delta));
+  switchReqModalTab(REQ_TAB_ORDER[nextIdx]);
+};
+
+window.toggleAnexo01Legend = function() {
+  const panel = document.getElementById('req-anexo01-legend-panel');
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'block';
+};
+
+window.insertReqFlowTemplate = function(mode) {
+  const ta = document.getElementById('req-flow');
+  if (!ta) return;
+  const cur = ta.value || '';
+  if (mode === 'susis') {
+    if (cur.trim() && !confirm('Substituir o fluxo atual pelo modelo padrão SUSIS / Banpará?')) return;
+    ta.value = [
+      '1. Acessar o Sistema:',
+      '• O usuário realiza login com suas credenciais e seleciona o perfil autorizado.',
+      '• O usuário seleciona a área de trabalho correspondente.',
+      '2. Acessar a funcionalidade no menu lateral esquerdo.',
+      '3. Após selecionar, o sistema exibe a tela de listagem e filtros.',
+      '4. Clicar no Botão "Adicionar" / Ação Principal:',
+      '• Preencher os campos obrigatórios.',
+      '• O sistema valida as regras e exibe mensagem de confirmação ao concluir.'
+    ].join('\n');
+    ta.focus();
+    return;
+  }
+  if (mode === 'step') {
+    const matches = cur.match(/(?:^|\n)\s*(\d+)\.\s/g) || [];
+    const nextStep = matches.length + 1;
+    const prefix = cur.trim() ? '\n' : '';
+    ta.value = `${cur}${prefix}${nextStep}. `;
+    ta.focus();
+    return;
+  }
+  if (mode === 'subitem') {
+    const prefix = cur.trim() ? '\n' : '';
+    ta.value = `${cur}${prefix}   • `;
+    ta.focus();
+  }
+};
+
+window.openScreenLightbox = function(title, src) {
+  const img = document.getElementById('lightbox-screen-img');
+  const heading = document.getElementById('lightbox-screen-title');
+  if (heading) heading.textContent = `🖼️ ${title || 'Visualização de Tela'}`;
+  if (img) img.src = src || '';
+  openModal('modal-screen-lightbox');
+};
+
+function compressScreenImageFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith('image/')) {
+      return reject(new Error('Arquivo inválido (use PNG, JPG ou WebP).'));
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Falha ao ler imagem.'));
+    reader.onload = (ev) => {
+      const rawDataUrl = ev.target.result;
+      const img = new Image();
+      img.onerror = () => resolve({ dataUrl: rawDataUrl, mimeType: file.type });
+      img.onload = () => {
+        const maxW = 1400;
+        if (img.width <= maxW && file.size <= 350 * 1024) {
+          return resolve({ dataUrl: rawDataUrl, mimeType: file.type });
+        }
+        const scale = img.width > maxW ? (maxW / img.width) : 1;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve({ dataUrl: rawDataUrl, mimeType: file.type });
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const targetMime = file.type === 'image/png' && file.size <= 250 * 1024 ? 'image/png' : 'image/jpeg';
+        const compressed = canvas.toDataURL(targetMime, 0.85);
+        resolve({ dataUrl: compressed, mimeType: targetMime });
+      };
+      img.src = rawDataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function processReqScreenFiles(files) {
+  const arr = Array.from(files || []).filter(f => f && f.type && f.type.startsWith('image/'));
+  if (arr.length === 0) {
+    showToast('Selecione apenas arquivos de imagem (PNG, JPG ou WebP).', 'warn');
+    return;
+  }
+  for (const file of arr) {
+    try {
+      const { dataUrl, mimeType } = await compressScreenImageFile(file);
+      const cleanName = (file.name || `Tela_${reqFormDraft.telas.length + 1}`).replace(/\.[^.]+$/, '');
+      reqFormDraft.telas.push({
+        id: `scr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        title: cleanName,
+        url: dataUrl,
+        mimeType,
+        fileName: file.name || `${cleanName}.jpg`
+      });
+    } catch (err) {
+      showToast(err.message || 'Erro ao processar imagem.', 'error');
+    }
+  }
+  renderReqScreensGrid();
+  updateReqModalTabBadges();
+}
+
+function renderReqScreensGrid() {
+  const grid = document.getElementById('req-screens-list');
+  if (!grid) return;
+  const telas = reqFormDraft.telas || [];
+  if (telas.length === 0) {
+    grid.innerHTML = '';
+    return;
+  }
+  grid.innerHTML = telas.map((sc, idx) => {
+    const src = sc.url || sc.dataUrl || '';
+    const title = sc.title || sc.tituloTela || `Tela ${idx + 1}`;
+    return `
+      <div class="req-screen-card">
+        <div class="req-screen-thumb-wrap" onclick="openScreenLightbox('${escapeHtml(title)}', '${src.replace(/'/g, "\\'")}')">
+          <img src="${src}" alt="${escapeHtml(title)}">
+        </div>
+        <div class="req-screen-card-controls">
+          <input type="text" class="req-dyn-input" value="${escapeHtml(title)}" placeholder="Título / Legenda da Tela"
+                 onchange="reqFormDraft.telas[${idx}].title = this.value; reqFormDraft.telas[${idx}].tituloTela = this.value;">
+          <button type="button" class="req-icon-btn" onclick="moveReqScreen(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} title="Mover para esquerda">◀</button>
+          <button type="button" class="req-icon-btn" onclick="moveReqScreen(${idx}, 1)" ${idx === telas.length - 1 ? 'disabled' : ''} title="Mover para direita">▶</button>
+          <button type="button" class="req-icon-btn is-danger" onclick="removeReqScreen(${idx})" title="Remover Tela">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+window.moveReqScreen = function(idx, delta) {
+  const arr = reqFormDraft.telas;
+  const target = idx + delta;
+  if (!arr || target < 0 || target >= arr.length) return;
+  [arr[idx], arr[target]] = [arr[target], arr[idx]];
+  renderReqScreensGrid();
+};
+
+window.removeReqScreen = function(idx) {
+  reqFormDraft.telas.splice(idx, 1);
+  renderReqScreensGrid();
+  updateReqModalTabBadges();
+};
+
+function renderReqAttributesTable(direction) {
+  const isEntrada = direction === 'entrada';
+  const tbody = document.getElementById(isEntrada ? 'req-entradas-tbody' : 'req-saidas-tbody');
+  if (!tbody) return;
+  const list = isEntrada ? reqFormDraft.entradas : reqFormDraft.saidas;
+  const typeOptions = isEntrada ? REQ_INPUT_FIELD_TYPES : REQ_OUTPUT_FIELD_TYPES;
+
+  if (!list || list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 1.25rem; color: var(--text-muted); font-style: italic;">Nenhum atributo de ${isEntrada ? 'entrada' : 'saída'} adicionado. Clique em "+ Adicionar ${isEntrada ? 'Entrada' : 'Saída'}" acima.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map((row, idx) => {
+    const selectedType = row.tipoCampo || 'Alfanumérico';
+    const hasCustomType = !typeOptions.includes(selectedType);
+    return `
+      <tr>
+        <td>
+          <div class="req-row-move-group">
+            <span style="font-size: 0.72rem; color: var(--text-muted); width: 18px;">${idx + 1}.</span>
+            <button type="button" class="req-icon-btn" onclick="moveReqAttributeRow('${direction}', ${idx}, -1)" ${idx === 0 ? 'disabled' : ''} title="Subir">↑</button>
+            <button type="button" class="req-icon-btn" onclick="moveReqAttributeRow('${direction}', ${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''} title="Descer">↓</button>
+          </div>
+        </td>
+        <td>
+          <input type="text" class="req-dyn-input" value="${escapeHtml(row.campo || '')}" placeholder="Ex: Valor"
+                 oninput="updateReqAttrField('${direction}', ${idx}, 'campo', this.value)">
+        </td>
+        <td>
+          <textarea class="req-dyn-textarea" placeholder="O que o campo faz / exibe..."
+                    oninput="updateReqAttrField('${direction}', ${idx}, 'descricao', this.value)">${escapeHtml(row.descricao || '')}</textarea>
+        </td>
+        <td>
+          <select class="req-dyn-select" onchange="updateReqAttrField('${direction}', ${idx}, 'tipoCampo', this.value)">
+            ${typeOptions.map(t => `<option value="${escapeHtml(t)}" ${t === selectedType ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
+            ${hasCustomType ? `<option value="${escapeHtml(selectedType)}" selected>${escapeHtml(selectedType)}</option>` : ''}
+          </select>
+        </td>
+        <td>
+          <select class="req-dyn-select" onchange="updateReqAttrField('${direction}', ${idx}, 'obrigatorio', this.value === 'Sim')">
+            <option value="Sim" ${row.obrigatorio ? 'selected' : ''}>Sim</option>
+            <option value="Não" ${!row.obrigatorio ? 'selected' : ''}>Não</option>
+          </select>
+        </td>
+        <td>
+          <textarea class="req-dyn-textarea" id="req-${direction}-regra-${idx}" placeholder="Visibilidade, editabilidade, validações, formato..."
+                    oninput="updateReqAttrField('${direction}', ${idx}, 'regra', this.value)">${escapeHtml(row.regra || '')}</textarea>
+          <div class="req-rule-presets">
+            <button type="button" class="req-preset-chip" onclick="applyReqRulePreset('${direction}', ${idx}, 'Campo - Visível: Sim | Campo - Editável: ${isEntrada ? 'Sim' : 'Não'}')">
+              + Visível / ${isEntrada ? 'Editável' : 'Leitura'}
+            </button>
+            <button type="button" class="req-preset-chip" onclick="applyReqRulePreset('${direction}', ${idx}, '${isEntrada ? 'Regra: Exibe a mensagem “Campo obrigatório!” se não for preenchido.' : 'Formato: (00) 00000-0000.'}')">
+              + ${isEntrada ? 'Msg Obrigatório' : 'Máscara/Formato'}
+            </button>
+          </div>
+        </td>
+        <td style="text-align: center;">
+          <button type="button" class="req-icon-btn is-danger" onclick="removeReqAttributeRow('${direction}', ${idx})" title="Remover linha">🗑️</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+window.updateReqAttrField = function(direction, idx, field, value) {
+  const list = direction === 'entrada' ? reqFormDraft.entradas : reqFormDraft.saidas;
+  if (list && list[idx]) list[idx][field] = value;
+};
+
+window.applyReqRulePreset = function(direction, idx, text) {
+  const list = direction === 'entrada' ? reqFormDraft.entradas : reqFormDraft.saidas;
+  if (!list || !list[idx]) return;
+  const cur = (list[idx].regra || '').trim();
+  const next = cur ? (cur.includes(text) ? cur : `${cur}\n${text}`) : text;
+  list[idx].regra = next;
+  const ta = document.getElementById(`req-${direction}-regra-${idx}`);
+  if (ta) ta.value = next;
+};
+
+window.addReqAttributeRow = function(direction) {
+  const isEntrada = direction === 'entrada';
+  const list = isEntrada ? reqFormDraft.entradas : reqFormDraft.saidas;
+  list.push({
+    id: `attr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    campo: '',
+    descricao: '',
+    tipoCampo: 'Alfanumérico',
+    obrigatorio: true,
+    regra: isEntrada ? 'Campo - Visível: Sim | Campo - Editável: Sim' : 'Campo - Visível: Sim | Campo - Editável: Não'
+  });
+  renderReqAttributesTable(direction);
+  updateReqModalTabBadges();
+};
+
+window.moveReqAttributeRow = function(direction, idx, delta) {
+  const list = direction === 'entrada' ? reqFormDraft.entradas : reqFormDraft.saidas;
+  const target = idx + delta;
+  if (!list || target < 0 || target >= list.length) return;
+  [list[idx], list[target]] = [list[target], list[idx]];
+  renderReqAttributesTable(direction);
+};
+
+window.removeReqAttributeRow = function(direction, idx) {
+  const list = direction === 'entrada' ? reqFormDraft.entradas : reqFormDraft.saidas;
+  list.splice(idx, 1);
+  renderReqAttributesTable(direction);
+  updateReqModalTabBadges();
+};
+
+function renumberAcceptanceCriteria() {
+  (reqFormDraft.criteriosAceite || []).forEach((ca, idx) => {
+    if (!ca._customItem || /^CA\d{3}$/i.test(ca.item || '')) {
+      ca.item = `CA${String(idx + 1).padStart(3, '0')}`;
+    }
+  });
+}
+
+function renderReqCriteriaTable() {
+  const tbody = document.getElementById('req-criteria-tbody');
+  if (!tbody) return;
+  renumberAcceptanceCriteria();
+  const list = reqFormDraft.criteriosAceite || [];
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 1.25rem; color: var(--text-muted); font-style: italic;">Nenhum Critério de Aceite estruturado adicionado. Clique em "+ Adicionar Critério (CA)" acima.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map((row, idx) => {
+    const selectedTipo = row.tipo || 'Negócio (N)';
+    const hasCustomTipo = !REQ_ANEXO01_TYPES.includes(selectedTipo);
+    return `
+      <tr>
+        <td>
+          <div class="req-row-move-group">
+            <button type="button" class="req-icon-btn" onclick="moveReqCriterionRow(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} title="Subir">↑</button>
+            <button type="button" class="req-icon-btn" onclick="moveReqCriterionRow(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''} title="Descer">↓</button>
+          </div>
+        </td>
+        <td>
+          <input type="text" class="req-dyn-input font-mono" style="font-weight: 700; color: var(--accent-primary);" value="${escapeHtml(row.item || `CA${String(idx + 1).padStart(3, '0')}`)}"
+                 oninput="if(reqFormDraft.criteriosAceite[${idx}]){ reqFormDraft.criteriosAceite[${idx}].item = this.value; reqFormDraft.criteriosAceite[${idx}]._customItem = !/^CA\\d{3}$/i.test(this.value.trim()); }">
+        </td>
+        <td>
+          <select class="req-dyn-select" onchange="if(reqFormDraft.criteriosAceite[${idx}]) reqFormDraft.criteriosAceite[${idx}].tipo = this.value;">
+            ${REQ_ANEXO01_TYPES.map(t => `<option value="${escapeHtml(t)}" ${t === selectedTipo ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
+            ${hasCustomTipo ? `<option value="${escapeHtml(selectedTipo)}" selected>${escapeHtml(selectedTipo)}</option>` : ''}
+          </select>
+        </td>
+        <td>
+          <select class="req-dyn-select" onchange="if(reqFormDraft.criteriosAceite[${idx}]) reqFormDraft.criteriosAceite[${idx}].categoria = this.value;">
+            <option value="Geral" ${row.categoria === 'Geral' ? 'selected' : ''}>Geral</option>
+            <option value="Específico" ${row.categoria !== 'Geral' ? 'selected' : ''}>Específico</option>
+          </select>
+        </td>
+        <td>
+          <textarea class="req-dyn-textarea" placeholder="Descreva a condição verificável de aceite..."
+                    oninput="if(reqFormDraft.criteriosAceite[${idx}]) reqFormDraft.criteriosAceite[${idx}].descricao = this.value;">${escapeHtml(row.descricao || '')}</textarea>
+        </td>
+        <td style="text-align: center;">
+          <button type="button" class="req-icon-btn is-danger" onclick="removeReqCriterionRow(${idx})" title="Remover critério">🗑️</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+window.addReqCriterionRow = function() {
+  const nextNum = (reqFormDraft.criteriosAceite?.length || 0) + 1;
+  reqFormDraft.criteriosAceite.push({
+    id: `ca_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    item: `CA${String(nextNum).padStart(3, '0')}`,
+    tipo: 'Interface (I)',
+    categoria: 'Específico',
+    descricao: ''
+  });
+  renderReqCriteriaTable();
+  updateReqModalTabBadges();
+};
+
+window.moveReqCriterionRow = function(idx, delta) {
+  const list = reqFormDraft.criteriosAceite;
+  const target = idx + delta;
+  if (!list || target < 0 || target >= list.length) return;
+  [list[idx], list[target]] = [list[target], list[idx]];
+  renderReqCriteriaTable();
+};
+
+window.removeReqCriterionRow = function(idx) {
+  reqFormDraft.criteriosAceite.splice(idx, 1);
+  renderReqCriteriaTable();
+  updateReqModalTabBadges();
+};
+
+// ==============================================================================
+// 1.4 Regras de Negócio (RN)
+// ==============================================================================
+function renumberBusinessRules() {
+  (reqFormDraft.regrasNegocio || []).forEach((rn, idx) => {
+    if (!rn._customCodigo || /^RN\d{3}$/i.test(rn.codigo || '')) {
+      rn.codigo = `RN${String(idx + 1).padStart(3, '0')}`;
+    }
+  });
+}
+
+function renderReqBusinessRules() {
+  const tbody = document.getElementById('req-rn-tbody');
+  if (!tbody) return;
+  renumberBusinessRules();
+  const list = reqFormDraft.regrasNegocio || [];
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 1.25rem; color: var(--text-muted); font-style: italic;">Nenhuma Regra de Negócio cadastrada. Clique em "+ Adicionar Regra (RN)" ou "⚡ Inserir em Lote" acima.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map((rn, idx) => `
+    <tr>
+      <td>
+        <div class="req-row-move-group">
+          <button type="button" class="req-icon-btn" onclick="moveReqBusinessRuleRow(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} title="Subir">↑</button>
+          <button type="button" class="req-icon-btn" onclick="moveReqBusinessRuleRow(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''} title="Descer">↓</button>
+        </div>
+      </td>
+      <td>
+        <input type="text" class="req-dyn-input font-mono req-rn-badge" style="width: 85px; font-weight: 800; text-align: center;" value="${escapeHtml(rn.codigo || `RN${String(idx + 1).padStart(3, '0')}`)}"
+               oninput="if(reqFormDraft.regrasNegocio[${idx}]){ reqFormDraft.regrasNegocio[${idx}].codigo = this.value; reqFormDraft.regrasNegocio[${idx}]._customCodigo = !/^RN\\d{3}$/i.test(this.value.trim()); }">
+      </td>
+      <td>
+        <textarea class="req-dyn-textarea" placeholder="Ex: O tempo limite de inatividade do atendimento é de 10 minutos..."
+                  oninput="if(reqFormDraft.regrasNegocio[${idx}]) reqFormDraft.regrasNegocio[${idx}].descricao = this.value;"
+                  onkeydown="if(event.ctrlKey && event.key === 'Enter'){ event.preventDefault(); addReqBusinessRuleRow(); }">${escapeHtml(rn.descricao || '')}</textarea>
+      </td>
+      <td style="text-align: center;">
+        <button type="button" class="req-icon-btn is-danger" onclick="removeReqBusinessRuleRow(${idx})" title="Remover Regra">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+window.addReqBusinessRuleRow = function(customData = null) {
+  const nextNum = (reqFormDraft.regrasNegocio?.length || 0) + 1;
+  reqFormDraft.regrasNegocio.push(customData || {
+    id: `rn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    codigo: `RN${String(nextNum).padStart(3, '0')}`,
+    descricao: ''
+  });
+  renderReqBusinessRules();
+  updateReqModalTabBadges();
+};
+
+window.moveReqBusinessRuleRow = function(idx, delta) {
+  const list = reqFormDraft.regrasNegocio;
+  const target = idx + delta;
+  if (!list || target < 0 || target >= list.length) return;
+  [list[idx], list[target]] = [list[target], list[idx]];
+  renderReqBusinessRules();
+};
+
+window.removeReqBusinessRuleRow = function(idx) {
+  reqFormDraft.regrasNegocio.splice(idx, 1);
+  renderReqBusinessRules();
+  updateReqModalTabBadges();
+};
+
+window.promptBatchBusinessRules = function() {
+  const text = prompt('Cole aqui as regras de negócio (uma por linha):\nExemplo:\nO tempo limite de inatividade é de 10 minutos.\nAtleta estrangeiro deve possuir passaporte válido.');
+  if (!text) return;
+  const lines = text.split('\n').map(l => l.trim().replace(/^[•\-\*\d+\.\s]+/, '').trim()).filter(Boolean);
+  if (lines.length === 0) return;
+  lines.forEach(line => {
+    addReqBusinessRuleRow({
+      id: `rn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      codigo: '',
+      descricao: line
+    });
+  });
+  showToast(`${lines.length} regras de negócio adicionadas!`);
+};
+
+// ==============================================================================
+// 1.5 Construtor de Seções Dinâmicas Personalizadas (Custom Sections)
+// ==============================================================================
+function renderReqCustomSections() {
+  const container = document.getElementById('req-custom-sections-container');
+  if (!container) return;
+  const list = reqFormDraft.secoesCustomizadas || [];
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 2rem 1rem; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); color: var(--text-muted);">
+        <p style="font-size: 1.25rem; margin-bottom: 0.35rem;">🧩 Nenhuma Seção Personalizada</p>
+        <p style="font-size: 0.85rem; max-width: 480px; margin: 0 auto 1.2rem auto;">
+          Adicione blocos sob medida para este requisito (ex: "Regras de Transbordo", "Variáveis de Ambiente", "Payload de Integração") ou carregue o template padrão do projeto.
+        </p>
+        <button type="button" class="btn btn-primary btn-sm" onclick="addReqCustomSection()">+ Criar Primeira Seção</button>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = list.map((sec, sIdx) => {
+    const fields = Array.isArray(sec.campos) ? sec.campos : [];
+    return `
+      <div class="req-custom-section-card" data-sec-idx="${sIdx}">
+        <div class="req-custom-section-head">
+          <div class="req-custom-section-title-wrap">
+            <span style="font-size: 1.1rem;">📦</span>
+            <input type="text" class="req-custom-section-title-input" value="${escapeHtml(sec.tituloSecao || `Seção ${sIdx + 1}`)}"
+                   placeholder="Título da Seção (ex: Regras de Transbordo, Mapeamento API...)"
+                   oninput="if(reqFormDraft.secoesCustomizadas[${sIdx}]) reqFormDraft.secoesCustomizadas[${sIdx}].tituloSecao = this.value;">
+          </div>
+          <div class="req-custom-section-actions">
+            <button type="button" class="btn btn-primary btn-xs" onclick="addReqCustomField(${sIdx})">+ Adicionar Campo</button>
+            <button type="button" class="btn btn-secondary btn-xs" onclick="moveReqCustomSection(${sIdx}, -1)" ${sIdx === 0 ? 'disabled' : ''} title="Subir Seção">↑</button>
+            <button type="button" class="btn btn-secondary btn-xs" onclick="moveReqCustomSection(${sIdx}, 1)" ${sIdx === list.length - 1 ? 'disabled' : ''} title="Descer Seção">↓</button>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="duplicateReqCustomSection(${sIdx})" title="Duplicar Seção">📋 Duplicar</button>
+            <button type="button" class="btn btn-danger btn-xs" onclick="removeReqCustomSection(${sIdx})" title="Excluir Seção">🗑️</button>
+          </div>
+        </div>
+
+        <div class="req-custom-fields-container">
+          ${fields.length === 0 ? `
+            <div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; padding: 0.5rem 0;">
+              Nenhum campo nesta seção. Clique em "+ Adicionar Campo" acima para incluir atributos livres ou estruturados.
+            </div>
+          ` : fields.map((f, fIdx) => {
+            const fType = f.tipoCampo || 'Texto Curto';
+            return `
+              <div class="req-custom-field-row">
+                <div class="req-row-move-group" style="flex-direction: row; gap: 2px;">
+                  <button type="button" class="req-icon-btn" onclick="moveReqCustomField(${sIdx}, ${fIdx}, -1)" ${fIdx === 0 ? 'disabled' : ''} title="Subir">↑</button>
+                  <button type="button" class="req-icon-btn" onclick="moveReqCustomField(${sIdx}, ${fIdx}, 1)" ${fIdx === fields.length - 1 ? 'disabled' : ''} title="Descer">↓</button>
+                </div>
+                <div>
+                  <input type="text" class="custom-input" placeholder="Nome do Campo *" value="${escapeHtml(f.nomeCampo || '')}"
+                         oninput="if(reqFormDraft.secoesCustomizadas[${sIdx}]?.campos[${fIdx}]) reqFormDraft.secoesCustomizadas[${sIdx}].campos[fIdx].nomeCampo = this.value;">
+                </div>
+                <div>
+                  <select class="custom-select" onchange="changeReqCustomFieldType(${sIdx}, ${fIdx}, this.value)">
+                    ${REQ_CUSTOM_FIELD_TYPES.map(t => `<option value="${escapeHtml(t)}" ${t === fType ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
+                  </select>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
+                  <label style="font-size: 0.72rem; cursor: pointer; display: flex; align-items: center; gap: 3px; margin: 0;">
+                    <input type="checkbox" ${f.obrigatorio ? 'checked' : ''}
+                           onchange="if(reqFormDraft.secoesCustomizadas[${sIdx}]?.campos[${fIdx}]) reqFormDraft.secoesCustomizadas[${sIdx}].campos[${fIdx}].obrigatorio = this.checked;">
+                    Obrig
+                  </label>
+                </div>
+                <div>
+                  ${renderCustomFieldValueInput(sIdx, fIdx, f)}
+                </div>
+                <div style="text-align: center;">
+                  <button type="button" class="req-icon-btn is-danger" onclick="removeReqCustomField(${sIdx}, ${fIdx})" title="Remover campo">🗑️</button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderCustomFieldValueInput(sIdx, fIdx, field) {
+  const type = field.tipoCampo || 'Texto Curto';
+  const val = field.valor !== undefined && field.valor !== null ? field.valor : '';
+  if (type === 'Texto Longo / Rich Text') {
+    return `<textarea class="custom-input font-sans" rows="2" placeholder="Conteúdo do campo..."
+                      oninput="if(reqFormDraft.secoesCustomizadas[${sIdx}]?.campos[${fIdx}]) reqFormDraft.secoesCustomizadas[${sIdx}].campos[${fIdx}].valor = this.value;">${escapeHtml(val)}</textarea>`;
+  }
+  if (type === 'Lista de Itens') {
+    return `<textarea class="custom-input font-mono" rows="2" placeholder="Item 1&#10;Item 2 (um por linha)..."
+                      oninput="if(reqFormDraft.secoesCustomizadas[${sIdx}]?.campos[${fIdx}]) reqFormDraft.secoesCustomizadas[${sIdx}].campos[${fIdx}].valor = this.value;">${escapeHtml(val)}</textarea>`;
+  }
+  if (type === 'Tabela Chave-Valor') {
+    return `<textarea class="custom-input font-mono" rows="2" placeholder="Chave: Valor&#10;Chave2: Valor2..."
+                      oninput="if(reqFormDraft.secoesCustomizadas[${sIdx}]?.campos[${fIdx}]) reqFormDraft.secoesCustomizadas[${sIdx}].campos[${fIdx}].valor = this.value;">${escapeHtml(val)}</textarea>`;
+  }
+  if (type === 'Numérico') {
+    return `<input type="number" class="custom-input font-mono" placeholder="Ex: 10" value="${escapeHtml(val)}"
+                   oninput="if(reqFormDraft.secoesCustomizadas[${sIdx}]?.campos[${fIdx}]) reqFormDraft.secoesCustomizadas[${sIdx}].campos[${fIdx}].valor = this.value;">`;
+  }
+  if (type === 'Booleano') {
+    return `
+      <select class="custom-select font-mono" onchange="if(reqFormDraft.secoesCustomizadas[${sIdx}]?.campos[${fIdx}]) reqFormDraft.secoesCustomizadas[${sIdx}].campos[${fIdx}].valor = this.value;">
+        <option value="">-- Não Definido --</option>
+        <option value="true" ${String(val) === 'true' || val === true ? 'selected' : ''}>Sim (True)</option>
+        <option value="false" ${String(val) === 'false' || val === false ? 'selected' : ''}>Não (False)</option>
+      </select>
+    `;
+  }
+  return `<input type="text" class="custom-input" placeholder="Valor do campo..." value="${escapeHtml(val)}"
+                 oninput="if(reqFormDraft.secoesCustomizadas[${sIdx}]?.campos[${fIdx}]) reqFormDraft.secoesCustomizadas[${sIdx}].campos[${fIdx}].valor = this.value;">`;
+}
+
+window.changeReqCustomFieldType = function(sIdx, fIdx, newType) {
+  if (reqFormDraft.secoesCustomizadas[sIdx]?.campos[fIdx]) {
+    reqFormDraft.secoesCustomizadas[sIdx].campos[fIdx].tipoCampo = newType;
+    renderReqCustomSections();
+  }
+};
+
+window.addReqCustomSection = function(customData = null) {
+  const nextNum = (reqFormDraft.secoesCustomizadas?.length || 0) + 1;
+  reqFormDraft.secoesCustomizadas.push(customData || {
+    id: `sec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    tituloSecao: `Nova Seção Personalizada ${nextNum}`,
+    campos: []
+  });
+  renderReqCustomSections();
+  updateReqModalTabBadges();
+};
+
+window.moveReqCustomSection = function(secIdx, delta) {
+  const list = reqFormDraft.secoesCustomizadas;
+  const target = secIdx + delta;
+  if (!list || target < 0 || target >= list.length) return;
+  [list[secIdx], list[target]] = [list[target], list[secIdx]];
+  renderReqCustomSections();
+};
+
+window.removeReqCustomSection = function(secIdx) {
+  reqFormDraft.secoesCustomizadas.splice(secIdx, 1);
+  renderReqCustomSections();
+  updateReqModalTabBadges();
+};
+
+window.duplicateReqCustomSection = function(secIdx) {
+  const orig = reqFormDraft.secoesCustomizadas[secIdx];
+  if (!orig) return;
+  const clone = {
+    id: `sec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    tituloSecao: `${orig.tituloSecao || 'Seção'} (Cópia)`,
+    campos: (orig.campos || []).map(f => ({
+      id: `fld_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      nomeCampo: f.nomeCampo || '',
+      tipoCampo: f.tipoCampo || 'Texto Curto',
+      obrigatorio: Boolean(f.obrigatorio),
+      valor: f.valor !== undefined ? f.valor : ''
+    }))
+  };
+  reqFormDraft.secoesCustomizadas.splice(secIdx + 1, 0, clone);
+  renderReqCustomSections();
+  updateReqModalTabBadges();
+};
+
+window.addReqCustomField = function(secIdx, fieldData = null) {
+  const sec = reqFormDraft.secoesCustomizadas[secIdx];
+  if (!sec) return;
+  if (!Array.isArray(sec.campos)) sec.campos = [];
+  sec.campos.push(fieldData || {
+    id: `fld_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    nomeCampo: '',
+    tipoCampo: 'Texto Curto',
+    obrigatorio: false,
+    valor: ''
+  });
+  renderReqCustomSections();
+};
+
+window.moveReqCustomField = function(secIdx, fieldIdx, delta) {
+  const sec = reqFormDraft.secoesCustomizadas[secIdx];
+  if (!sec || !Array.isArray(sec.campos)) return;
+  const target = fieldIdx + delta;
+  if (target < 0 || target >= sec.campos.length) return;
+  [sec.campos[fieldIdx], sec.campos[target]] = [sec.campos[target], sec.campos[fieldIdx]];
+  renderReqCustomSections();
+};
+
+window.removeReqCustomField = function(secIdx, fieldIdx) {
+  const sec = reqFormDraft.secoesCustomizadas[secIdx];
+  if (!sec || !Array.isArray(sec.campos)) return;
+  sec.campos.splice(fieldIdx, 1);
+  renderReqCustomSections();
+};
+
+window.saveCustomSectionsAsProjectTemplate = async function() {
+  const projId = document.getElementById('req-project')?.value;
+  if (!projId) {
+    showToast('Selecione um projeto antes de salvar o template.', 'warn');
+    return;
+  }
+  const cleanTemplate = (reqFormDraft.secoesCustomizadas || [])
+    .map((sec, sIdx) => ({
+      id: `tmpl_sec_${sIdx + 1}`,
+      tituloSecao: (sec.tituloSecao || `Seção ${sIdx + 1}`).trim(),
+      campos: (sec.campos || []).map((f, fIdx) => ({
+        id: `tmpl_fld_${sIdx + 1}_${fIdx + 1}`,
+        nomeCampo: (f.nomeCampo || '').trim(),
+        tipoCampo: f.tipoCampo || 'Texto Curto',
+        obrigatorio: Boolean(f.obrigatorio),
+        valor: ''
+      }))
+    }))
+    .filter(s => s.tituloSecao || s.campos.length > 0);
+
+  if (cleanTemplate.length === 0) {
+    showToast('Crie ao menos uma seção para salvar como template.', 'warn');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/projects/${projId}/sections-template`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': typeof authStore !== 'undefined' ? authStore.getCurrentUser()?.role || 'admin' : 'admin'
+      },
+      body: JSON.stringify({ template: cleanTemplate })
+    });
+    if (res.ok) {
+      const proj = typeof store !== 'undefined' ? store.getProjectById(projId) : null;
+      if (proj) proj.customSectionsTemplate = cleanTemplate;
+      showToast('Template de seções personalizadas salvo para o projeto com sucesso!');
+    } else {
+      showToast('Falha ao salvar template do projeto no servidor.', 'error');
+    }
+  } catch (err) {
+    showToast('Erro de rede ao salvar template.', 'error');
+  }
+};
+
+window.loadCustomSectionsFromProjectTemplate = function() {
+  const projId = document.getElementById('req-project')?.value;
+  if (!projId) {
+    showToast('Selecione um projeto primeiro.', 'warn');
+    return;
+  }
+  const proj = typeof store !== 'undefined' ? store.getProjectById(projId) : null;
+  const tmpl = proj?.customSectionsTemplate;
+  if (!Array.isArray(tmpl) || tmpl.length === 0) {
+    showToast('Este projeto ainda não possui template de seções salvas.', 'info');
+    return;
+  }
+  if (reqFormDraft.secoesCustomizadas?.length > 0 && !confirm('Substituir as seções personalizadas atuais pelo template do projeto?')) {
+    return;
+  }
+  reqFormDraft.secoesCustomizadas = JSON.parse(JSON.stringify(tmpl));
+  renderReqCustomSections();
+  updateReqModalTabBadges();
+  showToast('Template de seções do projeto carregado com sucesso!');
+};
+
+function renderReqHistoryTable() {
+  const tbody = document.getElementById('req-history-tbody');
+  if (!tbody) return;
+  const list = reqFormDraft.historicoAtualizacoes || [];
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 1.25rem; color: var(--text-muted); font-style: italic;">Nenhum registro de histórico. Clique em "+ Adicionar Registro" acima.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map((h, idx) => `
+    <tr>
+      <td>
+        <input type="date" class="req-dyn-input" value="${escapeHtml((h.data || '').slice(0, 10))}"
+               onchange="if(reqFormDraft.historicoAtualizacoes[${idx}]) reqFormDraft.historicoAtualizacoes[${idx}].data = this.value;">
+      </td>
+      <td>
+        <input type="text" class="req-dyn-input font-mono" value="${escapeHtml(h.versao || '1.0')}"
+               oninput="if(reqFormDraft.historicoAtualizacoes[${idx}]) reqFormDraft.historicoAtualizacoes[${idx}].versao = this.value;">
+      </td>
+      <td>
+        <input type="text" class="req-dyn-input" value="${escapeHtml(h.descricao || '')}" placeholder="Ex: Primeira versão dos requisitos."
+               oninput="if(reqFormDraft.historicoAtualizacoes[${idx}]) reqFormDraft.historicoAtualizacoes[${idx}].descricao = this.value;">
+      </td>
+      <td>
+        <input type="text" class="req-dyn-input" value="${escapeHtml(h.responsavelNome || '')}"
+               oninput="if(reqFormDraft.historicoAtualizacoes[${idx}]) reqFormDraft.historicoAtualizacoes[${idx}].responsavelNome = this.value;">
+      </td>
+      <td>
+        <input type="text" class="req-dyn-input" value="${escapeHtml(h.responsavelCargo || '')}"
+               oninput="if(reqFormDraft.historicoAtualizacoes[${idx}]) reqFormDraft.historicoAtualizacoes[${idx}].responsavelCargo = this.value;">
+      </td>
+      <td style="text-align: center;">
+        <button type="button" class="req-icon-btn is-danger" onclick="removeReqHistoryRow(${idx})" title="Remover linha">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+window.addReqHistoryRow = function(customData = null) {
+  const profile = getCurrentUserSpecProfile();
+  const today = new Date().toISOString().slice(0, 10);
+  const currentVer = document.getElementById('req-version')?.value?.trim() || '1.0';
+  reqFormDraft.historicoAtualizacoes.push(customData || {
+    id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    data: today,
+    versao: currentVer,
+    descricao: 'Atualização de versão',
+    responsavelId: profile.id,
+    responsavelNome: profile.nome,
+    responsavelCargo: profile.cargo,
+    responsavelEmail: profile.email
+  });
+  renderReqHistoryTable();
+  updateReqModalTabBadges();
+};
+
+window.bumpReqVersionAndAddHistory = function() {
+  const verInput = document.getElementById('req-version');
+  const curStr = (verInput?.value || '1.0').trim();
+  const parts = curStr.split('.');
+  let nextVer = '1.1';
+  if (parts.length >= 2 && !isNaN(parseInt(parts[0], 10)) && !isNaN(parseInt(parts[1], 10))) {
+    nextVer = `${parseInt(parts[0], 10)}.${parseInt(parts[1], 10) + 1}`;
+  } else if (!isNaN(parseFloat(curStr))) {
+    nextVer = (parseFloat(curStr) + 0.1).toFixed(1);
+  }
+  if (verInput) verInput.value = nextVer;
+  const profile = getCurrentUserSpecProfile();
+  addReqHistoryRow({
+    id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    data: new Date().toISOString().slice(0, 10),
+    versao: nextVer,
+    descricao: 'Atualização de versão',
+    responsavelId: profile.id,
+    responsavelNome: profile.nome,
+    responsavelCargo: profile.cargo,
+    responsavelEmail: profile.email
+  });
+  showToast(`Versão incrementada para v${nextVer}.`);
+};
+
+window.removeReqHistoryRow = function(idx) {
+  reqFormDraft.historicoAtualizacoes.splice(idx, 1);
+  renderReqHistoryTable();
+  updateReqModalTabBadges();
+};
+
 // Funções de CRUD de Requisitos
 window.openReqModalForCreate = function() {
   const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
@@ -3750,7 +5130,50 @@ window.openReqModalForCreate = function() {
   document.getElementById('req-id-edit').value = "";
   document.getElementById('form-new-req').reset();
   document.getElementById('btn-save-req').textContent = "Registrar Requisito";
-  
+
+  const profile = getCurrentUserSpecProfile();
+  const today = new Date().toISOString().slice(0, 10);
+  reqFormDraft = {
+    activeTab: 'general',
+    criadoPor: { ...profile },
+    regrasNegocio: [],
+    secoesCustomizadas: [],
+    telas: [],
+    entradas: [],
+    saidas: [],
+    criteriosAceite: [],
+    historicoAtualizacoes: [{
+      id: `hist_${Date.now()}`,
+      data: today,
+      versao: '1.0',
+      descricao: 'Primeira versão dos requisitos.',
+      responsavelId: profile.id,
+      responsavelNome: profile.nome,
+      responsavelCargo: profile.cargo,
+      responsavelEmail: profile.email
+    }]
+  };
+
+  const descInput = document.getElementById('req-desc');
+  if (descInput) descInput.value = '';
+  const preInput = document.getElementById('req-pre-conditions');
+  if (preInput) preInput.value = '';
+  const postInput = document.getElementById('req-post-conditions');
+  if (postInput) postInput.value = '';
+  document.getElementById('req-version').value = '1.0';
+  document.getElementById('req-flow').value = '';
+  document.getElementById('req-user-story').value = '';
+  document.getElementById('req-bdd').value = '';
+  const legacyDetails = document.getElementById('req-legacy-agile-details');
+  if (legacyDetails) legacyDetails.open = false;
+  const anexoPanel = document.getElementById('req-anexo01-legend-panel');
+  if (anexoPanel) anexoPanel.style.display = 'none';
+
+  const authorChip = document.getElementById('req-author-meta-preview');
+  if (authorChip) {
+    authorChip.textContent = `Criado por: ${profile.nome}${profile.cargo ? ` (${profile.cargo})` : ''}`;
+  }
+
   openModal('modal-requirement');
 
   // Se houver um projeto selecionado no filtro geral, pré-seleciona ele
@@ -3761,6 +5184,35 @@ window.openReqModalForCreate = function() {
 
   const currentProjId = document.getElementById('req-project')?.value;
   updateModalFeaturesDropdown(currentProjId, '');
+
+  const selectedProj = currentProjId ? store.getProjectById(currentProjId) : null;
+  const pmInput = document.getElementById('req-process-maker');
+  if (pmInput) {
+    pmInput.value = (selectedProj && selectedProj.processMakerNumber) || '';
+    pmInput.dataset.inheritedFromProj = '1';
+  }
+
+  if (selectedProj && Array.isArray(selectedProj.customSectionsTemplate) && selectedProj.customSectionsTemplate.length > 0) {
+    reqFormDraft.secoesCustomizadas = JSON.parse(JSON.stringify(selectedProj.customSectionsTemplate)).map((s, sIdx) => ({
+      ...s,
+      id: `sec_${Date.now()}_${sIdx}`,
+      campos: (s.campos || []).map((f, fIdx) => ({
+        ...f,
+        id: `fld_${Date.now()}_${fIdx}`,
+        valor: ''
+      }))
+    }));
+  }
+
+  renderReqScreensGrid();
+  renderReqAttributesTable('entrada');
+  renderReqAttributesTable('saida');
+  renderReqCriteriaTable();
+  renderReqBusinessRules();
+  renderReqCustomSections();
+  renderReqHistoryTable();
+  updateReqModalTabBadges();
+  switchReqModalTab('general');
 
   // Define modo automático bloqueado e calcula o próximo código sequencial
   setReqCodeMode(false);
@@ -3779,17 +5231,86 @@ window.openReqModalForEdit = function(reqId) {
   const req = store.getRequirementById(reqId);
   if (!req) return;
 
+  const cloneArr = (arr) => Array.isArray(arr) ? arr.map(item => ({ ...item })) : [];
+  const profile = getCurrentUserSpecProfile();
+  const cp = (req.criadoPor && req.criadoPor.nome) ? { ...req.criadoPor } : { ...profile };
+
   document.getElementById('modal-req-title').textContent = "✏️ Editar Requisito / Especificação";
   document.getElementById('req-id-edit').value = req.id;
   document.getElementById('req-title').value = req.title;
   document.getElementById('req-code').value = req.code;
   document.getElementById('req-project').value = req.projectId;
   updateModalFeaturesDropdown(req.projectId, req.feature || '');
-  document.getElementById('req-type').value = req.type;
-  document.getElementById('req-moscow').value = req.moscow;
+  document.getElementById('req-type').value = req.type || 'functional';
+  document.getElementById('req-moscow').value = req.moscow || 'Must';
+
+  const project = req.projectId ? store.getProjectById(req.projectId) : null;
+  const pmInput = document.getElementById('req-process-maker');
+  if (pmInput) {
+    pmInput.value = req.numeroProcessMaker || (project && project.processMakerNumber) || '';
+    pmInput.dataset.inheritedFromProj = req.numeroProcessMaker ? '0' : '1';
+  }
+  const descInput = document.getElementById('req-desc');
+  if (descInput) descInput.value = req.descricaoRequisito || '';
+  const preInput = document.getElementById('req-pre-conditions');
+  if (preInput) preInput.value = req.preCondicoes || '';
+  const postInput = document.getElementById('req-post-conditions');
+  if (postInput) postInput.value = req.posCondicoes || '';
+  document.getElementById('req-version').value = req.versaoAtual || '1.0';
+  document.getElementById('req-flow').value = req.fluxoPrincipal || req.fluxoRequisito || '';
   document.getElementById('req-user-story').value = req.userStory || "";
   document.getElementById('req-bdd').value = req.bdd || "";
+
+  const legacyDetails = document.getElementById('req-legacy-agile-details');
+  if (legacyDetails) {
+    legacyDetails.open = Boolean((req.userStory && req.userStory.trim()) || (req.bdd && req.bdd.trim())) && !hasStructuredSpecContent(req);
+  }
+  const anexoPanel = document.getElementById('req-anexo01-legend-panel');
+  if (anexoPanel) anexoPanel.style.display = 'none';
+
+  const authorChip = document.getElementById('req-author-meta-preview');
+  if (authorChip) {
+    authorChip.textContent = `Criado por: ${cp.nome || '—'}${cp.cargo ? ` (${cp.cargo})` : ''}`;
+  }
+
+  let historyList = cloneArr(req.historicoAtualizacoes);
+  if (historyList.length === 0) {
+    const createdDate = (req.createdAt || new Date().toISOString()).slice(0, 10);
+    historyList = [{
+      id: `hist_${Date.now()}`,
+      data: createdDate,
+      versao: req.versaoAtual || '1.0',
+      descricao: 'Primeira versão dos requisitos.',
+      responsavelId: cp.id || '',
+      responsavelNome: cp.nome || 'Analista',
+      responsavelCargo: cp.cargo || '',
+      responsavelEmail: cp.email || ''
+    }];
+  }
+
+  reqFormDraft = {
+    activeTab: 'general',
+    criadoPor: cp,
+    regrasNegocio: cloneArr(req.regrasNegocio),
+    secoesCustomizadas: Array.isArray(req.secoesCustomizadas) ? JSON.parse(JSON.stringify(req.secoesCustomizadas)) : [],
+    telas: cloneArr(req.telas),
+    entradas: cloneArr(req.entradas),
+    saidas: cloneArr(req.saidas),
+    criteriosAceite: cloneArr(req.criteriosAceite),
+    historicoAtualizacoes: historyList
+  };
+
   document.getElementById('btn-save-req').textContent = "Atualizar Requisito";
+
+  renderReqScreensGrid();
+  renderReqAttributesTable('entrada');
+  renderReqAttributesTable('saida');
+  renderReqCriteriaTable();
+  renderReqBusinessRules();
+  renderReqCustomSections();
+  renderReqHistoryTable();
+  updateReqModalTabBadges();
+  switchReqModalTab('general');
 
   openModal('modal-requirement');
 
@@ -7026,7 +8547,7 @@ function getRequirementValidationStatus(req) {
     detailNote,
     linkedTasks,
     linkedTests,
-    hasBdd: !!(req.bdd && req.bdd.trim())
+    hasBdd: Boolean((req.bdd && req.bdd.trim()) || (Array.isArray(req.criteriosAceite) && req.criteriosAceite.length > 0))
   };
 }
 
@@ -7527,18 +9048,39 @@ window.exportMeasurementReportPDF = function() {
   const body = exportItems.map(item => {
     const r = item.req;
     const v = item.val;
-    const idCell = `${r.code || 'RF'}\n${r.type === 'non-functional' ? 'RNF' : 'RF'}\n[${r.moscow || 'Must'}]`;
-    
+    const typeAbbr = getRequirementTypeInfo(r.type).abbr;
+    const idCell = `${r.code || 'RF'}\n${typeAbbr} · v${r.versaoAtual || '1.0'}\n[${r.moscow || 'Must'}]`;
+
     let specCell = r.title || '-';
+    if (r.numeroProcessMaker) specCell += `\nProcessMaker: ${r.numeroProcessMaker}`;
     if (template.includeUserStory !== false) {
-      specCell += `\n\nUser Story:\n${r.userStory ? r.userStory : 'Não informada'}`;
+      if (r.fluxoPrincipal && r.fluxoPrincipal.trim()) {
+        specCell += `\n\n1.1 Fluxo:\n${r.fluxoPrincipal.trim()}`;
+      }
+      if (Array.isArray(r.entradas) && r.entradas.length > 0) {
+        specCell += `\n\n1.3.1 Entradas (${r.entradas.length}):\n` + r.entradas.map(e => `• ${e.campo} (${e.tipoCampo || 'Alfanumérico'}${e.obrigatorio ? ', Obrig.' : ''}): ${e.descricao || ''}`).join('\n');
+      }
+      if (Array.isArray(r.saidas) && r.saidas.length > 0) {
+        specCell += `\n\n1.3.2 Saídas (${r.saidas.length}):\n` + r.saidas.map(s => `• ${s.campo} (${s.tipoCampo || 'Alfanumérico'}): ${s.descricao || ''}`).join('\n');
+      }
+      if (r.userStory && r.userStory.trim()) {
+        specCell += `\n\nUser Story:\n${r.userStory.trim()}`;
+      } else if (!hasStructuredSpecContent(r)) {
+        specCell += `\n\nUser Story:\nNão informada`;
+      }
     }
 
     const row = [idCell, specCell];
 
     if (template.includeAcceptanceCriteria !== false) {
-      const bddCell = r.bdd && r.bdd.trim() ? r.bdd.trim() : 'Critérios de aceite não documentados formalmente.';
-      row.push(bddCell);
+      let acCell = '';
+      if (Array.isArray(r.criteriosAceite) && r.criteriosAceite.length > 0) {
+        acCell = r.criteriosAceite.map((c, idx) => `${c.item || `CA${String(idx + 1).padStart(3, '0')}`} [${c.tipo || 'N'} | ${c.categoria || 'Específico'}]: ${c.descricao || ''}`).join('\n\n');
+      }
+      if (r.bdd && r.bdd.trim()) {
+        acCell = acCell ? `${acCell}\n\n--- BDD ---\n${r.bdd.trim()}` : r.bdd.trim();
+      }
+      row.push(acCell || 'Critérios de aceite não documentados formalmente.');
     }
 
     if (template.includeQaEvidence !== false) {
@@ -7741,24 +9283,37 @@ window.printMeasurementReport = function() {
   const primColor = template.primaryColor || '#0284c7';
 
   const rowsHtml = exportItems.map(item => {
+    const req = item.req;
+    const typeAbbr = getRequirementTypeInfo(req.type).abbr;
+    const structuredBlock = template.includeUserStory !== false && hasStructuredSpecContent(req) ? `
+      ${req.numeroProcessMaker ? `<div style="font-size:0.75rem; color:#475569; margin-top:2px;"><strong>ProcessMaker:</strong> ${escapeHtml(req.numeroProcessMaker)} · <strong>Versão:</strong> v${escapeHtml(req.versaoAtual || '1.0')}</div>` : ''}
+      ${req.fluxoPrincipal ? `<div style="margin-top:6px; font-size:0.78rem; color:#334155; white-space:pre-wrap;"><strong>1.1 Fluxo:</strong>\n${escapeHtml(req.fluxoPrincipal)}</div>` : ''}
+      ${(Array.isArray(req.entradas) && req.entradas.length > 0) ? `<div style="margin-top:6px; font-size:0.76rem;"><strong>1.3.1 Entradas (${req.entradas.length}):</strong> ${req.entradas.map(e => escapeHtml(e.campo)).join(', ')}</div>` : ''}
+      ${(Array.isArray(req.saidas) && req.saidas.length > 0) ? `<div style="margin-top:3px; font-size:0.76rem;"><strong>1.3.2 Saídas (${req.saidas.length}):</strong> ${req.saidas.map(s => escapeHtml(s.campo)).join(', ')}</div>` : ''}
+    ` : '';
+
     let cellsHtml = `
       <td style="font-weight: 700; width: 85px;">
-        <div>${escapeHtml(item.req.code)}</div>
-        <small style="color: #64748b;">${item.req.type === 'non-functional' ? 'RNF' : 'RF'} [${item.req.moscow || 'Must'}]</small>
+        <div>${escapeHtml(req.code)}</div>
+        <small style="color: #64748b;">${typeAbbr} [${req.moscow || 'Must'}]</small>
       </td>
       <td>
-        <strong>${escapeHtml(item.req.title)}</strong>
-        ${template.includeUserStory !== false ? `
+        <strong>${escapeHtml(req.title)}</strong>
+        ${structuredBlock}
+        ${template.includeUserStory !== false && (req.userStory || !hasStructuredSpecContent(req)) ? `
           <div style="margin-top: 4px; font-size: 0.8rem; color: #475569;">
-            <em>User Story:</em> ${escapeHtml(item.req.userStory || 'Não documentada')}
+            <em>User Story:</em> ${escapeHtml(req.userStory || 'Não documentada')}
           </div>
         ` : ''}
       </td>
     `;
 
     if (template.includeAcceptanceCriteria !== false) {
+      const caList = Array.isArray(req.criteriosAceite) ? req.criteriosAceite : [];
+      const caText = caList.map((c, idx) => `${c.item || `CA${String(idx + 1).padStart(3, '0')}`} [${c.tipo || 'N'} | ${c.categoria || 'Específico'}]: ${c.descricao || ''}`).join('\n');
+      const fullAc = [caText, req.bdd ? req.bdd.trim() : ''].filter(Boolean).join('\n\n');
       cellsHtml += `
-        <td style="white-space: pre-wrap; font-family: monospace; font-size: 0.78rem; color: #1e293b; background: #f8fafc;">${escapeHtml(item.req.bdd || 'Critérios não documentados.')}</td>
+        <td style="white-space: pre-wrap; font-family: monospace; font-size: 0.78rem; color: #1e293b; background: #f8fafc;">${escapeHtml(fullAc || 'Critérios não documentados.')}</td>
       `;
     }
 
@@ -7931,6 +9486,606 @@ window.printMeasurementReport = function() {
   `);
   printWindow.document.close();
   printWindow.focus();
+};
+
+/**
+ * Gera impressão / visualização formal fiel ao layout Especificação de Requisitos (SUSIS / Banpará).
+ */
+window.printSingleRequirementSpec = function(reqId) {
+  const req = store.getRequirementById(reqId);
+  if (!req) return;
+  const project = store.getProjectById(req.projectId);
+  const template = store.getDefaultTemplate() || {};
+  const pm = req.numeroProcessMaker || (project && project.processMakerNumber) || '—';
+  const cp = req.criadoPor || {};
+  const history = Array.isArray(req.historicoAtualizacoes) ? req.historicoAtualizacoes : [];
+  const rns = Array.isArray(req.regrasNegocio) ? req.regrasNegocio : [];
+  const customSecs = Array.isArray(req.secoesCustomizadas) ? req.secoesCustomizadas : [];
+  const telas = Array.isArray(req.telas) ? req.telas : [];
+  const entradas = Array.isArray(req.entradas) ? req.entradas : [];
+  const saidas = Array.isArray(req.saidas) ? req.saidas : [];
+  const criterios = Array.isArray(req.criteriosAceite) ? req.criteriosAceite : [];
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    showToast('Aviso: Pop-up bloqueado. Permita pop-ups para imprimir a especificação.');
+    return;
+  }
+
+  const brandPrimary = '#1d5b68';
+  const brandAccent = '#1861a5';
+  const renderAttrPrintTable = (subTitle, rows) => `
+    <div class="sub-heading">${subTitle}</div>
+    ${rows.length > 0 ? `
+      <table>
+        <thead>
+          <tr>
+            <th style="width:16%;">Campo</th>
+            <th style="width:28%;">Descrição</th>
+            <th style="width:15%;">Tipo do campo</th>
+            <th style="width:9%; text-align:center;">Obrig</th>
+            <th>Regra</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td><strong>${escapeHtml(r.campo || '')}</strong></td>
+              <td>${escapeHtml(r.descricao || '')}</td>
+              <td><span class="pill-type">${escapeHtml(r.tipoCampo || 'Alfanumérico')}</span></td>
+              <td style="text-align:center;"><span class="pill-obrig">${r.obrigatorio ? 'Sim' : 'Não'}</span></td>
+              <td style="white-space:pre-wrap;">${escapeHtml(r.regra || '—')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    ` : '<p class="empty-note">Nenhum atributo cadastrado.</p>'}
+  `;
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <title>Especificação de Requisitos - ${escapeHtml(req.code || 'REQ')} - ${escapeHtml(req.title || '')}</title>
+      <style>
+        @page { size: A4 portrait; margin: 16mm 14mm; }
+        body { font-family: "Segoe UI", Arial, sans-serif; color: #1e293b; font-size: 11px; line-height: 1.45; margin: 0; padding: 18px; background: #fff; }
+        .doc-header { border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+        .doc-header h1 { margin: 0; font-size: 18px; color: #0f172a; }
+        .doc-header p { margin: 2px 0 0 0; font-size: 11px; color: #475569; }
+        .doc-logo { max-height: 44px; max-width: 110px; object-fit: contain; }
+        .section-bar { background: ${brandPrimary}; color: #fff; font-weight: 700; font-size: 12px; padding: 6px 10px; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 14px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10.5px; }
+        th, td { border: 1px solid #cbd5e1; padding: 6px 8px; vertical-align: top; text-align: left; }
+        thead th { background: #e2e8f0; color: #0f172a; font-weight: 700; }
+        .func-title { background: #dbeafe; border: 1px solid #93c5fd; padding: 6px 10px; font-weight: 700; font-size: 12px; color: #0f172a; margin-bottom: 10px; }
+        .sub-heading { font-weight: 700; font-size: 11.5px; color: #0f172a; text-decoration: underline; margin: 10px 0 6px 0; }
+        .flow-box { white-space: pre-wrap; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; margin-bottom: 10px; }
+        .screens-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+        .screen-item { border: 1px solid #cbd5e1; padding: 6px; text-align: center; page-break-inside: avoid; }
+        .screen-item img { max-width: 100%; max-height: 360px; object-fit: contain; }
+        .screen-cap { font-size: 10px; color: #475569; font-weight: 600; margin-top: 4px; }
+        .pill-type { background: #e0f2fe; color: #0369a1; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+        .pill-obrig { background: #dcfce7; color: #166534; padding: 1px 6px; border-radius: 3px; font-weight: 700; }
+        .anexo-title { text-align: center; font-weight: 800; font-size: 12px; margin: 16px 0 8px 0; color: #0f172a; }
+        .anexo-list li { margin-bottom: 5px; }
+        .empty-note { color: #64748b; font-style: italic; margin: 4px 0 10px 0; }
+        .doc-footer { border-top: 1px solid #cbd5e1; margin-top: 18px; padding-top: 6px; font-size: 9.5px; color: #64748b; display: flex; justify-content: space-between; }
+        @media print { body { padding: 0; } .no-print { display: none; } }
+      </style>
+    </head>
+    <body>
+      <div class="no-print" style="text-align: right; margin-bottom: 12px;">
+        <button onclick="window.print()" style="padding: 8px 16px; background: ${brandAccent}; color: #fff; border: none; border-radius: 4px; font-weight: 700; cursor: pointer;">🖨️ Imprimir / Salvar em PDF</button>
+      </div>
+
+      <div class="doc-header">
+        <div>
+          <h1>Especificação de Requisitos</h1>
+          <p>${escapeHtml(template.headerInstitution || 'SUSIS - Superintendência de Sistemas · Flow ALM')}</p>
+        </div>
+        ${template.logoUrl ? `<img src="${template.logoUrl}" class="doc-logo" alt="Logo">` : '<img src="assets/flow-logo-horizontal.png" class="doc-logo" alt="Flow">'}
+      </div>
+
+      <div class="section-bar">DADOS DO PROJETO</div>
+      <table>
+        <tbody>
+          <tr>
+            <td colspan="2"><strong>Projeto:</strong><br>${escapeHtml(project ? project.name : 'Geral')}</td>
+            <td><strong>Número do ProcessMaker:</strong><br>${escapeHtml(pm)}</td>
+          </tr>
+          <tr>
+            <td><strong>Criado por:</strong><br>${escapeHtml(cp.nome || '—')}</td>
+            <td><strong>Cargo:</strong><br>${escapeHtml(cp.cargo || '—')}</td>
+            <td><strong>Email:</strong><br>${escapeHtml(cp.email || '—')}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="section-bar">HISTÓRICO DE ATUALIZAÇÕES</div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:15%;">Data</th>
+            <th style="width:12%;">Versão</th>
+            <th>Descrição</th>
+            <th style="width:28%;">Responsável pela Versão</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${history.length > 0 ? history.map(h => `
+            <tr>
+              <td>${escapeHtml(h.data || '—')}</td>
+              <td>${escapeHtml(h.versao || '1.0')}</td>
+              <td>${escapeHtml(h.descricao || '')}</td>
+              <td>${escapeHtml(h.responsavelNome || '—')}</td>
+            </tr>
+          `).join('') : `<tr><td colspan="4">Sem registros históricos.</td></tr>`}
+        </tbody>
+      </table>
+
+      <div class="section-bar">FUNCIONALIDADES</div>
+      <div class="func-title">1. Funcionalidade: ${escapeHtml(req.code || 'RF')} – ${escapeHtml(req.title || '')}</div>
+
+      ${req.descricaoRequisito && req.descricaoRequisito.trim() ? `
+        <div class="sub-heading">Descrição do Requisito:</div>
+        <div class="flow-box">${escapeHtml(req.descricaoRequisito.trim())}</div>
+      ` : ''}
+
+      ${((req.preCondicoes && req.preCondicoes.trim()) || (req.posCondicoes && req.posCondicoes.trim())) ? `
+        <div class="sub-heading">Contexto de Execução (Pré e Pós-condições):</div>
+        <table>
+          <tbody>
+            <tr>
+              <td style="width:50%;"><strong>Pré-condições:</strong><br><div style="white-space:pre-wrap; margin-top:4px;">${escapeHtml(req.preCondicoes?.trim() || 'Nenhuma declarada.')}</div></td>
+              <td style="width:50%;"><strong>Pós-condições:</strong><br><div style="white-space:pre-wrap; margin-top:4px;">${escapeHtml(req.posCondicoes?.trim() || 'Nenhuma declarada.')}</div></td>
+            </tr>
+          </tbody>
+        </table>
+      ` : ''}
+
+      ${rns.length > 0 ? `
+        <div class="sub-heading">Regras de Negócio (RN):</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:14%;">Código</th>
+              <th>Descrição da Regra de Negócio</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rns.map((r, idx) => `
+              <tr>
+                <td><strong>${escapeHtml(r.codigo || `RN${String(idx + 1).padStart(3, '0')}`)}</strong></td>
+                <td style="white-space:pre-wrap;">${escapeHtml(r.descricao || '')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      ` : ''}
+
+      <div class="sub-heading">1.1 Fluxo:</div>
+      ${(req.fluxoPrincipal || req.fluxoRequisito) && (req.fluxoPrincipal || req.fluxoRequisito).trim()
+        ? `<div class="flow-box">${escapeHtml((req.fluxoPrincipal || req.fluxoRequisito).trim())}</div>`
+        : (req.userStory ? `<div class="flow-box">${escapeHtml(req.userStory)}</div>` : '<p class="empty-note">Fluxo não informado.</p>')}
+
+      <div class="sub-heading">1.2 Telas:</div>
+      ${telas.length > 0 ? `
+        <div class="screens-list">
+          ${telas.map((sc, idx) => `
+            <div class="screen-item">
+              <img src="${sc.url || sc.dataUrl || ''}" alt="${escapeHtml(sc.title || `Tela ${idx + 1}`)}">
+              <div class="screen-cap">${escapeHtml(sc.title || sc.tituloTela || `Tela ${idx + 1}`)}</div>
+            </div>
+          `).join('')}
+        </div>
+      ` : '<p class="empty-note">Nenhuma tela anexada.</p>'}
+
+      <div class="sub-heading">1.3 Atributos das Funcionalidades:</div>
+      ${renderAttrPrintTable('1.3.1: Entradas:', entradas)}
+      ${renderAttrPrintTable('1.3.2: Saídas:', saidas)}
+
+      <div class="sub-heading">1.4 Critérios de Aceite:</div>
+      ${criterios.length > 0 ? `
+        <table>
+          <thead>
+            <tr>
+              <th style="width:12%;">Item</th>
+              <th style="width:18%;">Tipo</th>
+              <th style="width:16%;">Categoria</th>
+              <th>Descrição</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${criterios.map((c, idx) => `
+              <tr>
+                <td><strong>${escapeHtml(c.item || `CA${String(idx + 1).padStart(3, '0')}`)}</strong></td>
+                <td><span class="pill-type">${escapeHtml(c.tipo || 'Negócio (N)')}</span></td>
+                <td>${escapeHtml(c.categoria || 'Específico')}</td>
+                <td style="white-space:pre-wrap;">${escapeHtml(c.descricao || '')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      ` : (req.bdd ? `<div class="flow-box" style="font-family:monospace;">${escapeHtml(req.bdd)}</div>` : '<p class="empty-note">Nenhum critério de aceite cadastrado.</p>')}
+
+      ${customSecs.length > 0 ? customSecs.map(sec => `
+        <div class="sub-heading">🧩 ${escapeHtml(sec.tituloSecao || 'Seção Personalizada')}:</div>
+        ${Array.isArray(sec.campos) && sec.campos.length > 0 ? `
+          <table>
+            <thead>
+              <tr>
+                <th style="width:28%;">Campo</th>
+                <th style="width:16%;">Tipo</th>
+                <th style="width:10%; text-align:center;">Obrig</th>
+                <th>Valor / Conteúdo</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sec.campos.map(f => `
+                <tr>
+                  <td><strong>${escapeHtml(f.nomeCampo || 'Campo')}</strong></td>
+                  <td><span class="pill-type">${escapeHtml(f.tipoCampo || 'Texto')}</span></td>
+                  <td style="text-align:center;"><span class="pill-obrig">${f.obrigatorio ? 'Sim' : 'Não'}</span></td>
+                  <td style="white-space:pre-wrap;">${escapeHtml(f.valor != null ? String(f.valor) : '—')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : '<p class="empty-note">Nenhum campo definido nesta seção.</p>'}
+      `).join('') : ''}
+
+      <div class="anexo-title">ANEXO 01 – LISTA DE CRITÉRIOS DE ACEITE</div>
+      <ul class="anexo-list">
+        ${ANEXO_01_CRITERIA_DEFINITIONS.map(def => `<li><strong>${escapeHtml(def.title)}:</strong> ${escapeHtml(def.desc)}</li>`).join('')}
+      </ul>
+
+      <div class="doc-footer">
+        <span>${escapeHtml(template.footerText || 'Flow ALM Pro · Especificação de Requisitos (Padrão SUSIS)')}</span>
+        <span>${escapeHtml(req.code || '')} · Versão ${escapeHtml(req.versaoAtual || '1.0')}</span>
+      </div>
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+};
+
+/**
+ * Gera e baixa PDF individual do Requisito no padrão formal Especificação de Requisitos (SUSIS / Banpará).
+ */
+window.exportSingleRequirementSpecPDF = function(reqId) {
+  const jsPDFClass = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
+  if (!jsPDFClass) {
+    showToast('Biblioteca jsPDF indisponível no navegador. Abrindo modo de impressão...', 'warn');
+    return printSingleRequirementSpec(reqId);
+  }
+  const req = store.getRequirementById(reqId);
+  if (!req) return;
+  const project = store.getProjectById(req.projectId);
+  const pm = req.numeroProcessMaker || (project && project.processMakerNumber) || '—';
+  const cp = req.criadoPor || {};
+  const history = Array.isArray(req.historicoAtualizacoes) ? req.historicoAtualizacoes : [];
+  const rns = Array.isArray(req.regrasNegocio) ? req.regrasNegocio : [];
+  const customSecs = Array.isArray(req.secoesCustomizadas) ? req.secoesCustomizadas : [];
+  const telas = Array.isArray(req.telas) ? req.telas : [];
+  const entradas = Array.isArray(req.entradas) ? req.entradas : [];
+  const saidas = Array.isArray(req.saidas) ? req.saidas : [];
+  const criterios = Array.isArray(req.criteriosAceite) ? req.criteriosAceite : [];
+
+  const doc = new jsPDFClass({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const marginX = 36;
+  const contentW = pageW - marginX * 2;
+  let y = 36;
+
+  const ensureSpace = (needed = 40) => {
+    if (y + needed > pageH - 42) {
+      doc.addPage();
+      y = 42;
+    }
+  };
+
+  const drawSectionBanner = (label) => {
+    ensureSpace(36);
+    doc.setFillColor(29, 91, 104);
+    doc.rect(marginX, y, contentW, 20, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text(label, marginX + 8, y + 13);
+    y += 24;
+  };
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Especificação de Requisitos', marginX, y);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('SUSIS - Superintendência de Sistemas · Flow ALM', marginX, y + 14);
+  doc.setDrawColor(15, 23, 42);
+  doc.setLineWidth(1.2);
+  doc.line(marginX, y + 20, pageW - marginX, y + 20);
+  y += 30;
+
+  drawSectionBanner('DADOS DO PROJETO');
+  if (typeof doc.autoTable === 'function') {
+    doc.autoTable({
+      startY: y,
+      margin: { left: marginX, right: marginX },
+      theme: 'grid',
+      styles: { fontSize: 8.5, cellPadding: 5, textColor: [30, 41, 59] },
+      body: [
+        [{ content: `Projeto:\n${project ? project.name : 'Geral'}`, colSpan: 2 }, `Número do ProcessMaker:\n${pm}`],
+        [`Criado por:\n${cp.nome || '—'}`, `Cargo:\n${cp.cargo || '—'}`, `Email:\n${cp.email || '—'}`]
+      ]
+    });
+    y = doc.lastAutoTable.finalY + 12;
+  }
+
+  drawSectionBanner('HISTÓRICO DE ATUALIZAÇÕES');
+  if (typeof doc.autoTable === 'function') {
+    doc.autoTable({
+      startY: y,
+      margin: { left: marginX, right: marginX },
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 4.5, textColor: [30, 41, 59] },
+      headStyles: { fillColor: [226, 232, 240], textColor: [15, 23, 42], fontStyle: 'bold' },
+      head: [['Data', 'Versão', 'Descrição', 'Responsável pela Versão']],
+      body: history.length > 0
+        ? history.map(h => [h.data || '—', h.versao || '1.0', h.descricao || '', h.responsavelNome || '—'])
+        : [['—', req.versaoAtual || '1.0', 'Versão inicial', cp.nome || '—']]
+    });
+    y = doc.lastAutoTable.finalY + 12;
+  }
+
+  drawSectionBanner('FUNCIONALIDADES');
+  ensureSpace(24);
+  doc.setFillColor(219, 234, 254);
+  doc.rect(marginX, y, contentW, 20, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`1. Funcionalidade: ${req.code || 'RF'} – ${req.title || ''}`, marginX + 6, y + 13);
+  y += 28;
+
+  // Descrição Geral
+  if (req.descricaoRequisito && req.descricaoRequisito.trim()) {
+    ensureSpace(30);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text('Descrição Geral do Requisito:', marginX, y);
+    y += 12;
+    const descLines = doc.splitTextToSize(req.descricaoRequisito.trim(), contentW - 8);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.8);
+    descLines.forEach(line => {
+      ensureSpace(14);
+      doc.text(line, marginX + 6, y);
+      y += 12;
+    });
+    y += 8;
+  }
+
+  // Pré e Pós-condições
+  if ((req.preCondicoes && req.preCondicoes.trim()) || (req.posCondicoes && req.posCondicoes.trim())) {
+    ensureSpace(36);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text('Contexto de Execução (Pré e Pós-condições):', marginX, y);
+    y += 6;
+    if (typeof doc.autoTable === 'function') {
+      doc.autoTable({
+        startY: y,
+        margin: { left: marginX, right: marginX },
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 4.5, textColor: [30, 41, 59] },
+        headStyles: { fillColor: [226, 232, 240], textColor: [15, 23, 42], fontStyle: 'bold' },
+        head: [['Pré-condições', 'Pós-condições']],
+        body: [[req.preCondicoes?.trim() || 'Nenhuma declarada.', req.posCondicoes?.trim() || 'Nenhuma declarada.']]
+      });
+      y = doc.lastAutoTable.finalY + 12;
+    }
+  }
+
+  // Regras de Negócio (RN)
+  if (rns.length > 0) {
+    ensureSpace(36);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`Regras de Negócio (${rns.length}):`, marginX, y);
+    y += 6;
+    if (typeof doc.autoTable === 'function') {
+      doc.autoTable({
+        startY: y,
+        margin: { left: marginX, right: marginX },
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 4.5, textColor: [30, 41, 59] },
+        headStyles: { fillColor: [226, 232, 240], textColor: [15, 23, 42], fontStyle: 'bold' },
+        head: [['Código', 'Descrição']],
+        body: rns.map((r, idx) => [r.codigo || `RN${String(idx + 1).padStart(3, '0')}`, r.descricao || ''])
+      });
+      y = doc.lastAutoTable.finalY + 12;
+    }
+  }
+
+  // 1.1 Fluxo
+  ensureSpace(30);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.text('1.1 Fluxo:', marginX, y);
+  y += 12;
+  const flowText = (req.fluxoPrincipal || req.fluxoRequisito || req.userStory || 'Não informado.').trim();
+  const flowLines = doc.splitTextToSize(flowText, contentW - 8);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.8);
+  flowLines.forEach(line => {
+    ensureSpace(14);
+    doc.text(line, marginX + 6, y);
+    y += 12;
+  });
+  y += 8;
+
+  // 1.2 Telas
+  if (telas.length > 0) {
+    ensureSpace(30);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.text('1.2 Telas:', marginX, y);
+    y += 10;
+    telas.forEach((sc, idx) => {
+      const src = sc.url || sc.dataUrl || '';
+      if (src.startsWith('data:image/')) {
+        ensureSpace(190);
+        try {
+          const fmt = src.includes('image/png') ? 'PNG' : 'JPEG';
+          doc.addImage(src, fmt, marginX + 10, y, contentW - 20, 165, undefined, 'FAST');
+          y += 172;
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(8);
+          doc.text(sc.title || sc.tituloTela || `Tela ${idx + 1}`, pageW / 2, y, { align: 'center' });
+          y += 14;
+        } catch (_) { }
+      }
+    });
+  }
+
+  // 1.3 Entradas / Saídas
+  if (typeof doc.autoTable === 'function') {
+    const drawAttrSection = (title, rows) => {
+      ensureSpace(36);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.2);
+      doc.setTextColor(15, 23, 42);
+      doc.text(title, marginX, y);
+      y += 6;
+      if (rows.length === 0) {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8);
+        doc.text('Nenhum atributo cadastrado.', marginX + 6, y + 8);
+        y += 18;
+        return;
+      }
+      doc.autoTable({
+        startY: y,
+        margin: { left: marginX, right: marginX },
+        theme: 'grid',
+        styles: { fontSize: 7.5, cellPadding: 4, textColor: [30, 41, 59], overflow: 'linebreak' },
+        headStyles: { fillColor: [226, 232, 240], textColor: [15, 23, 42], fontStyle: 'bold' },
+        head: [['Campo', 'Descrição', 'Tipo do campo', 'Obrig', 'Regra']],
+        body: rows.map(r => [r.campo || '', r.descricao || '', r.tipoCampo || '', r.obrigatorio ? 'Sim' : 'Não', r.regra || '—'])
+      });
+      y = doc.lastAutoTable.finalY + 12;
+    };
+
+    ensureSpace(24);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.text('1.3 Atributos das Funcionalidades:', marginX, y);
+    y += 14;
+    drawAttrSection('1.3.1: Entradas:', entradas);
+    drawAttrSection('1.3.2: Saídas:', saidas);
+
+    // 1.4 Critérios de Aceite
+    ensureSpace(36);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.text('1.4 Critérios de Aceite:', marginX, y);
+    y += 6;
+    if (criterios.length > 0) {
+      doc.autoTable({
+        startY: y,
+        margin: { left: marginX, right: marginX },
+        theme: 'grid',
+        styles: { fontSize: 7.8, cellPadding: 4.5, textColor: [30, 41, 59], overflow: 'linebreak' },
+        headStyles: { fillColor: [226, 232, 240], textColor: [15, 23, 42], fontStyle: 'bold' },
+        head: [['Item', 'Tipo', 'Categoria', 'Descrição']],
+        body: criterios.map((c, idx) => [c.item || `CA${String(idx + 1).padStart(3, '0')}`, c.tipo || '', c.categoria || '', c.descricao || ''])
+      });
+      y = doc.lastAutoTable.finalY + 14;
+    } else if (req.bdd && req.bdd.trim()) {
+      const bddLines = doc.splitTextToSize(req.bdd.trim(), contentW - 8);
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(7.8);
+      bddLines.forEach(line => {
+        ensureSpace(12);
+        doc.text(line, marginX + 6, y + 6);
+        y += 10;
+      });
+      y += 10;
+    }
+  }
+
+  // Seções Personalizadas
+  if (customSecs.length > 0) {
+    customSecs.forEach(sec => {
+      const flds = Array.isArray(sec.campos) ? sec.campos : [];
+      ensureSpace(36);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`🧩 ${sec.tituloSecao || 'Seção Personalizada'}:`, marginX, y);
+      y += 8;
+      if (flds.length > 0 && typeof doc.autoTable === 'function') {
+        doc.autoTable({
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          theme: 'grid',
+          styles: { fontSize: 7.8, cellPadding: 4, textColor: [30, 41, 59], overflow: 'linebreak' },
+          headStyles: { fillColor: [226, 232, 240], textColor: [15, 23, 42], fontStyle: 'bold' },
+          head: [['Campo', 'Tipo', 'Obrigatório', 'Valor']],
+          body: flds.map(f => [f.nomeCampo || '', f.tipoCampo || 'Texto', f.obrigatorio ? 'Sim' : 'Não', f.valor != null ? String(f.valor) : '—'])
+        });
+        y = doc.lastAutoTable.finalY + 12;
+      } else {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8);
+        doc.text('Nenhum campo definido nesta seção.', marginX + 6, y + 8);
+        y += 18;
+      }
+    });
+  }
+
+  // Anexo 01
+  ensureSpace(90);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('ANEXO 01 – LISTA DE CRITÉRIOS DE ACEITE', pageW / 2, y, { align: 'center' });
+  y += 14;
+  doc.setFontSize(7.8);
+  ANEXO_01_CRITERIA_DEFINITIONS.forEach(def => {
+    const line = `• ${def.title}: ${def.desc}`;
+    const wrapped = doc.splitTextToSize(line, contentW);
+    doc.setFont('helvetica', 'normal');
+    wrapped.forEach(w => {
+      ensureSpace(12);
+      doc.text(w, marginX, y);
+      y += 10;
+    });
+    y += 2;
+  });
+
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Flow ALM Pro · Especificação de Requisitos (${req.code || 'RF'} v${req.versaoAtual || '1.0'})`, marginX, pageH - 18);
+    doc.text(`Página ${p} de ${totalPages}`, pageW - marginX, pageH - 18, { align: 'right' });
+  }
+
+  const safeCode = (req.code || 'REQ').replace(/[^a-zA-Z0-9_-]/g, '_');
+  doc.save(`${safeCode}_Especificacao_SUSIS_v${req.versaoAtual || '1.0'}.pdf`);
+  showToast(`PDF da especificação [${req.code}] gerado no padrão SUSIS!`);
 };
 
 window.openMeasurementReportModal = openMeasurementReportModal;
@@ -9335,12 +11490,13 @@ window.addEventListener('DOMContentLoaded', () => {
     const color = document.getElementById('project-color-input').value;
     const featuresRaw = document.getElementById('project-features-input')?.value || '';
     const features = featuresRaw.split(',').map(s => s.trim()).filter(Boolean);
+    const processMakerNumber = document.getElementById('project-pm-input')?.value?.trim() || '';
 
     if (editId) {
-      store.updateProject(editId, { name, code, desc, status, deadline, color, features });
+      store.updateProject(editId, { name, code, desc, status, deadline, color, features, processMakerNumber });
       showToast(`Projeto "${name}" atualizado com sucesso!`);
     } else {
-      store.addProject({ name, code, desc, status, deadline, color, features });
+      store.addProject({ name, code, desc, status, deadline, color, features, processMakerNumber });
       showToast(`Novo projeto "${name}" criado com sucesso!`);
     }
 
@@ -9452,7 +11608,59 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('req-project')?.addEventListener('change', (e) => {
     updateAutoReqCode();
     updateModalFeaturesDropdown(e.target.value);
+    const pmInput = document.getElementById('req-process-maker');
+    if (pmInput && (!pmInput.value.trim() || pmInput.dataset.inheritedFromProj === '1')) {
+      const proj = store.getProjectById(e.target.value);
+      pmInput.value = (proj && proj.processMakerNumber) || '';
+      pmInput.dataset.inheritedFromProj = '1';
+    }
   });
+
+  document.getElementById('req-process-maker')?.addEventListener('input', (e) => {
+    e.target.dataset.inheritedFromProj = e.target.value.trim() ? '0' : '1';
+  });
+
+  document.getElementById('req-version')?.addEventListener('input', () => {
+    updateReqModalTabBadges();
+  });
+
+  // Uploader Drag & Drop / Clique / Colar imagem (1.2 Telas / Protótipos)
+  const dropzone = document.getElementById('req-screens-dropzone');
+  const fileInput = document.getElementById('req-screens-file-input');
+  const pickBtn = document.getElementById('btn-pick-req-screens');
+  if (pickBtn && fileInput) {
+    pickBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      fileInput.click();
+    });
+  }
+  if (dropzone && fileInput) {
+    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('dragover', (ev) => {
+      ev.preventDefault();
+      dropzone.classList.add('is-dragover');
+    });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('is-dragover'));
+    dropzone.addEventListener('drop', (ev) => {
+      ev.preventDefault();
+      dropzone.classList.remove('is-dragover');
+      if (ev.dataTransfer?.files?.length) processReqScreenFiles(ev.dataTransfer.files);
+    });
+    dropzone.addEventListener('paste', (ev) => {
+      const items = Array.from(ev.clipboardData?.items || []);
+      const files = items.filter(it => it.type.startsWith('image/')).map(it => it.getAsFile()).filter(Boolean);
+      if (files.length > 0) {
+        ev.preventDefault();
+        processReqScreenFiles(files);
+      }
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files?.length) {
+        processReqScreenFiles(fileInput.files);
+        fileInput.value = '';
+      }
+    });
+  }
 
   document.getElementById('req-feature')?.addEventListener('change', (e) => {
     const customInput = document.getElementById('req-feature-custom');
@@ -9483,7 +11691,7 @@ window.addEventListener('DOMContentLoaded', () => {
     toggleReqCodeLock();
   });
 
-  // 3. FORMULÁRIO DE REQUISITO (CRUD)
+  // 3. FORMULÁRIO DE REQUISITO (CRUD - PADRÃO SUSIS / BANPARÁ)
   document.getElementById('form-new-req')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const currentUser = typeof authStore !== 'undefined' ? authStore.getCurrentUser() : null;
@@ -9500,13 +11708,38 @@ window.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const title = document.getElementById('req-title').value;
-    const code = document.getElementById('req-code').value;
+    const title = (document.getElementById('req-title').value || '').trim();
+    const code = (document.getElementById('req-code').value || '').trim();
     const projectId = document.getElementById('req-project').value;
     const type = document.getElementById('req-type').value;
     const moscow = document.getElementById('req-moscow').value;
+    const numeroProcessMaker = (document.getElementById('req-process-maker')?.value || '').trim();
+    const versaoAtual = (document.getElementById('req-version')?.value || '1.0').trim() || '1.0';
+    const descricaoRequisito = (document.getElementById('req-desc')?.value || '').trim();
+    const preCondicoes = (document.getElementById('req-pre-conditions')?.value || '').trim();
+    const posCondicoes = (document.getElementById('req-post-conditions')?.value || '').trim();
+    const fluxoPrincipal = document.getElementById('req-flow')?.value || '';
     const userStory = document.getElementById('req-user-story').value;
     const bdd = document.getElementById('req-bdd').value;
+
+    if (!projectId) {
+      switchReqModalTab('general');
+      document.getElementById('req-project')?.focus();
+      showToast('Selecione o Projeto do requisito.', 'warn');
+      return;
+    }
+    if (!code) {
+      switchReqModalTab('general');
+      document.getElementById('req-code')?.focus();
+      showToast('Informe o Código Identificador do requisito.', 'warn');
+      return;
+    }
+    if (!title) {
+      switchReqModalTab('general');
+      document.getElementById('req-title')?.focus();
+      showToast('Informe o Título do Requisito.', 'warn');
+      return;
+    }
 
     let feature = document.getElementById('req-feature')?.value || '';
     const customFeature = document.getElementById('req-feature-custom')?.value?.trim();
@@ -9516,12 +11749,84 @@ window.addEventListener('DOMContentLoaded', () => {
       feature = '';
     }
 
+    renumberBusinessRules();
+    renumberAcceptanceCriteria();
+
+    const cleanBusinessRules = (reqFormDraft.regrasNegocio || [])
+      .filter(rn => (rn.descricao || '').trim())
+      .map((rn, idx) => ({
+        id: rn.id || `rn_${Date.now()}_${idx}`,
+        codigo: (rn.codigo || `RN${String(idx + 1).padStart(3, '0')}`).trim(),
+        descricao: rn.descricao.trim(),
+        ordem: idx
+      }));
+
+    const cleanCustomSections = (reqFormDraft.secoesCustomizadas || [])
+      .filter(sec => (sec.tituloSecao || '').trim() || (sec.campos && sec.campos.length > 0))
+      .map((sec, sIdx) => ({
+        id: sec.id || `sec_${Date.now()}_${sIdx}`,
+        tituloSecao: (sec.tituloSecao || `Seção ${sIdx + 1}`).trim(),
+        ordem: sIdx,
+        campos: (sec.campos || [])
+          .filter(f => (f.nomeCampo || '').trim())
+          .map((f, fIdx) => ({
+            id: f.id || `fld_${Date.now()}_${fIdx}`,
+            nomeCampo: f.nomeCampo.trim(),
+            tipoCampo: f.tipoCampo || 'Texto Curto',
+            obrigatorio: Boolean(f.obrigatorio),
+            valor: f.valor != null ? f.valor : ''
+          }))
+      }));
+
+    const cleanAttrList = (arr) => (arr || [])
+      .filter(a => (a.campo || '').trim() || (a.descricao || '').trim() || (a.regra || '').trim())
+      .map(a => ({ ...a, campo: (a.campo || '').trim() || '(Sem nome)' }));
+    const cleanCriteria = (reqFormDraft.criteriosAceite || [])
+      .filter(c => (c.descricao || '').trim());
+    const cleanHistory = (reqFormDraft.historicoAtualizacoes || [])
+      .filter(h => (h.descricao || '').trim() || (h.versao || '').trim());
+    const cleanScreens = (reqFormDraft.telas || []).map((t, idx) => ({
+      id: t.id,
+      ordem: idx,
+      title: (t.title || t.tituloTela || `Tela ${idx + 1}`).trim(),
+      tituloTela: (t.title || t.tituloTela || `Tela ${idx + 1}`).trim(),
+      url: t.url || t.dataUrl || '',
+      mimeType: t.mimeType || '',
+      fileName: t.fileName || ''
+    }));
+
+    const payload = {
+      title,
+      code,
+      projectId,
+      feature,
+      type,
+      moscow,
+      numeroProcessMaker,
+      versaoAtual,
+      criadoPor: reqFormDraft.criadoPor,
+      descricaoRequisito,
+      preCondicoes,
+      posCondicoes,
+      fluxoPrincipal,
+      fluxoRequisito: fluxoPrincipal,
+      regrasNegocio: cleanBusinessRules,
+      secoesCustomizadas: cleanCustomSections,
+      telas: cleanScreens,
+      entradas: cleanAttrList(reqFormDraft.entradas),
+      saidas: cleanAttrList(reqFormDraft.saidas),
+      criteriosAceite: cleanCriteria,
+      historicoAtualizacoes: cleanHistory,
+      userStory,
+      bdd
+    };
+
     let newReq = null;
     if (editId) {
-      store.updateRequirement(editId, { title, code, projectId, feature, type, moscow, userStory, bdd });
+      store.updateRequirement(editId, payload);
       showToast(`Requisito ${code} atualizado com sucesso!`);
     } else {
-      newReq = store.addRequirement({ title, code, projectId, feature, type, moscow, userStory, bdd });
+      newReq = store.addRequirement(payload);
 
       // Garante que o item recém-criado seja imediatamente visível ajustando filtros conflitantes
       if (store.selectedProject !== 'all' && projectId && store.selectedProject !== projectId) {

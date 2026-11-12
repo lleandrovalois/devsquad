@@ -139,6 +139,8 @@ db.exec(`
     status TEXT,
     deadline TEXT,
     features TEXT,
+    process_maker_number TEXT DEFAULT '',
+    custom_sections_template TEXT DEFAULT '[]',
     created_at TEXT NOT NULL
   );
 
@@ -152,9 +154,101 @@ db.exec(`
     moscow TEXT,
     user_story TEXT,
     bdd TEXT,
+    numero_process_maker TEXT DEFAULT '',
+    versao_atual TEXT DEFAULT '1.0',
+    descricao_requisito TEXT DEFAULT '',
+    pre_condicoes TEXT DEFAULT '',
+    pos_condicoes TEXT DEFAULT '',
+    fluxo_requisito TEXT DEFAULT '',
+    fluxo_principal TEXT DEFAULT '',
+    secoes_customizadas TEXT DEFAULT '[]',
+    criado_por_id TEXT DEFAULT '',
+    criado_por_nome TEXT DEFAULT '',
+    criado_por_cargo TEXT DEFAULT '',
+    criado_por_email TEXT DEFAULT '',
+    updated_at TEXT DEFAULT '',
     created_at TEXT NOT NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
   );
+
+  CREATE TABLE IF NOT EXISTS requirement_updates_history (
+    id TEXT PRIMARY KEY,
+    req_id TEXT NOT NULL,
+    ordem INTEGER DEFAULT 0,
+    data TEXT NOT NULL,
+    versao TEXT NOT NULL,
+    descricao TEXT NOT NULL,
+    responsavel_id TEXT,
+    responsavel_nome TEXT NOT NULL,
+    responsavel_cargo TEXT DEFAULT '',
+    responsavel_email TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (req_id) REFERENCES requirements(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_req_history_req_id ON requirement_updates_history(req_id, ordem);
+
+  CREATE TABLE IF NOT EXISTS requirement_screens (
+    id TEXT PRIMARY KEY,
+    req_id TEXT NOT NULL,
+    ordem INTEGER DEFAULT 0,
+    titulo_tela TEXT DEFAULT '',
+    url TEXT NOT NULL,
+    mime_type TEXT DEFAULT '',
+    file_name TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (req_id) REFERENCES requirements(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_req_screens_req_id ON requirement_screens(req_id, ordem);
+
+  CREATE TABLE IF NOT EXISTS requirement_attributes (
+    id TEXT PRIMARY KEY,
+    req_id TEXT NOT NULL,
+    direction TEXT NOT NULL CHECK(direction IN ('entrada', 'saida')),
+    ordem INTEGER DEFAULT 0,
+    campo TEXT NOT NULL,
+    descricao TEXT DEFAULT '',
+    tipo_campo TEXT DEFAULT 'Alfanumérico',
+    obrigatorio INTEGER DEFAULT 0,
+    regra TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (req_id) REFERENCES requirements(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_req_attrs_req_id ON requirement_attributes(req_id, direction, ordem);
+
+  CREATE TABLE IF NOT EXISTS requirement_acceptance_criteria (
+    id TEXT PRIMARY KEY,
+    req_id TEXT NOT NULL,
+    ordem INTEGER DEFAULT 0,
+    item TEXT NOT NULL,
+    tipo TEXT NOT NULL DEFAULT 'Negócio (N)',
+    categoria TEXT NOT NULL DEFAULT 'Específico',
+    descricao TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (req_id) REFERENCES requirements(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_req_ca_req_id ON requirement_acceptance_criteria(req_id, ordem);
+
+  CREATE TABLE IF NOT EXISTS requirement_business_rules (
+    id TEXT PRIMARY KEY,
+    req_id TEXT NOT NULL,
+    ordem INTEGER DEFAULT 0,
+    codigo TEXT NOT NULL,
+    descricao TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (req_id) REFERENCES requirements(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_req_rn_req_id ON requirement_business_rules(req_id, ordem);
+
+  CREATE TABLE IF NOT EXISTS requirement_custom_sections (
+    id TEXT PRIMARY KEY,
+    req_id TEXT NOT NULL,
+    ordem INTEGER DEFAULT 0,
+    titulo_secao TEXT NOT NULL,
+    campos_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (req_id) REFERENCES requirements(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_req_custom_sections_req_id ON requirement_custom_sections(req_id, ordem);
 
   CREATE TABLE IF NOT EXISTS team_members (
     id TEXT PRIMARY KEY,
@@ -358,7 +452,22 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN dev_notes TEXT"); } catch (e) { }
 try { db.exec("ALTER TABLE tasks ADD COLUMN created_at TEXT"); } catch (e) { }
 try { db.exec("ALTER TABLE tasks ADD COLUMN updated_at TEXT"); } catch (e) { }
 try { db.exec("ALTER TABLE requirements ADD COLUMN feature TEXT"); } catch (e) { }
+try { db.exec("ALTER TABLE requirements ADD COLUMN numero_process_maker TEXT DEFAULT ''"); } catch (e) { }
+try { db.exec("ALTER TABLE requirements ADD COLUMN versao_atual TEXT DEFAULT '1.0'"); } catch (e) { }
+try { db.exec("ALTER TABLE requirements ADD COLUMN descricao_requisito TEXT DEFAULT ''"); } catch (e) { }
+try { db.exec("ALTER TABLE requirements ADD COLUMN pre_condicoes TEXT DEFAULT ''"); } catch (e) { }
+try { db.exec("ALTER TABLE requirements ADD COLUMN pos_condicoes TEXT DEFAULT ''"); } catch (e) { }
+try { db.exec("ALTER TABLE requirements ADD COLUMN fluxo_requisito TEXT DEFAULT ''"); } catch (e) { }
+try { db.exec("ALTER TABLE requirements ADD COLUMN fluxo_principal TEXT DEFAULT ''"); } catch (e) { }
+try { db.exec("ALTER TABLE requirements ADD COLUMN secoes_customizadas TEXT DEFAULT '[]'"); } catch (e) { }
+try { db.exec("ALTER TABLE requirements ADD COLUMN criado_por_id TEXT DEFAULT ''"); } catch (e) { }
+try { db.exec("ALTER TABLE requirements ADD COLUMN criado_por_nome TEXT DEFAULT ''"); } catch (e) { }
+try { db.exec("ALTER TABLE requirements ADD COLUMN criado_por_cargo TEXT DEFAULT ''"); } catch (e) { }
+try { db.exec("ALTER TABLE requirements ADD COLUMN criado_por_email TEXT DEFAULT ''"); } catch (e) { }
+try { db.exec("ALTER TABLE requirements ADD COLUMN updated_at TEXT DEFAULT ''"); } catch (e) { }
 try { db.exec("ALTER TABLE projects ADD COLUMN features TEXT"); } catch (e) { }
+try { db.exec("ALTER TABLE projects ADD COLUMN process_maker_number TEXT DEFAULT ''"); } catch (e) { }
+try { db.exec("ALTER TABLE projects ADD COLUMN custom_sections_template TEXT DEFAULT '[]'"); } catch (e) { }
 try { db.exec("ALTER TABLE apf_items ADD COLUMN operation_type TEXT DEFAULT 'ADD'"); } catch (e) { }
 
 // ==============================================================================
@@ -1107,19 +1216,320 @@ function getFullAuditLogs(limit = 150) {
   }
 }
 
+function resolveActorUserProfile(actor) {
+  const safeId = actor && actor.actorId ? String(actor.actorId) : '';
+  const safeName = (actor && actor.actorName) || 'Usuário';
+  const safeRole = (actor && actor.actorRole) || '';
+  const roleLabelMap = {
+    admin: 'Administrador / Gestor Executivo',
+    pm: 'Product Manager / Analista de Requisitos',
+    dev: 'Engenheiro de Software',
+    qa: 'Analista de QA'
+  };
+  let userRow = null;
+  if (safeId) {
+    try {
+      userRow = db.prepare('SELECT id, name, email, role, dev_role FROM users WHERE id = ?').get(safeId);
+    } catch (_) { }
+  }
+  return {
+    id: (userRow && userRow.id) || safeId || '',
+    nome: (userRow && userRow.name) || safeName,
+    cargo: (userRow && (userRow.dev_role || roleLabelMap[userRow.role])) || roleLabelMap[safeRole] || 'Analista de Requisitos',
+    email: (userRow && userRow.email) || ''
+  };
+}
+
+function hydrateRequirementRows(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  const historyMap = new Map();
+  const screensMap = new Map();
+  const entradasMap = new Map();
+  const saidasMap = new Map();
+  const criteriaMap = new Map();
+  const businessRulesMap = new Map();
+  const customSectionsMap = new Map();
+
+  const pushToMap = (map, key, item) => {
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(item);
+  };
+
+  try {
+    db.prepare('SELECT * FROM requirement_updates_history ORDER BY ordem ASC, rowid ASC').all().forEach(h => {
+      pushToMap(historyMap, h.req_id, {
+        id: h.id,
+        ordem: Number(h.ordem || 0),
+        data: h.data || '',
+        versao: h.versao || '1.0',
+        descricao: h.descricao || '',
+        responsavelId: h.responsavel_id || '',
+        responsavelNome: h.responsavel_nome || '',
+        responsavelCargo: h.responsavel_cargo || '',
+        responsavelEmail: h.responsavel_email || ''
+      });
+    });
+  } catch (_) { }
+
+  try {
+    db.prepare('SELECT * FROM requirement_screens ORDER BY ordem ASC, rowid ASC').all().forEach(s => {
+      pushToMap(screensMap, s.req_id, {
+        id: s.id,
+        ordem: Number(s.ordem || 0),
+        title: s.titulo_tela || '',
+        tituloTela: s.titulo_tela || '',
+        url: s.url || '',
+        mimeType: s.mime_type || '',
+        fileName: s.file_name || ''
+      });
+    });
+  } catch (_) { }
+
+  try {
+    db.prepare('SELECT * FROM requirement_attributes ORDER BY ordem ASC, rowid ASC').all().forEach(a => {
+      const targetMap = a.direction === 'saida' ? saidasMap : entradasMap;
+      pushToMap(targetMap, a.req_id, {
+        id: a.id,
+        ordem: Number(a.ordem || 0),
+        campo: a.campo || '',
+        descricao: a.descricao || '',
+        tipoCampo: a.tipo_campo || 'Alfanumérico',
+        obrigatorio: Boolean(Number(a.obrigatorio)),
+        regra: a.regra || ''
+      });
+    });
+  } catch (_) { }
+
+  try {
+    db.prepare('SELECT * FROM requirement_acceptance_criteria ORDER BY ordem ASC, rowid ASC').all().forEach(c => {
+      pushToMap(criteriaMap, c.req_id, {
+        id: c.id,
+        ordem: Number(c.ordem || 0),
+        item: c.item || '',
+        tipo: c.tipo || 'Negócio (N)',
+        categoria: c.categoria || 'Específico',
+        descricao: c.descricao || ''
+      });
+    });
+  } catch (_) { }
+
+  try {
+    db.prepare('SELECT * FROM requirement_business_rules ORDER BY ordem ASC, rowid ASC').all().forEach(rn => {
+      pushToMap(businessRulesMap, rn.req_id, {
+        id: rn.id,
+        ordem: Number(rn.ordem || 0),
+        codigo: rn.codigo || '',
+        descricao: rn.descricao || ''
+      });
+    });
+  } catch (_) { }
+
+  try {
+    db.prepare('SELECT * FROM requirement_custom_sections ORDER BY ordem ASC, rowid ASC').all().forEach(cs => {
+      let campos = [];
+      try {
+        campos = typeof cs.campos_json === 'string' ? JSON.parse(cs.campos_json || '[]') : cs.campos_json;
+      } catch (_) {
+        campos = [];
+      }
+      pushToMap(customSectionsMap, cs.req_id, {
+        id: cs.id,
+        ordem: Number(cs.ordem || 0),
+        tituloSecao: cs.titulo_secao || '',
+        campos: Array.isArray(campos) ? campos : []
+      });
+    });
+  } catch (_) { }
+
+  return rows.map(r => {
+    const history = historyMap.get(r.id) || [];
+    const latestVersion = history.length > 0 ? history[history.length - 1].versao : '';
+    let fallbackCustomSections = [];
+    if (r.secoes_customizadas) {
+      try {
+        fallbackCustomSections = typeof r.secoes_customizadas === 'string' ? JSON.parse(r.secoes_customizadas) : r.secoes_customizadas;
+      } catch (_) {
+        fallbackCustomSections = [];
+      }
+    }
+    const customSections = customSectionsMap.has(r.id) ? customSectionsMap.get(r.id) : (Array.isArray(fallbackCustomSections) ? fallbackCustomSections : []);
+
+    return {
+      id: r.id,
+      code: r.code,
+      title: r.title,
+      projectId: r.project_id,
+      feature: r.feature || '',
+      type: r.type,
+      moscow: r.moscow,
+      userStory: r.user_story || '',
+      bdd: r.bdd || '',
+      numeroProcessMaker: r.numero_process_maker || '',
+      versaoAtual: r.versao_atual || latestVersion || '1.0',
+      criadoPor: {
+        id: r.criado_por_id || '',
+        nome: r.criado_por_nome || '',
+        cargo: r.criado_por_cargo || '',
+        email: r.criado_por_email || ''
+      },
+      descricaoRequisito: r.descricao_requisito || '',
+      preCondicoes: r.pre_condicoes || '',
+      posCondicoes: r.pos_condicoes || '',
+      fluxoRequisito: r.fluxo_requisito || r.fluxo_principal || '',
+      fluxoPrincipal: r.fluxo_principal || r.fluxo_requisito || '',
+      regrasNegocio: businessRulesMap.get(r.id) || [],
+      telas: screensMap.get(r.id) || [],
+      entradas: entradasMap.get(r.id) || [],
+      saidas: saidasMap.get(r.id) || [],
+      criteriosAceite: criteriaMap.get(r.id) || [],
+      secoesCustomizadas: customSections,
+      historicoAtualizacoes: history,
+      updatedAt: r.updated_at || r.created_at,
+      createdAt: r.created_at
+    };
+  });
+}
+
+function hydrateRequirementById(reqId) {
+  const row = db.prepare('SELECT * FROM requirements WHERE id = ?').get(reqId);
+  if (!row) return null;
+  const all = hydrateRequirementRows([row]);
+  return all[0] || null;
+}
+
+function syncRequirementChildren(reqId, payload, options = {}) {
+  const now = new Date().toISOString();
+  const isCreate = Boolean(options.isCreate);
+  const actorProfile = options.actorProfile || { id: '', nome: 'Usuário', cargo: 'Analista de Requisitos', email: '' };
+
+  if (Array.isArray(payload.telas)) {
+    db.prepare('DELETE FROM requirement_screens WHERE req_id = ?').run(reqId);
+    const ins = db.prepare(`
+      INSERT INTO requirement_screens (id, req_id, ordem, titulo_tela, url, mime_type, file_name, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    payload.telas.forEach((sc, idx) => {
+      const url = String(sc && (sc.url || sc.dataUrl) || '').trim();
+      if (!url) return;
+      const sid = (sc.id && String(sc.id)) || `scr_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`;
+      ins.run(sid, reqId, idx, String(sc.title || sc.tituloTela || sc.titulo_tela || '').trim(), url, String(sc.mimeType || sc.mime_type || ''), String(sc.fileName || sc.file_name || ''), now);
+    });
+  }
+
+  const replaceAttributes = (direction, list) => {
+    if (!Array.isArray(list)) return;
+    db.prepare('DELETE FROM requirement_attributes WHERE req_id = ? AND direction = ?').run(reqId, direction);
+    const ins = db.prepare(`
+      INSERT INTO requirement_attributes (id, req_id, direction, ordem, campo, descricao, tipo_campo, obrigatorio, regra, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    list.forEach((attr, idx) => {
+      const campo = String(attr && attr.campo || '').trim();
+      const descricao = String(attr && attr.descricao || '').trim();
+      const regra = String(attr && attr.regra || '').trim();
+      if (!campo && !descricao && !regra) return;
+      const aid = (attr.id && String(attr.id)) || `attr_${direction}_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`;
+      const isReq = attr.obrigatorio === true || attr.obrigatorio === 1 || String(attr.obrigatorio || '').toLowerCase() === 'sim' ? 1 : 0;
+      ins.run(aid, reqId, direction, idx, campo || '(Sem nome)', descricao, String(attr.tipoCampo || attr.tipo_campo || 'Alfanumérico'), isReq, regra, now);
+    });
+  };
+  replaceAttributes('entrada', payload.entradas);
+  replaceAttributes('saida', payload.saidas);
+
+  if (Array.isArray(payload.criteriosAceite)) {
+    db.prepare('DELETE FROM requirement_acceptance_criteria WHERE req_id = ?').run(reqId);
+    const ins = db.prepare(`
+      INSERT INTO requirement_acceptance_criteria (id, req_id, ordem, item, tipo, categoria, descricao, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    let seq = 1;
+    payload.criteriosAceite.forEach((ca, idx) => {
+      const desc = String(ca && ca.descricao || '').trim();
+      if (!desc) return;
+      const itemCode = String(ca.item || '').trim() || `CA${String(seq).padStart(3, '0')}`;
+      seq++;
+      const cid = (ca.id && String(ca.id)) || `ca_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`;
+      ins.run(cid, reqId, idx, itemCode, String(ca.tipo || 'Negócio (N)'), String(ca.categoria || 'Específico'), desc, now);
+    });
+  }
+
+  if (Array.isArray(payload.regrasNegocio)) {
+    db.prepare('DELETE FROM requirement_business_rules WHERE req_id = ?').run(reqId);
+    const ins = db.prepare(`
+      INSERT INTO requirement_business_rules (id, req_id, ordem, codigo, descricao, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    let seq = 1;
+    payload.regrasNegocio.forEach((rn, idx) => {
+      const desc = String(rn && rn.descricao || '').trim();
+      if (!desc) return;
+      const code = String(rn.codigo || '').trim() || `RN${String(seq).padStart(3, '0')}`;
+      seq++;
+      const rid = (rn.id && String(rn.id)) || `rn_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`;
+      ins.run(rid, reqId, idx, code, desc, now);
+    });
+  }
+
+  if (Array.isArray(payload.secoesCustomizadas)) {
+    db.prepare('DELETE FROM requirement_custom_sections WHERE req_id = ?').run(reqId);
+    const ins = db.prepare(`
+      INSERT INTO requirement_custom_sections (id, req_id, ordem, titulo_secao, campos_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    payload.secoesCustomizadas.forEach((sec, idx) => {
+      const title = String(sec && (sec.tituloSecao || sec.titulo_secao) || '').trim();
+      const campos = Array.isArray(sec && sec.campos) ? sec.campos : [];
+      if (!title && campos.length === 0) return;
+      const sid = (sec.id && String(sec.id)) || `sec_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`;
+      ins.run(sid, reqId, idx, title || `Seção ${idx + 1}`, JSON.stringify(campos), now);
+    });
+  }
+
+  let historyList = Array.isArray(payload.historicoAtualizacoes) ? payload.historicoAtualizacoes : null;
+  if (isCreate && (!historyList || historyList.length === 0)) {
+    const today = now.slice(0, 10);
+    historyList = [{
+      data: today,
+      versao: String(payload.versaoAtual || '1.0'),
+      descricao: 'Primeira versão dos requisitos.',
+      responsavelId: actorProfile.id,
+      responsavelNome: actorProfile.nome,
+      responsavelCargo: actorProfile.cargo,
+      responsavelEmail: actorProfile.email
+    }];
+  }
+  if (Array.isArray(historyList)) {
+    db.prepare('DELETE FROM requirement_updates_history WHERE req_id = ?').run(reqId);
+    const ins = db.prepare(`
+      INSERT INTO requirement_updates_history (id, req_id, ordem, data, versao, descricao, responsavel_id, responsavel_nome, responsavel_cargo, responsavel_email, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    historyList.forEach((h, idx) => {
+      const desc = String(h && h.descricao || '').trim();
+      const ver = String(h && h.versao || '1.0').trim();
+      if (!desc && !ver) return;
+      const hid = (h.id && String(h.id)) || `hist_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`;
+      ins.run(
+        hid,
+        reqId,
+        idx,
+        String(h.data || now.slice(0, 10)),
+        ver || '1.0',
+        desc || 'Atualização de versão',
+        String(h.responsavelId || h.responsavel_id || actorProfile.id || ''),
+        String(h.responsavelNome || h.responsavel_nome || actorProfile.nome || 'Analista'),
+        String(h.responsavelCargo || h.responsavel_cargo || actorProfile.cargo || ''),
+        String(h.responsavelEmail || h.responsavel_email || actorProfile.email || ''),
+        now
+      );
+    });
+  }
+}
+
 function getFullRequirements() {
-  return db.prepare('SELECT * FROM requirements ORDER BY created_at DESC, id DESC').all().map(r => ({
-    id: r.id,
-    code: r.code,
-    title: r.title,
-    projectId: r.project_id,
-    feature: r.feature || '',
-    type: r.type,
-    moscow: r.moscow,
-    userStory: r.user_story,
-    bdd: r.bdd,
-    createdAt: r.created_at
-  }));
+  const rows = db.prepare('SELECT * FROM requirements ORDER BY created_at DESC, id DESC').all();
+  return hydrateRequirementRows(rows);
 }
 
 function getFullTeamMembers() {
@@ -1157,6 +1567,14 @@ function getFullProjects() {
         features = String(p.features).split(',').map(s => s.trim()).filter(Boolean);
       }
     }
+    let customSectionsTemplate = [];
+    if (p.custom_sections_template) {
+      try {
+        customSectionsTemplate = typeof p.custom_sections_template === 'string' ? JSON.parse(p.custom_sections_template) : p.custom_sections_template;
+      } catch (_) {
+        customSectionsTemplate = [];
+      }
+    }
     return {
       id: p.id,
       code: p.code,
@@ -1165,6 +1583,8 @@ function getFullProjects() {
       color: p.color,
       status: p.status,
       deadline: p.deadline,
+      processMakerNumber: p.process_maker_number || '',
+      customSectionsTemplate: Array.isArray(customSectionsTemplate) ? customSectionsTemplate : [],
       features: Array.isArray(features) ? features : []
     };
   });
@@ -1949,12 +2369,22 @@ function analyzeCfpsSpecification(spec, options = {}) {
   const userStory = (spec.userStory || spec.user_story || '').trim();
   const bdd = (spec.bdd || '').trim();
   const feature = (spec.feature || '').trim();
+  const fluxoText = (spec.fluxoPrincipal || spec.fluxo_principal || '').trim();
+  const entradasText = Array.isArray(spec.entradas)
+    ? spec.entradas.map(e => `${e.campo || ''} ${e.tipoCampo || ''} ${e.descricao || ''} ${e.regra || ''}`).join('\n')
+    : '';
+  const saidasText = Array.isArray(spec.saidas)
+    ? spec.saidas.map(s => `${s.campo || ''} ${s.tipoCampo || ''} ${s.descricao || ''} ${s.regra || ''}`).join('\n')
+    : '';
+  const criteriosText = Array.isArray(spec.criteriosAceite)
+    ? spec.criteriosAceite.map(c => `${c.item || ''} ${c.tipo || ''} ${c.categoria || ''} ${c.descricao || ''}`).join('\n')
+    : '';
   const customText = (spec.text || spec.specification || '').trim();
   const reqId = spec.reqId || spec.id || '';
   const reqCode = spec.code || spec.reqCode || '';
   const projectId = spec.projectId || spec.project_id || '';
 
-  const fullText = [title, feature, userStory, bdd, customText].filter(Boolean).join('\n');
+  const fullText = [title, feature, userStory, bdd, fluxoText, entradasText, saidasText, criteriosText, customText].filter(Boolean).join('\n');
   const lowerText = fullText.toLowerCase();
 
   const resolvedOpType = resolveApfOperationType(countingType, explicitOpType, fullText);
@@ -3161,7 +3591,7 @@ function inferApfFromFeature(projectId, featureName, options = {}) {
     query += ' AND project_id = ?';
     params.push(projectId);
   }
-  const requirements = db.prepare(query).all(...params);
+  const requirements = hydrateRequirementRows(db.prepare(query).all(...params));
 
   let allCandidates = [];
   let rawFeatureInmCandidates = [];
@@ -4068,7 +4498,7 @@ async function analyzeFeatureWithAiOrFallback(projectId, featureName, options = 
     query += ' AND project_id = ?';
     params.push(projectId);
   }
-  const featureRequirements = db.prepare(query).all(...params);
+  const featureRequirements = hydrateRequirementRows(db.prepare(query).all(...params));
   const spec = { title: featureName, feature: featureName, projectId };
   const countingType = options.countingType || 'Desenvolvimento';
   const isDevCounting = /^desenvolvimento$/i.test(countingType.trim());
@@ -4381,10 +4811,11 @@ const server = http.createServer(async (req, res) => {
         const id = p.id || 'p_' + Date.now();
         const now = new Date().toISOString();
         const featuresJson = JSON.stringify(Array.isArray(p.features) ? p.features : []);
+        const pmNumber = String(p.processMakerNumber || p.numeroProcessMaker || '').trim();
         db.prepare(`
-          INSERT INTO projects (id, code, name, desc, color, status, deadline, features, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, p.code || 'PROJ', p.name, p.desc || '', p.color || '#3b82f6', p.status || 'Ativo', p.deadline || '', featuresJson, now);
+          INSERT INTO projects (id, code, name, desc, color, status, deadline, features, process_maker_number, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(id, p.code || 'PROJ', p.name, p.desc || '', p.color || '#3b82f6', p.status || 'Ativo', p.deadline || '', featuresJson, pmNumber, now);
 
         const actor = getActorFromReq(req);
         logAudit({
@@ -4394,10 +4825,10 @@ const server = http.createServer(async (req, res) => {
           action: 'CREATE',
           ...actor,
           details: `Cadastrou novo projeto: [${p.code || 'PROJ'}] "${p.name}".`,
-          newState: p
+          newState: { ...p, processMakerNumber: pmNumber }
         });
 
-        return sendJson(res, 201, { id, ...p });
+        return sendJson(res, 201, { id, ...p, processMakerNumber: pmNumber });
       }
     }
 
@@ -4414,9 +4845,15 @@ const server = http.createServer(async (req, res) => {
         if (p.features !== undefined) {
           featuresJson = JSON.stringify(Array.isArray(p.features) ? p.features : []);
         }
+        const pmNumber = p.processMakerNumber !== undefined
+          ? String(p.processMakerNumber || '').trim()
+          : (p.numeroProcessMaker !== undefined ? String(p.numeroProcessMaker || '').trim() : (existing ? (existing.process_maker_number || '') : ''));
+        const customSectionsTemplate = p.customSectionsTemplate !== undefined
+          ? JSON.stringify(Array.isArray(p.customSectionsTemplate) ? p.customSectionsTemplate : [])
+          : (existing ? (existing.custom_sections_template || '[]') : '[]');
         db.prepare(`
           UPDATE projects
-          SET name = ?, code = ?, desc = ?, color = ?, status = ?, deadline = ?, features = ?
+          SET name = ?, code = ?, desc = ?, color = ?, status = ?, deadline = ?, features = ?, process_maker_number = ?, custom_sections_template = ?
           WHERE id = ?
         `).run(
           p.name !== undefined ? p.name : (existing ? existing.name : ''),
@@ -4426,6 +4863,8 @@ const server = http.createServer(async (req, res) => {
           p.status !== undefined ? p.status : (existing ? existing.status : 'Ativo'),
           p.deadline !== undefined ? p.deadline : (existing ? existing.deadline : ''),
           featuresJson,
+          pmNumber,
+          customSectionsTemplate,
           projId
         );
 
@@ -4442,6 +4881,12 @@ const server = http.createServer(async (req, res) => {
         });
 
         return sendJson(res, 200, { id: projId, ...p });
+      }
+      if (pathname.endsWith('/sections-template') && method === 'POST') {
+        const body = await parseJsonBody(req);
+        const templateList = Array.isArray(body.template) ? body.template : (Array.isArray(body.sections) ? body.sections : (Array.isArray(body.customSectionsTemplate) ? body.customSectionsTemplate : []));
+        db.prepare('UPDATE projects SET custom_sections_template = ? WHERE id = ?').run(JSON.stringify(templateList), projId);
+        return sendJson(res, 200, { success: true, projectId: projId, customSectionsTemplate: templateList });
       }
       if (method === 'DELETE') {
         const callerRole = req.headers['x-user-role'];
@@ -4480,10 +4925,46 @@ const server = http.createServer(async (req, res) => {
         const id = r.id || 'req_' + Date.now();
         const now = r.createdAt || new Date().toISOString();
         const feature = (r.feature || '').trim();
+        const actor = getActorFromReq(req);
+        const actorProfile = resolveActorUserProfile(actor);
+
+        let numeroProcessMaker = String(r.numeroProcessMaker || r.numero_process_maker || '').trim();
+        if (!numeroProcessMaker && r.projectId) {
+          try {
+            const projPm = db.prepare('SELECT process_maker_number FROM projects WHERE id = ?').get(r.projectId);
+            if (projPm && projPm.process_maker_number) numeroProcessMaker = projPm.process_maker_number;
+          } catch (_) { }
+        }
+        const versaoAtual = String(r.versaoAtual || r.versao_atual || '1.0').trim() || '1.0';
+        const descricaoRequisito = String(r.descricaoRequisito || r.descricao_requisito || '').trim();
+        const preCondicoes = String(r.preCondicoes || r.pre_condicoes || '').trim();
+        const posCondicoes = String(r.posCondicoes || r.pos_condicoes || '').trim();
+        const fluxoRequisito = String(r.fluxoRequisito || r.fluxo_requisito || r.fluxoPrincipal || r.fluxo_principal || '').trim();
+        const fluxoPrincipal = fluxoRequisito;
+        const secoesCustomizadasJson = JSON.stringify(Array.isArray(r.secoesCustomizadas) ? r.secoesCustomizadas : []);
+        const criadoPor = r.criadoPor || {};
+        const cpId = String(criadoPor.id || actorProfile.id || '');
+        const cpNome = String(criadoPor.nome || actorProfile.nome || '');
+        const cpCargo = String(criadoPor.cargo || actorProfile.cargo || '');
+        const cpEmail = String(criadoPor.email || actorProfile.email || '');
+
         db.prepare(`
-          INSERT INTO requirements (id, code, title, project_id, feature, type, moscow, user_story, bdd, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, r.code || 'RF', r.title, r.projectId || null, feature, r.type || 'functional', r.moscow || 'Must', r.userStory || '', r.bdd || '', now);
+          INSERT INTO requirements (
+            id, code, title, project_id, feature, type, moscow, user_story, bdd,
+            numero_process_maker, versao_atual, descricao_requisito, pre_condicoes, pos_condicoes, fluxo_requisito, fluxo_principal, secoes_customizadas,
+            criado_por_id, criado_por_nome, criado_por_cargo, criado_por_email,
+            updated_at, created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          id, r.code || 'RF', r.title, r.projectId || null, feature,
+          r.type || 'functional', r.moscow || 'Must', r.userStory || '', r.bdd || '',
+          numeroProcessMaker, versaoAtual, descricaoRequisito, preCondicoes, posCondicoes, fluxoRequisito, fluxoPrincipal, secoesCustomizadasJson,
+          cpId, cpNome, cpCargo, cpEmail,
+          now, now
+        );
+
+        syncRequirementChildren(id, { ...r, versaoAtual }, { isCreate: true, actorProfile });
 
         if (r.projectId && feature) {
           try {
@@ -4500,18 +4981,18 @@ const server = http.createServer(async (req, res) => {
           } catch (e) { }
         }
 
-        const actor = getActorFromReq(req);
+        const hydrated = hydrateRequirementById(id) || { ...r, id, feature, createdAt: now };
         logAudit({
           entityType: 'requirement',
           entityId: id,
           entityTitle: r.title,
           action: 'CREATE',
           ...actor,
-          details: `Especificou novo requisito: [${r.code || 'RF'}] "${r.title}".`,
-          newState: { ...r, id, feature, createdAt: now }
+          details: `Especificou novo requisito: [${r.code || 'RF'}] "${r.title}" (v${versaoAtual}).`,
+          newState: { ...hydrated, telas: (hydrated.telas || []).map(t => ({ ...t, url: '[OMITTED_IMAGE]' })) }
         });
 
-        return sendJson(res, 201, { id, ...r, feature, createdAt: now });
+        return sendJson(res, 201, hydrated);
       }
     }
 
@@ -4524,41 +5005,107 @@ const server = http.createServer(async (req, res) => {
         }
         const r = await parseJsonBody(req);
         const existing = db.prepare('SELECT * FROM requirements WHERE id = ?').get(reqId);
-        const feature = r.feature !== undefined ? (r.feature || '').trim() : (existing ? (existing.feature || '') : '');
+        if (!existing) {
+          return sendJson(res, 404, { success: false, message: 'Requisito não encontrado.' });
+        }
+        const now = new Date().toISOString();
+        const actor = getActorFromReq(req);
+        const actorProfile = resolveActorUserProfile(actor);
+
+        const feature = r.feature !== undefined ? (r.feature || '').trim() : (existing.feature || '');
+        const numeroProcessMaker = r.numeroProcessMaker !== undefined
+          ? String(r.numeroProcessMaker || '').trim()
+          : (r.numero_process_maker !== undefined ? String(r.numero_process_maker || '').trim() : (existing.numero_process_maker || ''));
+        const versaoAtual = r.versaoAtual !== undefined
+          ? (String(r.versaoAtual || '').trim() || existing.versao_atual || '1.0')
+          : (r.versao_atual !== undefined ? String(r.versao_atual || '').trim() : (existing.versao_atual || '1.0'));
+        const descricaoRequisito = r.descricaoRequisito !== undefined
+          ? String(r.descricaoRequisito || '').trim()
+          : (r.descricao_requisito !== undefined ? String(r.descricao_requisito || '').trim() : (existing.descricao_requisito || ''));
+        const preCondicoes = r.preCondicoes !== undefined
+          ? String(r.preCondicoes || '').trim()
+          : (r.pre_condicoes !== undefined ? String(r.pre_condicoes || '').trim() : (existing.pre_condicoes || ''));
+        const posCondicoes = r.posCondicoes !== undefined
+          ? String(r.posCondicoes || '').trim()
+          : (r.pos_condicoes !== undefined ? String(r.pos_condicoes || '').trim() : (existing.pos_condicoes || ''));
+        const fluxoRequisito = r.fluxoRequisito !== undefined
+          ? String(r.fluxoRequisito || '').trim()
+          : (r.fluxo_requisito !== undefined ? String(r.fluxo_requisito || '').trim() : (r.fluxoPrincipal !== undefined ? String(r.fluxoPrincipal || '').trim() : (existing.fluxo_requisito || existing.fluxo_principal || '')));
+        const fluxoPrincipal = fluxoRequisito;
+        const secoesCustomizadasJson = r.secoesCustomizadas !== undefined
+          ? JSON.stringify(Array.isArray(r.secoesCustomizadas) ? r.secoesCustomizadas : [])
+          : (existing.secoes_customizadas || '[]');
+
+        const cp = r.criadoPor || {};
+        const cpId = cp.id !== undefined ? String(cp.id || '') : (existing.criado_por_id || actorProfile.id || '');
+        const cpNome = cp.nome !== undefined ? String(cp.nome || '') : (existing.criado_por_nome || actorProfile.nome || '');
+        const cpCargo = cp.cargo !== undefined ? String(cp.cargo || '') : (existing.criado_por_cargo || actorProfile.cargo || '');
+        const cpEmail = cp.email !== undefined ? String(cp.email || '') : (existing.criado_por_email || actorProfile.email || '');
+
         db.prepare(`
           UPDATE requirements
-          SET code = ?, title = ?, project_id = ?, feature = ?, type = ?, moscow = ?, user_story = ?, bdd = ?
+          SET code = ?, title = ?, project_id = ?, feature = ?, type = ?, moscow = ?, user_story = ?, bdd = ?,
+              numero_process_maker = ?, versao_atual = ?,
+              descricao_requisito = ?, pre_condicoes = ?, pos_condicoes = ?, fluxo_requisito = ?, fluxo_principal = ?, secoes_customizadas = ?,
+              criado_por_id = ?, criado_por_nome = ?, criado_por_cargo = ?, criado_por_email = ?,
+              updated_at = ?
           WHERE id = ?
-        `).run(r.code || 'RF', r.title || '', r.projectId || null, feature, r.type || 'functional', r.moscow || 'Must', r.userStory || '', r.bdd || '', reqId);
+        `).run(
+          r.code !== undefined ? (r.code || 'RF') : existing.code,
+          r.title !== undefined ? (r.title || '') : existing.title,
+          r.projectId !== undefined ? (r.projectId || null) : existing.project_id,
+          feature,
+          r.type !== undefined ? (r.type || 'functional') : existing.type,
+          r.moscow !== undefined ? (r.moscow || 'Must') : existing.moscow,
+          r.userStory !== undefined ? (r.userStory || '') : (existing.user_story || ''),
+          r.bdd !== undefined ? (r.bdd || '') : (existing.bdd || ''),
+          numeroProcessMaker,
+          versaoAtual,
+          descricaoRequisito,
+          preCondicoes,
+          posCondicoes,
+          fluxoRequisito,
+          fluxoPrincipal,
+          secoesCustomizadasJson,
+          cpId,
+          cpNome,
+          cpCargo,
+          cpEmail,
+          now,
+          reqId
+        );
 
-        if (r.projectId && feature) {
+        syncRequirementChildren(reqId, { ...r, versaoAtual }, { isCreate: false, actorProfile });
+
+        const targetProjectId = r.projectId !== undefined ? r.projectId : existing.project_id;
+        if (targetProjectId && feature) {
           try {
-            const proj = db.prepare('SELECT features FROM projects WHERE id = ?').get(r.projectId);
+            const proj = db.prepare('SELECT features FROM projects WHERE id = ?').get(targetProjectId);
             if (proj) {
               let fList = [];
               try { fList = JSON.parse(proj.features || '[]'); } catch (e) { }
               if (!Array.isArray(fList)) fList = [];
               if (!fList.some(f => f.toLowerCase() === feature.toLowerCase())) {
                 fList.push(feature);
-                db.prepare('UPDATE projects SET features = ? WHERE id = ?').run(JSON.stringify(fList), r.projectId);
+                db.prepare('UPDATE projects SET features = ? WHERE id = ?').run(JSON.stringify(fList), targetProjectId);
               }
             }
           } catch (e) { }
         }
 
-        const actor = getActorFromReq(req);
+        const hydrated = hydrateRequirementById(reqId) || { id: reqId, ...r };
         logAudit({
           entityType: 'requirement',
           entityId: reqId,
-          entityTitle: r.title || (existing ? existing.title : reqId),
+          entityTitle: hydrated.title || reqId,
           action: 'UPDATE',
           ...actor,
-          details: `Atualizou especificação do requisito [${r.code || 'RF'}] "${r.title}".`,
+          details: `Atualizou especificação do requisito [${hydrated.code || 'RF'}] "${hydrated.title}" (v${versaoAtual}).`,
           prevState: existing,
-          newState: r
+          newState: { ...hydrated, telas: (hydrated.telas || []).map(t => ({ ...t, url: '[OMITTED_IMAGE]' })) }
         });
 
-        return sendJson(res, 200, { id: reqId, ...r });
+        return sendJson(res, 200, hydrated);
       }
       if (method === 'DELETE') {
         const callerRole = req.headers['x-user-role'];
@@ -4566,6 +5113,10 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 403, { success: false, message: 'Usuários Dev e QA não possuem permissão para excluir requisitos.' });
         }
         const existing = db.prepare('SELECT code, title FROM requirements WHERE id = ?').get(reqId);
+        try { db.prepare('DELETE FROM requirement_updates_history WHERE req_id = ?').run(reqId); } catch (_) { }
+        try { db.prepare('DELETE FROM requirement_screens WHERE req_id = ?').run(reqId); } catch (_) { }
+        try { db.prepare('DELETE FROM requirement_attributes WHERE req_id = ?').run(reqId); } catch (_) { }
+        try { db.prepare('DELETE FROM requirement_acceptance_criteria WHERE req_id = ?').run(reqId); } catch (_) { }
         db.prepare('DELETE FROM requirements WHERE id = ?').run(reqId);
 
         const actor = getActorFromReq(req);
@@ -5887,11 +6438,11 @@ const server = http.createServer(async (req, res) => {
 
       let result;
       if (reqId) {
-        const reqRow = db.prepare('SELECT * FROM requirements WHERE id = ?').get(reqId);
-        if (!reqRow) {
+        const hydratedReq = hydrateRequirementById(reqId);
+        if (!hydratedReq) {
           return sendJson(res, 404, { success: false, message: 'Requisito não encontrado.' });
         }
-        result = await analyzeCfpsWithAiOrFallback(reqRow, { countingType, operationType, factor, engine, projectId, forceRefresh });
+        result = await analyzeCfpsWithAiOrFallback(hydratedReq, { countingType, operationType, factor, engine, projectId, forceRefresh });
       } else if (text || userStory || bdd || specification) {
         // Modo Auditoria Direta de História de Usuário / BDD Livre
         result = await analyzeCfpsWithAiOrFallback({
@@ -6678,5 +7229,8 @@ module.exports = {
   detectFormalExternalNotificationSe,
   analyzeCfpsSpecification,
   reconcileAiCfpsResult,
-  analyzeCfpsWithAiOrFallback
+  analyzeCfpsWithAiOrFallback,
+  hydrateRequirementById,
+  syncRequirementChildren,
+  getFullRequirements
 };

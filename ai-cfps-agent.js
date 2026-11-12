@@ -362,6 +362,60 @@ DIRETRIZES OBRIGATÓRIAS DE CONTAGEM (IFPUG CPM 4.3.1 + SISP):
 }
 
 /**
+ * Serializa campos estruturados do padrão SUSIS / Banpará (Fluxo, Telas, Entradas, Saídas, CAs) em texto limpo para prompt/cache.
+ */
+function formatStructuredSpecSections(req = {}) {
+  const parts = [];
+  const pm = (req.numeroProcessMaker || req.numero_process_maker || '').trim();
+  const ver = (req.versaoAtual || req.versao_atual || '').trim();
+  const desc = (req.descricaoRequisito || req.descricao_requisito || '').trim();
+  const pre = (req.preCondicoes || req.pre_condicoes || '').trim();
+  const pos = (req.posCondicoes || req.pos_condicoes || '').trim();
+  const flow = (req.fluxoRequisito || req.fluxo_requisito || req.fluxoPrincipal || req.fluxo_principal || '').trim();
+  const rnList = Array.isArray(req.regrasNegocio) ? req.regrasNegocio : [];
+  const telas = Array.isArray(req.telas) ? req.telas : [];
+  const entradas = Array.isArray(req.entradas) ? req.entradas : [];
+  const saidas = Array.isArray(req.saidas) ? req.saidas : [];
+  const criterios = Array.isArray(req.criteriosAceite) ? req.criteriosAceite : [];
+  const customSecs = Array.isArray(req.secoesCustomizadas) ? req.secoesCustomizadas : [];
+
+  if (pm) parts.push(`- **Número ProcessMaker:** ${pm}`);
+  if (ver) parts.push(`- **Versão:** ${ver}`);
+  if (desc) parts.push(`**Visão Geral / Descrição do Requisito:**\n${desc}`);
+  if (pre) parts.push(`**Pré-condições:**\n${pre}`);
+  if (pos) parts.push(`**Pós-condições:**\n${pos}`);
+  if (rnList.length > 0) {
+    const rnRows = rnList.map((rn, i) => `- ${rn.codigo || `RN${String(i + 1).padStart(3, '0')}`}: ${rn.descricao || ''}`);
+    parts.push(`**Regras de Negócio (RN):**\n${rnRows.join('\n')}`);
+  }
+  if (flow) parts.push(`**1.1 Fluxo (Passo a Passo):**\n${flow}`);
+  if (telas.length > 0) {
+    parts.push(`**1.2 Telas / Protótipos (${telas.length}):** ${telas.map((t, i) => t.title || t.tituloTela || `Tela ${i + 1}`).join(', ')}`);
+  }
+  if (entradas.length > 0) {
+    const rows = entradas.map(e => `- ${e.campo} (${e.tipoCampo || 'Alfanumérico'}, ${e.obrigatorio ? 'Obrigatório' : 'Opcional'}): ${e.descricao || ''}${e.regra ? ` [Regra: ${e.regra}]` : ''}`);
+    parts.push(`**1.3.1 Atributos — Entradas:**\n${rows.join('\n')}`);
+  }
+  if (saidas.length > 0) {
+    const rows = saidas.map(s => `- ${s.campo} (${s.tipoCampo || 'Alfanumérico'}, ${s.obrigatorio ? 'Obrigatório' : 'Opcional'}): ${s.descricao || ''}${s.regra ? ` [Regra: ${s.regra}]` : ''}`);
+    parts.push(`**1.3.2 Atributos — Saídas:**\n${rows.join('\n')}`);
+  }
+  if (criterios.length > 0) {
+    const rows = criterios.map((c, idx) => `- ${c.item || `CA${String(idx + 1).padStart(3, '0')}`} [${c.tipo || 'Negócio (N)'} | ${c.categoria || 'Específico'}]: ${c.descricao || ''}`);
+    parts.push(`**1.4 Critérios de Aceite Estruturados:**\n${rows.join('\n')}`);
+  }
+  if (customSecs.length > 0) {
+    const customParts = customSecs.map((sec, idx) => {
+      const title = sec.tituloSecao || sec.titulo_secao || `Seção ${idx + 1}`;
+      const fields = (sec.campos || []).map(f => `  * ${f.nomeCampo || f.nome_campo || 'Campo'} (${f.tipoCampo || f.tipo_campo || 'Texto'}): ${f.valor !== undefined && f.valor !== null ? (typeof f.valor === 'object' ? JSON.stringify(f.valor) : f.valor) : '—'}`);
+      return `**${title}:**\n${fields.length > 0 ? fields.join('\n') : '  *(Sem campos preenchidos)*'}`;
+    });
+    parts.push(`**Seções Personalizadas:**\n${customParts.join('\n')}`);
+  }
+  return parts.join('\n');
+}
+
+/**
  * Monta o prompt de usuário com especificação, inventário do projeto e parâmetros de contagem.
  */
 function buildCfpsUserPrompt(spec, context = {}) {
@@ -406,6 +460,8 @@ function buildCfpsUserPrompt(spec, context = {}) {
       sections.push(`\n#### Requisito ${idx + 1}: [${req.code || 'RF'}] ${req.title || ''}`);
       if (req.userStory || req.user_story) sections.push(`**História de Usuário / Regras:**\n${req.userStory || req.user_story}`);
       if (req.bdd) sections.push(`**Cenários BDD / Critérios de Aceitação:**\n${req.bdd}`);
+      const structured = formatStructuredSpecSections(req);
+      if (structured) sections.push(structured);
     });
   } else {
     if (spec.code) sections.push(`- **Código:** ${spec.code}`);
@@ -413,6 +469,8 @@ function buildCfpsUserPrompt(spec, context = {}) {
     if (spec.feature) sections.push(`- **Feature/Módulo:** ${spec.feature}`);
     if (spec.userStory || spec.user_story) sections.push(`\n**História de Usuário / Regras de Negócio:**\n${spec.userStory || spec.user_story}`);
     if (spec.bdd) sections.push(`\n**Cenários BDD / Critérios de Aceitação:**\n${spec.bdd}`);
+    const structured = formatStructuredSpecSections(spec);
+    if (structured) sections.push(`\n${structured}`);
     if (spec.text || spec.specification) {
       const extraText = spec.text || spec.specification;
       if (extraText !== (spec.userStory || spec.user_story)) {
@@ -814,6 +872,7 @@ function computeCfpsCacheKey(spec = {}, context = {}, effectiveConfig = {}, opti
       feature: (spec.feature || '').trim(),
       userStory: (spec.userStory || spec.user_story || '').trim(),
       bdd: (spec.bdd || '').trim(),
+      structuredSpec: formatStructuredSpecSections(spec),
       text: (spec.text || spec.specification || '').trim()
     },
     featureRequirements: (context.featureRequirements || [])
@@ -821,7 +880,8 @@ function computeCfpsCacheKey(spec = {}, context = {}, effectiveConfig = {}, opti
         code: (r.code || '').trim(),
         title: (r.title || '').trim(),
         userStory: (r.userStory || r.user_story || '').trim(),
-        bdd: (r.bdd || '').trim()
+        bdd: (r.bdd || '').trim(),
+        structuredSpec: formatStructuredSpecSections(r)
       }))
       .sort((a, b) => `${a.code}:${a.title}`.localeCompare(`${b.code}:${b.title}`)),
     existingAlis: (context.existingAlis || []).map(a => `${a.name}|${a.td}|${a.ar_tr}`).sort(),
@@ -837,6 +897,8 @@ module.exports = {
   loadDotEnv,
   maskApiKey,
   resolveEffectiveAiConfig,
+  formatStructuredSpecSections,
+  buildCfpsUserPrompt,
   computeCfpsCacheKey,
   runAiCfpsAnalysis,
   testAiConnection
