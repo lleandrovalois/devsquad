@@ -726,7 +726,13 @@ class ALMStore {
       numeroProcessMaker,
       versaoAtual,
       criadoPor,
-      fluxoPrincipal: data.fluxoPrincipal || '',
+      descricaoRequisito: data.descricaoRequisito || '',
+      preCondicoes: data.preCondicoes || '',
+      posCondicoes: data.posCondicoes || '',
+      fluxoRequisito: data.fluxoRequisito || data.fluxoPrincipal || '',
+      fluxoPrincipal: data.fluxoPrincipal || data.fluxoRequisito || '',
+      regrasNegocio: Array.isArray(data.regrasNegocio) ? data.regrasNegocio : [],
+      secoesCustomizadas: Array.isArray(data.secoesCustomizadas) ? data.secoesCustomizadas : [],
       telas: Array.isArray(data.telas) ? data.telas : [],
       entradas: Array.isArray(data.entradas) ? data.entradas : [],
       saidas: Array.isArray(data.saidas) ? data.saidas : [],
@@ -763,7 +769,19 @@ class ALMStore {
       if (data.numeroProcessMaker !== undefined) req.numeroProcessMaker = (data.numeroProcessMaker || '').trim();
       if (data.versaoAtual !== undefined) req.versaoAtual = (data.versaoAtual || '1.0').trim() || '1.0';
       if (data.criadoPor !== undefined) req.criadoPor = data.criadoPor;
-      if (data.fluxoPrincipal !== undefined) req.fluxoPrincipal = data.fluxoPrincipal;
+      if (data.descricaoRequisito !== undefined) req.descricaoRequisito = data.descricaoRequisito;
+      if (data.preCondicoes !== undefined) req.preCondicoes = data.preCondicoes;
+      if (data.posCondicoes !== undefined) req.posCondicoes = data.posCondicoes;
+      if (data.fluxoRequisito !== undefined) {
+        req.fluxoRequisito = data.fluxoRequisito;
+        if (!req.fluxoPrincipal) req.fluxoPrincipal = data.fluxoRequisito;
+      }
+      if (data.fluxoPrincipal !== undefined) {
+        req.fluxoPrincipal = data.fluxoPrincipal;
+        if (!req.fluxoRequisito) req.fluxoRequisito = data.fluxoPrincipal;
+      }
+      if (Array.isArray(data.regrasNegocio)) req.regrasNegocio = data.regrasNegocio;
+      if (Array.isArray(data.secoesCustomizadas)) req.secoesCustomizadas = data.secoesCustomizadas;
       if (Array.isArray(data.telas)) req.telas = data.telas;
       if (Array.isArray(data.entradas)) req.entradas = data.entradas;
       if (Array.isArray(data.saidas)) req.saidas = data.saidas;
@@ -4725,7 +4743,75 @@ function renderReqBusinessRules() {
   `).join('');
 }
 
+window.collectReqBusinessRulesFromDOM = function() {
+  const tbody = document.getElementById('table-req-business-rules')?.querySelector('tbody');
+  if (!tbody) return;
+  const rows = tbody.querySelectorAll('tr');
+  if (rows.length === 0) return;
+  const collected = [];
+  rows.forEach((tr, idx) => {
+    const codeInput = tr.querySelector('.req-rn-badge, input[type="text"]');
+    const descInput = tr.querySelector('.req-dyn-textarea');
+    if (!descInput) return;
+    const existing = reqFormDraft.regrasNegocio && reqFormDraft.regrasNegocio[idx];
+    const codigo = codeInput ? codeInput.value.trim() : (existing?.codigo || `RN${String(idx + 1).padStart(3, '0')}`);
+    const descricao = descInput.value;
+    collected.push({
+      id: existing?.id || `rn_${Date.now()}_${idx}`,
+      codigo: codigo || `RN${String(idx + 1).padStart(3, '0')}`,
+      descricao: descricao,
+      ordem: idx
+    });
+  });
+  if (collected.length > 0) {
+    reqFormDraft.regrasNegocio = collected;
+  }
+};
+
+window.collectReqCustomSectionsFromDOM = function() {
+  const container = document.getElementById('req-custom-sections-container');
+  if (!container) return;
+  const cards = container.querySelectorAll('.req-custom-section-card');
+  if (cards.length === 0) return;
+  const collected = [];
+  cards.forEach((card, sIdx) => {
+    const titleInput = card.querySelector('.req-custom-section-title-input');
+    const existingSec = reqFormDraft.secoesCustomizadas && reqFormDraft.secoesCustomizadas[sIdx];
+    const tituloSecao = titleInput ? titleInput.value.trim() : (existingSec?.tituloSecao || `Seção ${sIdx + 1}`);
+    const fieldRows = card.querySelectorAll('.req-custom-field-row');
+    const campos = [];
+    fieldRows.forEach((row, fIdx) => {
+      const nameInput = row.querySelector('input.custom-input[placeholder*="Nome do Campo"]');
+      const typeSelect = row.querySelector('select.custom-select');
+      const obrigCheckbox = row.querySelector('input[type="checkbox"]');
+      const valInput = row.querySelector('textarea.custom-input, select.custom-select.font-mono, input.custom-input:not([placeholder*="Nome do Campo"])');
+      const existingField = existingSec?.campos && existingSec.campos[fIdx];
+      const nomeCampo = nameInput ? nameInput.value.trim() : (existingField?.nomeCampo || '');
+      const tipoCampo = typeSelect ? typeSelect.value : (existingField?.tipoCampo || 'Texto Curto');
+      const obrigatorio = obrigCheckbox ? obrigCheckbox.checked : Boolean(existingField?.obrigatorio);
+      const valor = valInput ? valInput.value : (existingField?.valor !== undefined ? existingField.valor : '');
+      campos.push({
+        id: existingField?.id || `fld_${Date.now()}_${sIdx}_${fIdx}`,
+        nomeCampo: nomeCampo,
+        tipoCampo: tipoCampo,
+        obrigatorio: obrigatorio,
+        valor: valor
+      });
+    });
+    collected.push({
+      id: existingSec?.id || `sec_${Date.now()}_${sIdx}`,
+      tituloSecao: tituloSecao || `Seção ${sIdx + 1}`,
+      ordem: sIdx,
+      campos: campos
+    });
+  });
+  if (collected.length > 0) {
+    reqFormDraft.secoesCustomizadas = collected;
+  }
+};
+
 window.addReqBusinessRuleRow = function(customData = null) {
+  collectReqBusinessRulesFromDOM();
   const nextNum = (reqFormDraft.regrasNegocio?.length || 0) + 1;
   reqFormDraft.regrasNegocio.push(customData || {
     id: `rn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -4737,6 +4823,7 @@ window.addReqBusinessRuleRow = function(customData = null) {
 };
 
 window.moveReqBusinessRuleRow = function(idx, delta) {
+  collectReqBusinessRulesFromDOM();
   const list = reqFormDraft.regrasNegocio;
   const target = idx + delta;
   if (!list || target < 0 || target >= list.length) return;
@@ -4745,12 +4832,14 @@ window.moveReqBusinessRuleRow = function(idx, delta) {
 };
 
 window.removeReqBusinessRuleRow = function(idx) {
+  collectReqBusinessRulesFromDOM();
   reqFormDraft.regrasNegocio.splice(idx, 1);
   renderReqBusinessRules();
   updateReqModalTabBadges();
 };
 
 window.promptBatchBusinessRules = function() {
+  collectReqBusinessRulesFromDOM();
   const text = prompt('Cole aqui as regras de negócio (uma por linha):\nExemplo:\nO tempo limite de inatividade é de 10 minutos.\nAtleta estrangeiro deve possuir passaporte válido.');
   if (!text) return;
   const lines = text.split('\n').map(l => l.trim().replace(/^[•\-\*\d+\.\s]+/, '').trim()).filter(Boolean);
@@ -4820,7 +4909,7 @@ function renderReqCustomSections() {
                 </div>
                 <div>
                   <input type="text" class="custom-input" placeholder="Nome do Campo *" value="${escapeHtml(f.nomeCampo || '')}"
-                         oninput="if(reqFormDraft.secoesCustomizadas[${sIdx}]?.campos[${fIdx}]) reqFormDraft.secoesCustomizadas[${sIdx}].campos[fIdx].nomeCampo = this.value;">
+                         oninput="if(reqFormDraft.secoesCustomizadas[${sIdx}]?.campos[${fIdx}]) reqFormDraft.secoesCustomizadas[${sIdx}].campos[${fIdx}].nomeCampo = this.value;">
                 </div>
                 <div>
                   <select class="custom-select" onchange="changeReqCustomFieldType(${sIdx}, ${fIdx}, this.value)">
@@ -4882,6 +4971,7 @@ function renderCustomFieldValueInput(sIdx, fIdx, field) {
 }
 
 window.changeReqCustomFieldType = function(sIdx, fIdx, newType) {
+  collectReqCustomSectionsFromDOM();
   if (reqFormDraft.secoesCustomizadas[sIdx]?.campos[fIdx]) {
     reqFormDraft.secoesCustomizadas[sIdx].campos[fIdx].tipoCampo = newType;
     renderReqCustomSections();
@@ -4889,6 +4979,7 @@ window.changeReqCustomFieldType = function(sIdx, fIdx, newType) {
 };
 
 window.addReqCustomSection = function(customData = null) {
+  collectReqCustomSectionsFromDOM();
   const nextNum = (reqFormDraft.secoesCustomizadas?.length || 0) + 1;
   reqFormDraft.secoesCustomizadas.push(customData || {
     id: `sec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -4900,6 +4991,7 @@ window.addReqCustomSection = function(customData = null) {
 };
 
 window.moveReqCustomSection = function(secIdx, delta) {
+  collectReqCustomSectionsFromDOM();
   const list = reqFormDraft.secoesCustomizadas;
   const target = secIdx + delta;
   if (!list || target < 0 || target >= list.length) return;
@@ -4908,12 +5000,14 @@ window.moveReqCustomSection = function(secIdx, delta) {
 };
 
 window.removeReqCustomSection = function(secIdx) {
+  collectReqCustomSectionsFromDOM();
   reqFormDraft.secoesCustomizadas.splice(secIdx, 1);
   renderReqCustomSections();
   updateReqModalTabBadges();
 };
 
 window.duplicateReqCustomSection = function(secIdx) {
+  collectReqCustomSectionsFromDOM();
   const orig = reqFormDraft.secoesCustomizadas[secIdx];
   if (!orig) return;
   const clone = {
@@ -4933,6 +5027,7 @@ window.duplicateReqCustomSection = function(secIdx) {
 };
 
 window.addReqCustomField = function(secIdx, fieldData = null) {
+  collectReqCustomSectionsFromDOM();
   const sec = reqFormDraft.secoesCustomizadas[secIdx];
   if (!sec) return;
   if (!Array.isArray(sec.campos)) sec.campos = [];
@@ -4947,6 +5042,7 @@ window.addReqCustomField = function(secIdx, fieldData = null) {
 };
 
 window.moveReqCustomField = function(secIdx, fieldIdx, delta) {
+  collectReqCustomSectionsFromDOM();
   const sec = reqFormDraft.secoesCustomizadas[secIdx];
   if (!sec || !Array.isArray(sec.campos)) return;
   const target = fieldIdx + delta;
@@ -4956,6 +5052,7 @@ window.moveReqCustomField = function(secIdx, fieldIdx, delta) {
 };
 
 window.removeReqCustomField = function(secIdx, fieldIdx) {
+  collectReqCustomSectionsFromDOM();
   const sec = reqFormDraft.secoesCustomizadas[secIdx];
   if (!sec || !Array.isArray(sec.campos)) return;
   sec.campos.splice(fieldIdx, 1);
@@ -4963,6 +5060,7 @@ window.removeReqCustomField = function(secIdx, fieldIdx) {
 };
 
 window.saveCustomSectionsAsProjectTemplate = async function() {
+  collectReqCustomSectionsFromDOM();
   const projId = document.getElementById('req-project')?.value;
   if (!projId) {
     showToast('Selecione um projeto antes de salvar o template.', 'warn');
@@ -9054,6 +9152,12 @@ window.exportMeasurementReportPDF = function() {
     let specCell = r.title || '-';
     if (r.numeroProcessMaker) specCell += `\nProcessMaker: ${r.numeroProcessMaker}`;
     if (template.includeUserStory !== false) {
+      if (r.descricaoRequisito && r.descricaoRequisito.trim()) {
+        specCell += `\n\nDescrição:\n${r.descricaoRequisito.trim()}`;
+      }
+      if (Array.isArray(r.regrasNegocio) && r.regrasNegocio.length > 0) {
+        specCell += `\n\nRegras de Negócio (${r.regrasNegocio.length}):\n` + r.regrasNegocio.map(rn => `• ${rn.codigo || 'RN'}: ${rn.descricao}`).join('\n');
+      }
       if (r.fluxoPrincipal && r.fluxoPrincipal.trim()) {
         specCell += `\n\n1.1 Fluxo:\n${r.fluxoPrincipal.trim()}`;
       }
@@ -9062,6 +9166,14 @@ window.exportMeasurementReportPDF = function() {
       }
       if (Array.isArray(r.saidas) && r.saidas.length > 0) {
         specCell += `\n\n1.3.2 Saídas (${r.saidas.length}):\n` + r.saidas.map(s => `• ${s.campo} (${s.tipoCampo || 'Alfanumérico'}): ${s.descricao || ''}`).join('\n');
+      }
+      if (Array.isArray(r.secoesCustomizadas) && r.secoesCustomizadas.length > 0) {
+        r.secoesCustomizadas.forEach(sec => {
+          const flds = Array.isArray(sec.campos) ? sec.campos : [];
+          if (flds.length > 0) {
+            specCell += `\n\n[${sec.tituloSecao || 'Seção Personalizada'}]:\n` + flds.map(f => `• ${f.nomeCampo || 'Campo'}: ${f.valor != null ? String(f.valor) : '—'}`).join('\n');
+          }
+        });
       }
       if (r.userStory && r.userStory.trim()) {
         specCell += `\n\nUser Story:\n${r.userStory.trim()}`;
@@ -9287,9 +9399,21 @@ window.printMeasurementReport = function() {
     const typeAbbr = getRequirementTypeInfo(req.type).abbr;
     const structuredBlock = template.includeUserStory !== false && hasStructuredSpecContent(req) ? `
       ${req.numeroProcessMaker ? `<div style="font-size:0.75rem; color:#475569; margin-top:2px;"><strong>ProcessMaker:</strong> ${escapeHtml(req.numeroProcessMaker)} · <strong>Versão:</strong> v${escapeHtml(req.versaoAtual || '1.0')}</div>` : ''}
+      ${req.descricaoRequisito ? `<div style="margin-top:6px; font-size:0.78rem; color:#334155; white-space:pre-wrap;"><strong>Descrição:</strong>\n${escapeHtml(req.descricaoRequisito)}</div>` : ''}
+      ${(Array.isArray(req.regrasNegocio) && req.regrasNegocio.length > 0) ? `<div style="margin-top:6px; font-size:0.76rem;"><strong>Regras de Negócio (${req.regrasNegocio.length}):</strong> ${req.regrasNegocio.map(rn => `<em>${escapeHtml(rn.codigo || 'RN')}</em>: ${escapeHtml(rn.descricao)}`).join(' | ')}</div>` : ''}
       ${req.fluxoPrincipal ? `<div style="margin-top:6px; font-size:0.78rem; color:#334155; white-space:pre-wrap;"><strong>1.1 Fluxo:</strong>\n${escapeHtml(req.fluxoPrincipal)}</div>` : ''}
       ${(Array.isArray(req.entradas) && req.entradas.length > 0) ? `<div style="margin-top:6px; font-size:0.76rem;"><strong>1.3.1 Entradas (${req.entradas.length}):</strong> ${req.entradas.map(e => escapeHtml(e.campo)).join(', ')}</div>` : ''}
       ${(Array.isArray(req.saidas) && req.saidas.length > 0) ? `<div style="margin-top:3px; font-size:0.76rem;"><strong>1.3.2 Saídas (${req.saidas.length}):</strong> ${req.saidas.map(s => escapeHtml(s.campo)).join(', ')}</div>` : ''}
+      ${(Array.isArray(req.secoesCustomizadas) && req.secoesCustomizadas.length > 0) ? `
+        <div style="margin-top:6px; font-size:0.76rem;">
+          ${req.secoesCustomizadas.map(sec => `
+            <div style="margin-top:3px;">
+              <strong>[${escapeHtml(sec.tituloSecao || 'Seção Personalizada')}]:</strong>
+              ${(sec.campos || []).map(f => `${escapeHtml(f.nomeCampo || 'Campo')}: ${escapeHtml(f.valor != null ? String(f.valor) : '—')}`).join('; ')}
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
     ` : '';
 
     let cellsHtml = `
@@ -10031,7 +10155,7 @@ window.exportSingleRequirementSpecPDF = function(reqId) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9.5);
       doc.setTextColor(15, 23, 42);
-      doc.text(`🧩 ${sec.tituloSecao || 'Seção Personalizada'}:`, marginX, y);
+      doc.text(`Seção Personalizada: ${sec.tituloSecao || 'Seção'}:`, marginX, y);
       y += 8;
       if (flds.length > 0 && typeof doc.autoTable === 'function') {
         doc.autoTable({
@@ -11749,6 +11873,9 @@ window.addEventListener('DOMContentLoaded', () => {
       feature = '';
     }
 
+    collectReqBusinessRulesFromDOM();
+    collectReqCustomSectionsFromDOM();
+
     renumberBusinessRules();
     renumberAcceptanceCriteria();
 
@@ -11768,10 +11895,10 @@ window.addEventListener('DOMContentLoaded', () => {
         tituloSecao: (sec.tituloSecao || `Seção ${sIdx + 1}`).trim(),
         ordem: sIdx,
         campos: (sec.campos || [])
-          .filter(f => (f.nomeCampo || '').trim())
+          .filter(f => (f.nomeCampo || '').trim() || (f.valor !== undefined && f.valor !== null && String(f.valor).trim()))
           .map((f, fIdx) => ({
             id: f.id || `fld_${Date.now()}_${fIdx}`,
-            nomeCampo: f.nomeCampo.trim(),
+            nomeCampo: (f.nomeCampo || '').trim() || `Campo ${fIdx + 1}`,
             tipoCampo: f.tipoCampo || 'Texto Curto',
             obrigatorio: Boolean(f.obrigatorio),
             valor: f.valor != null ? f.valor : ''
